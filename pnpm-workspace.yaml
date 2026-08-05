@@ -1,0 +1,17 @@
+packages:
+  - .
+
+allowBuilds:
+  electron: true
+  electron-winstaller: true
+  esbuild: true
+
+minimumReleaseAgeExclude:
+  - electron@43.1.1
+
+onlyBuiltDependencies:
+  - electron
+  - electron-winstaller
+
+overrides:
+  electron-to-chromium: 1.5.389

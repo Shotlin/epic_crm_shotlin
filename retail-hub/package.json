@@ -1,0 +1,11 @@
+{
+  "name": "@epic-bos/retail-hub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Read-only Bakaloo shadow-import boundary for Epic BOS Retail Hub.",
+  "scripts": {
+    "typecheck": "pnpm --dir .. exec tsc --noEmit -p retail-hub/tsconfig.json",
+    "test": "pnpm --dir .. exec vitest run -c retail-hub/vitest.config.ts",
+    "verify": "pnpm run typecheck && pnpm run test"
+  }
+}

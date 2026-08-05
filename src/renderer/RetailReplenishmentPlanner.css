@@ -1,0 +1,33 @@
+.retail-replenishment-planner { display: grid; gap: 14px; margin: 14px 0; padding: 18px; border: 1px solid #d7e6e6; border-radius: 16px; background: radial-gradient(circle at 94% 3%, rgba(31, 133, 113, .12), transparent 27%), linear-gradient(135deg, #f7fcfa, #fff); color: #183c3b; }
+.retail-replenishment-planner__header { display: flex; align-items: start; justify-content: space-between; gap: 18px; }
+.retail-replenishment-planner__header > div:first-child { max-width: 650px; }
+.retail-replenishment-planner__header span { display: inline-flex; align-items: center; gap: 5px; color: #26725f; font-size: .64rem; font-weight: 850; letter-spacing: .09em; text-transform: uppercase; }
+.retail-replenishment-planner__header h4 { margin: 5px 0; font-size: 1.05rem; color: #153d3a; }
+.retail-replenishment-planner__header p { margin: 0; color: #5d7772; font-size: .78rem; line-height: 1.5; }
+.retail-replenishment-planner__controls { display: grid; grid-template-columns: repeat(3, minmax(120px, 1fr)); gap: 8px; min-width: min(100%, 490px); }
+.retail-replenishment-planner__controls label { display: grid; gap: 4px; color: #58716c; font-size: .62rem; font-weight: 800; }
+.retail-replenishment-planner__controls input, .retail-replenishment-planner__controls select { min-width: 0; padding: 8px; border: 1px solid #cfe0dc; border-radius: 8px; color: #173b37; background: #fff; font: inherit; }
+.retail-replenishment-planner__metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.retail-replenishment-planner__metrics article { display: grid; gap: 4px; min-width: 0; padding: 12px; border: 1px solid #dceae7; border-radius: 11px; background: rgba(255,255,255,.84); }
+.retail-replenishment-planner__metrics span { display: inline-flex; align-items: center; gap: 5px; color: #5c756e; font-size: .62rem; font-weight: 850; text-transform: uppercase; letter-spacing: .06em; }
+.retail-replenishment-planner__metrics strong { color: #173f3c; font-size: 1.1rem; }
+.retail-replenishment-planner__metrics small { color: #6b827d; font-size: .67rem; line-height: 1.35; }
+.retail-replenishment-planner__metrics article[data-alert='true'] { border-color: #f1c6ac; background: #fff8f4; }
+.retail-replenishment-planner__table-wrap { overflow-x: auto; border: 1px solid #dce9e5; border-radius: 10px; background: #fff; }
+.retail-replenishment-planner table { width: 100%; min-width: 820px; border-collapse: collapse; }
+.retail-replenishment-planner th { padding: 9px 12px; border-bottom: 1px solid #dce9e5; color: #5c756e; background: #f7fbf9; font-size: .61rem; letter-spacing: .06em; text-align: left; text-transform: uppercase; }
+.retail-replenishment-planner td { padding: 11px 12px; border-bottom: 1px solid #edf3f0; vertical-align: top; font-size: .73rem; }
+.retail-replenishment-planner tr:last-child td { border-bottom: 0; }
+.retail-replenishment-planner td strong, .retail-replenishment-planner td small { display: block; }
+.retail-replenishment-planner td strong { color: #1b403d; }
+.retail-replenishment-planner td small { margin-top: 3px; color: #71847f; font-size: .65rem; line-height: 1.35; }
+.retail-replenishment-planner__pill { display: inline-block; padding: 3px 6px; border-radius: 999px; color: #3e6960; background: #e9f5f0; font-size: .61rem; font-weight: 800; text-transform: capitalize; }
+.retail-replenishment-planner__pill[data-urgency='critical-reorder'] { color: #a64632; background: #fff0e9; }
+.retail-replenishment-planner__pill[data-urgency='normal-reorder'] { color: #895b1d; background: #fff6df; }
+.retail-replenishment-planner td small[data-trend='rising'] { color: #20715e; font-weight: 800; }
+.retail-replenishment-planner td small[data-trend='falling'] { color: #a24f3c; font-weight: 800; }
+.retail-replenishment-planner td small[data-trend='stable'] { color: #647c77; }
+.retail-replenishment-planner footer { color: #637d77; font-size: .66rem; line-height: 1.45; }
+.retail-replenishment-planner__empty { margin: 0; padding: 16px; border: 1px dashed #bfd4ce; border-radius: 10px; color: #617a74; font-size: .76rem; }
+@media (max-width: 900px) { .retail-replenishment-planner__header { display: grid; } .retail-replenishment-planner__controls { min-width: 0; width: 100%; } }
+@media (max-width: 620px) { .retail-replenishment-planner { padding: 13px; } .retail-replenishment-planner__controls, .retail-replenishment-planner__metrics { grid-template-columns: 1fr; } }

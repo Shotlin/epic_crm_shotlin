@@ -1,0 +1,28 @@
+import { describe, expect, it } from 'vitest';
+import { createInitialRevenueOpsState } from './revenue-ops';
+import { buildMrpPlan, buildMultilevelMrpPlan } from './mrp-planning';
+
+describe('MRP planning', () => {
+  it('nets released-BOM material demand against available bin stock', () => {
+    const state = createInitialRevenueOpsState();
+    const planned = { ...state, itemVariants: [{ id: 'out', itemId: 'item-out', sku: 'OUT', name: 'Finished unit', attributes: {}, active: true, scope: state.scope, version: 1 }, { id: 'comp', itemId: 'item-comp', sku: 'COMP', name: 'Component', attributes: {}, active: true, scope: state.scope, version: 1 }], bomRevisions: [{ id: 'bom-1', number: 'BOM-1', outputVariantId: 'out', outputQuantity: 2, effectiveFrom: '2026-01-01', components: [{ id: 'component-1', itemVariantId: 'comp', quantityPerOutput: 3, scrapPercent: 10, issueMethod: 'manual' as const }], operations: [], status: 'released' as const, requestedBy: 'maker', requestedAt: '2026-01-01T00:00:00.000Z', scope: state.scope, version: 1 }], workOrders: [{ id: 'wo-1', number: 'WO-1', bomRevisionId: 'bom-1', outputVariantId: 'out', warehouseId: 'wh-1', outputBinId: 'bin-out', quantityPlanned: 10, quantityCompleted: 2, plannedStart: '2026-07-20', plannedEnd: '2026-07-21', status: 'released' as const, operations: [], requestedBy: 'maker', requestedAt: '2026-07-15T00:00:00.000Z', scope: state.scope, version: 1 }], binBalances: [{ id: 'balance-1', binId: 'bin-comp', itemVariantId: 'comp', quantity: 8, reserved: 0, picked: 0, available: 8, unitCost: 10, inventoryValue: 80, scope: state.scope, version: 1 }] };
+    expect(buildMrpPlan(planned, '2026-07-15T00:00:00.000Z')).toMatchObject({ activeWorkOrders: 1, releasedBoms: 1, shortageCount: 1, totalShortageUnits: 5.2, requirements: [{ itemVariantId: 'comp', grossRequired: 13.2, available: 8, netRequirement: 5.2, linkedWorkOrders: ['WO-1'], shortage: true }] });
+  });
+
+  it('does not include another company or branch in the plan', () => {
+    const state = createInitialRevenueOpsState();
+    const otherScope = { companyId: 'other-company', branchId: 'other-branch' };
+    const planned = { ...state, bomRevisions: [{ id: 'bom-other', number: 'BOM-OTHER', outputVariantId: 'out', outputQuantity: 1, effectiveFrom: '2026-01-01', components: [{ id: 'component-other', itemVariantId: 'comp', quantityPerOutput: 2, scrapPercent: 0, issueMethod: 'manual' as const }], operations: [], status: 'released' as const, requestedBy: 'maker', requestedAt: '2026-01-01T00:00:00.000Z', scope: otherScope, version: 1 }], workOrders: [{ id: 'wo-other', number: 'WO-OTHER', bomRevisionId: 'bom-other', outputVariantId: 'out', warehouseId: 'wh', outputBinId: 'bin', quantityPlanned: 100, quantityCompleted: 0, plannedStart: '2026-07-20', plannedEnd: '2026-07-21', status: 'released' as const, operations: [], requestedBy: 'maker', requestedAt: '2026-07-15T00:00:00.000Z', scope: otherScope, version: 1 }] };
+    expect(buildMrpPlan(planned)).toMatchObject({ activeWorkOrders: 0, requirements: [] });
+  });
+
+  it('explodes a subassembly and reports a BOM cycle instead of recursing forever', () => {
+    const state = createInitialRevenueOpsState();
+    const base = { ...state, itemVariants: [{ id: 'finished', itemId: 'finished-item', sku: 'F', name: 'Finished', attributes: {}, active: true, scope: state.scope, version: 1 }, { id: 'sub', itemId: 'sub-item', sku: 'S', name: 'Subassembly', attributes: {}, active: true, scope: state.scope, version: 1 }, { id: 'raw', itemId: 'raw-item', sku: 'R', name: 'Raw', attributes: {}, active: true, scope: state.scope, version: 1 }] };
+    const planned = { ...base, bomRevisions: [{ id: 'bom-f', number: 'BOM-F', outputVariantId: 'finished', outputQuantity: 1, effectiveFrom: '2026-01-01', components: [{ id: 'c-sub', itemVariantId: 'sub', quantityPerOutput: 2, scrapPercent: 0, issueMethod: 'manual' as const }], operations: [], status: 'released' as const, requestedBy: 'maker', requestedAt: '2026-01-01T00:00:00.000Z', scope: state.scope, version: 1 }, { id: 'bom-s', number: 'BOM-S', outputVariantId: 'sub', outputQuantity: 1, effectiveFrom: '2026-01-01', components: [{ id: 'c-raw', itemVariantId: 'raw', quantityPerOutput: 3, scrapPercent: 0, issueMethod: 'manual' as const }], operations: [], status: 'released' as const, requestedBy: 'maker', requestedAt: '2026-01-01T00:00:00.000Z', scope: state.scope, version: 1 }], workOrders: [{ id: 'wo-f', number: 'WO-F', bomRevisionId: 'bom-f', outputVariantId: 'finished', warehouseId: 'wh', outputBinId: 'bin', quantityPlanned: 4, quantityCompleted: 0, plannedStart: '2026-07-20', plannedEnd: '2026-07-21', status: 'released' as const, operations: [], requestedBy: 'maker', requestedAt: '2026-07-15T00:00:00.000Z', scope: state.scope, version: 1 }], binBalances: [] };
+    const plan = buildMultilevelMrpPlan(planned, '2026-07-15T00:00:00.000Z');
+    expect(plan.requirements).toMatchObject([{ itemVariantId: 'sub', grossRequired: 8, level: 1 }, { itemVariantId: 'raw', grossRequired: 24, level: 2 }]);
+    const cyclic = { ...planned, bomRevisions: [...planned.bomRevisions, { id: 'bom-cycle', number: 'BOM-C', outputVariantId: 'raw', outputQuantity: 1, effectiveFrom: '2026-01-01', components: [{ id: 'c-cycle', itemVariantId: 'finished', quantityPerOutput: 1, scrapPercent: 0, issueMethod: 'manual' as const }], operations: [], status: 'released' as const, requestedBy: 'maker', requestedAt: '2026-01-01T00:00:00.000Z', scope: state.scope, version: 1 }] };
+    expect(buildMultilevelMrpPlan(cyclic).cycles).toEqual([['finished', 'sub', 'raw', 'finished']]);
+  });
+});

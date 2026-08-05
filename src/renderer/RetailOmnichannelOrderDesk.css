@@ -1,0 +1,35 @@
+.retail-omnichannel-desk { display: grid; gap: 14px; margin: 14px 0; padding: 18px; border: 1px solid #c9dcf5; border-radius: 16px; background: radial-gradient(circle at 92% 0%, rgba(65, 132, 221, .14), transparent 29%), linear-gradient(135deg, #f6faff, #fff); color: #172f52; }
+.retail-omnichannel-desk__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.retail-omnichannel-desk__header span { display: inline-flex; align-items: center; gap: 5px; color: #2765b8; font-size: .64rem; font-weight: 850; letter-spacing: .09em; text-transform: uppercase; }
+.retail-omnichannel-desk__header h4 { margin: 5px 0; color: #122d50; font-size: 1.05rem; }
+.retail-omnichannel-desk__header p { max-width: 730px; margin: 0; color: #5c7190; font-size: .76rem; line-height: 1.5; }
+.retail-omnichannel-desk__stamp { display: inline-flex; align-items: center; gap: 6px; padding: 7px 10px; border: 1px solid #c8daf2; border-radius: 999px; color: #3569ac; background: rgba(255,255,255,.84); font-size: .67rem; font-weight: 800; white-space: nowrap; }
+.retail-omnichannel-desk__metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.retail-omnichannel-desk__metrics article { display: grid; gap: 4px; padding: 12px; border: 1px solid #dbe7f7; border-radius: 11px; background: rgba(255,255,255,.88); }
+.retail-omnichannel-desk__metrics article[data-alert='true'] { border-color: #f1c6ac; background: #fff8f4; }
+.retail-omnichannel-desk__metrics span, .retail-omnichannel-desk__channels span { color: #5e7390; font-size: .61rem; font-weight: 850; letter-spacing: .06em; text-transform: uppercase; }
+.retail-omnichannel-desk__metrics strong { color: #153a69; font-size: 1.16rem; }
+.retail-omnichannel-desk__metrics small, .retail-omnichannel-desk__channels small { color: #6e829d; font-size: .65rem; line-height: 1.35; }
+.retail-omnichannel-desk__filters { display: flex; flex-wrap: wrap; gap: 7px; }
+.retail-omnichannel-desk__filters button { padding: 7px 10px; border: 1px solid #cbdcf2; border-radius: 999px; color: #476788; background: #fff; cursor: pointer; font: inherit; font-size: .68rem; font-weight: 750; }
+.retail-omnichannel-desk__filters button.is-active { border-color: #2f6cca; color: #fff; background: #2f6cca; box-shadow: 0 3px 10px rgba(47,108,202,.2); }
+.retail-omnichannel-desk__filters b { margin-left: 4px; opacity: .72; }
+.retail-omnichannel-desk__channels { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.retail-omnichannel-desk__channels > div { display: grid; gap: 3px; padding: 10px; border: 1px solid #e0eaf7; border-radius: 10px; background: rgba(255,255,255,.7); }
+.retail-omnichannel-desk__channels strong { color: #173d70; font-size: .9rem; }
+.retail-omnichannel-desk__table-wrap { overflow-x: auto; border: 1px solid #dbe7f7; border-radius: 10px; background: #fff; }
+.retail-omnichannel-desk table { width: 100%; min-width: 760px; border-collapse: collapse; }
+.retail-omnichannel-desk th { padding: 9px 12px; border-bottom: 1px solid #dbe7f7; color: #5e7390; background: #f6f9fe; font-size: .61rem; letter-spacing: .06em; text-align: left; text-transform: uppercase; }
+.retail-omnichannel-desk td { padding: 10px 12px; border-bottom: 1px solid #edf2fa; vertical-align: top; font-size: .72rem; }
+.retail-omnichannel-desk tr:last-child td { border-bottom: 0; }
+.retail-omnichannel-desk td strong, .retail-omnichannel-desk td small { display: block; }
+.retail-omnichannel-desk td strong { color: #1a3c68; }
+.retail-omnichannel-desk td small { display: flex; align-items: center; gap: 4px; margin-top: 3px; color: #7286a0; font-size: .64rem; line-height: 1.35; }
+.retail-omnichannel-desk tr[data-severity='critical'] td:first-child { border-left: 3px solid #c64a3b; }
+.retail-omnichannel-desk tr[data-severity='high'] td:first-child { border-left: 3px solid #d98935; }
+.retail-omnichannel-desk__channel, .retail-omnichannel-desk__status, .retail-omnichannel-desk__stock { display: inline-flex; align-items: center; gap: 4px; padding: 4px 7px; border-radius: 999px; color: #35659c; background: #edf4ff; font-size: .62rem; font-weight: 800; text-transform: capitalize; white-space: nowrap; }
+.retail-omnichannel-desk__stock { color: #27745d; background: #eaf8f2; }
+.retail-omnichannel-desk__blockers { color: #aa5b3c !important; }
+.retail-omnichannel-desk__empty { margin: 0; padding: 16px; color: #6a7f9b; font-size: .75rem; }
+.retail-omnichannel-desk footer { display: flex; align-items: center; gap: 6px; color: #617795; font-size: .66rem; line-height: 1.45; }
+@media (max-width: 760px) { .retail-omnichannel-desk__header { display: grid; } .retail-omnichannel-desk__metrics, .retail-omnichannel-desk__channels { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

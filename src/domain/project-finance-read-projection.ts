@@ -1,0 +1,19 @@
+import type { RevenueOpsSnapshot, RevenueOpsState } from '../shared/revenue-ops-contracts';
+import type { ProjectFinanceReadAccessDecision, ProjectFinanceReadCollection, ProjectFinanceReadProjection } from '../shared/project-finance-read-projection-contracts';
+type ScopedRecord = { scope?: { companyId: string; branchId: string } };
+export const PROJECT_FINANCE_READ_COLLECTIONS = [
+  ['projectBillingPlans', 'finance.journal'], ['projectBillingClaims', 'finance.journal'], ['revenueRecognitionEvents', 'finance.journal'], ['serviceEntitlementUsage', 'finance.journal'], ['accountingClosePeriods', 'finance.journal'],
+  ['projectExchangeRates', 'finance.journal'], ['projectCurrencyProfiles', 'finance.journal'], ['projectContractVariations', 'finance.journal'], ['projectRetainers', 'finance.journal'], ['retainerDrawdowns', 'finance.journal'], ['projectResourcePlans', 'finance.journal'], ['projectMarginReviews', 'finance.journal'],
+] as const satisfies ReadonlyArray<readonly [ProjectFinanceReadCollection, string]>;
+type Source = Pick<RevenueOpsState, 'scope' | ProjectFinanceReadCollection> | Pick<RevenueOpsSnapshot, 'scope' | ProjectFinanceReadCollection>;
+const METRICS: Record<ProjectFinanceReadCollection, readonly string[]> = {
+  projectBillingPlans: ['activeBillingPlans'], projectBillingClaims: ['recognizedUnbilledRevenue'], revenueRecognitionEvents: [], serviceEntitlementUsage: ['entitlementHoursRemaining', 'entitlementOverageHours'], accountingClosePeriods: ['closePeriodsPending', 'closedClosePeriods'], projectExchangeRates: ['projectFxRateGaps'], projectCurrencyProfiles: ['foreignCurrencyProjects', 'projectFxRateGaps'], projectContractVariations: ['projectVariationsAwaitingApproval'], projectRetainers: ['activeRetainerValue'], retainerDrawdowns: ['retainerDrawdownsAwaitingReview'], projectResourcePlans: ['activeResourcePlans'], projectMarginReviews: ['projectMarginAtRisk'],
+};
+const FIELD_METRICS: Record<string, readonly string[]> = { 'finance.journal.billRate': ['activeBillingPlans'], 'finance.journal.recognizedAmount': ['recognizedUnbilledRevenue'], 'finance.journal.hourlyCost': ['activeResourcePlans'], 'finance.journal.forecastMarginInr': ['projectMarginAtRisk'] };
+const inScope = (record: ScopedRecord, scope: Source['scope']) => record.scope?.companyId === scope.companyId && record.scope?.branchId === scope.branchId;
+function redact<T extends object>(record: T, fields: readonly string[]): T { const copy = { ...record } as Record<string, unknown>; for (const field of fields) delete copy[field]; return copy as T; }
+export function createProjectFinanceReadProjection(state: Source, getDecision: (resource: string) => ProjectFinanceReadAccessDecision, generatedAt = new Date().toISOString()): ProjectFinanceReadProjection {
+  const projected = {} as Record<ProjectFinanceReadCollection, unknown[]>; const hiddenCollections: string[] = []; const redactedFields: Record<string, string[]> = {}; const redactedMetrics: string[] = []; const records = state as unknown as Record<ProjectFinanceReadCollection, ScopedRecord[]>;
+  for (const [collection, resource] of PROJECT_FINANCE_READ_COLLECTIONS) { const decision = getDecision(resource); if (!decision.allowed) { projected[collection] = []; hiddenCollections.push(collection); redactedMetrics.push(...METRICS[collection]); continue; } if (decision.deniedFields.length) { redactedFields[resource] = [...decision.deniedFields]; for (const field of decision.deniedFields) redactedMetrics.push(...(FIELD_METRICS[`${resource}.${field}`] ?? [])); } projected[collection] = records[collection].filter((record) => inScope(record, state.scope)).map((record) => redact(record, decision.deniedFields)); }
+  return { scope: structuredClone(state.scope), generatedAt, hiddenCollections, redactedFields, redactedMetrics: [...new Set(redactedMetrics)], ...projected } as ProjectFinanceReadProjection;
+}

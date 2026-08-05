@@ -1,0 +1,107 @@
+.ui-acceptance-panel {
+  --uat-surface: #101a2d;
+  --uat-raised: #16243d;
+  --uat-border: #2b4061;
+  --uat-text: #f3f7ff;
+  --uat-muted: #b7c5d9;
+  --uat-blue: #2f75e8;
+  --uat-blue-soft: #173966;
+  --uat-green: #55cf94;
+  --uat-amber: #f6c563;
+  --uat-red: #f27b7b;
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+  color: var(--uat-text);
+}
+
+.ui-acceptance-panel__header,
+.ui-acceptance-panel__journeys,
+.ui-acceptance-panel__record,
+.ui-acceptance-panel__review {
+  border: 1px solid var(--uat-border);
+  border-radius: 15px;
+  background: var(--uat-surface);
+}
+
+.ui-acceptance-panel__header { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 23px; background: linear-gradient(125deg, #0e1b33, #173966); }
+.ui-acceptance-panel__header > div:first-child { min-width: 0; max-width: 760px; }
+.ui-acceptance-panel__header span,
+.ui-acceptance-panel__heading > div > span { display: inline-flex; align-items: center; gap: 7px; color: #a8cbff; font-size: .72rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.ui-acceptance-panel h3,
+.ui-acceptance-panel h4,
+.ui-acceptance-panel p { margin: 0; }
+.ui-acceptance-panel h3 { margin-top: 8px; font-size: clamp(1.3rem, 2.5vw, 1.8rem); line-height: 1.2; letter-spacing: -.025em; }
+.ui-acceptance-panel__header p { margin-top: 8px; color: var(--uat-muted); font-size: .9rem; line-height: 1.5; }
+.ui-acceptance-panel__score { display: grid; gap: 3px; min-width: 185px; padding: 14px 16px; border: 1px solid #5b86bd; border-radius: 12px; background: rgba(8, 22, 47, .5); }
+.ui-acceptance-panel__score strong { font-size: 1.1rem; }
+.ui-acceptance-panel__score small { color: var(--uat-muted); font-size: .76rem; line-height: 1.35; }
+.ui-acceptance-panel__score[data-status='ready'] strong { color: var(--uat-green); }
+.ui-acceptance-panel__score[data-status='blocked'] strong { color: var(--uat-amber); }
+
+.ui-acceptance-panel__roles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; }
+.ui-acceptance-panel__roles button { display: flex; align-items: center; justify-content: space-between; gap: 9px; min-height: 48px; padding: 11px 14px; border: 1px solid var(--uat-border); border-radius: 11px; background: var(--uat-raised); color: var(--uat-text); font: inherit; font-size: .86rem; font-weight: 750; cursor: pointer; }
+.ui-acceptance-panel__roles button[aria-selected='true'] { border-color: #6da5fa; background: var(--uat-blue-soft); box-shadow: inset 0 -2px 0 var(--uat-blue); }
+.ui-acceptance-panel__roles button small { color: #b4caeb; font-size: .72rem; }
+.ui-acceptance-panel__roles button:focus-visible,
+.ui-acceptance-panel button:focus-visible,
+.ui-acceptance-panel input:focus-visible,
+.ui-acceptance-panel select:focus-visible,
+.ui-acceptance-panel textarea:focus-visible { outline: 3px solid #8fc0ff; outline-offset: 3px; }
+
+.ui-acceptance-panel__grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(290px, .65fr); gap: 18px; }
+.ui-acceptance-panel__journeys,
+.ui-acceptance-panel__record,
+.ui-acceptance-panel__review { min-width: 0; padding: 19px; }
+.ui-acceptance-panel__heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 15px; }
+.ui-acceptance-panel__heading h4 { margin-top: 5px; font-size: 1rem; }
+.ui-acceptance-panel__journeys ol { display: grid; gap: 9px; margin: 0; padding: 0; list-style: none; }
+.ui-acceptance-panel__journeys li { display: grid; grid-template-columns: 29px minmax(0, 1fr); gap: 11px; padding: 12px; border: 1px solid #314969; border-left: 3px solid #617b9f; border-radius: 10px; background: #121f35; }
+.ui-acceptance-panel__journeys li[data-status='verified'] { border-left-color: var(--uat-green); }
+.ui-acceptance-panel__journeys li[data-status='failed'],
+.ui-acceptance-panel__journeys li[data-status='rejected'] { border-left-color: var(--uat-red); }
+.ui-acceptance-panel__journeys li[data-status='submitted'],
+.ui-acceptance-panel__journeys li[data-status='stale'] { border-left-color: var(--uat-amber); }
+.ui-acceptance-panel__journeys li > span { display: grid; place-items: center; width: 27px; height: 27px; border-radius: 50%; background: #234d85; color: #e9f2ff; font-size: .75rem; font-weight: 800; }
+.ui-acceptance-panel__journeys strong { color: var(--uat-text); font-size: .9rem; line-height: 1.35; }
+.ui-acceptance-panel__journeys p { margin-top: 5px; color: var(--uat-muted); font-size: .8rem; line-height: 1.43; }
+.ui-acceptance-panel__journeys small { display: block; margin-top: 7px; color: #cedbf0; font-size: .76rem; line-height: 1.4; text-transform: none; }
+
+.ui-acceptance-panel__record > p { color: var(--uat-muted); font-size: .83rem; line-height: 1.47; }
+.ui-acceptance-panel__mission { display: grid; gap: 7px; margin-top: 12px; padding: 12px; border: 1px solid #3f6394; border-radius: 10px; background: #132846; }
+.ui-acceptance-panel__mission > strong { color: #f3f7ff; font-size: .88rem; line-height: 1.35; }
+.ui-acceptance-panel__mission > p,
+.ui-acceptance-panel__mission > small { color: var(--uat-muted); font-size: .75rem; line-height: 1.4; }
+.ui-acceptance-panel__open-route { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 42px; margin-top: 3px; border-color: #5b8ed2; background: #1a4781; color: #f5f9ff; }
+.ui-acceptance-panel__mission ol { display: grid; gap: 7px; margin: 4px 0 0; padding: 0; list-style: none; }
+.ui-acceptance-panel__mission li { display: grid; gap: 3px; padding-top: 7px; border-top: 1px solid #2b456b; }
+.ui-acceptance-panel__mission li b { color: #a8cbff; font-size: .7rem; letter-spacing: .04em; text-transform: uppercase; }
+.ui-acceptance-panel__mission li span { color: var(--uat-text); font-size: .79rem; line-height: 1.35; }
+.ui-acceptance-panel__mission li small { color: var(--uat-muted); font-size: .72rem; line-height: 1.35; }
+.ui-acceptance-panel__record form { display: grid; gap: 11px; margin-top: 14px; }
+.ui-acceptance-panel__record label { display: grid; gap: 5px; color: #d9e6f8; font-size: .79rem; font-weight: 750; }
+.ui-acceptance-panel__record input,
+.ui-acceptance-panel__record select,
+.ui-acceptance-panel__record textarea { width: 100%; min-height: 42px; box-sizing: border-box; padding: 9px 10px; border: 1px solid #3c587d; border-radius: 9px; background: #0e192b; color: var(--uat-text); font: inherit; font-size: .84rem; }
+.ui-acceptance-panel__record textarea { min-height: 76px; resize: vertical; }
+.ui-acceptance-panel__record .button { justify-content: center; min-height: 44px; }
+.ui-acceptance-panel__notice { margin-top: 13px !important; padding: 10px 11px; border: 1px solid #456ea8; border-radius: 9px; background: #152d51; color: #dceaff; font-size: .81rem !important; line-height: 1.4; }
+
+.ui-acceptance-panel__review > div:last-child { display: grid; gap: 9px; }
+.ui-acceptance-panel__review article { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 12px; border: 1px solid #314969; border-left: 3px solid var(--uat-amber); border-radius: 10px; background: #121f35; }
+.ui-acceptance-panel__review article[data-status='verified'] { border-left-color: var(--uat-green); }
+.ui-acceptance-panel__review article[data-status='rejected'] { border-left-color: var(--uat-red); }
+.ui-acceptance-panel__review article strong,
+.ui-acceptance-panel__review article small { display: block; }
+.ui-acceptance-panel__review article strong { font-size: .86rem; line-height: 1.35; }
+.ui-acceptance-panel__review article small { margin-top: 4px; color: var(--uat-muted); font-size: .75rem; line-height: 1.4; }
+.ui-acceptance-panel__review article em { padding: 4px 7px; border-radius: 999px; background: #233550; color: #cfe0f8; font-size: .67rem; font-style: normal; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+.ui-acceptance-panel__review-actions { display: flex; gap: 7px; }
+.ui-acceptance-panel__review-actions button { min-height: 38px; padding: 7px 10px; border: 1px solid #4c78b0; border-radius: 8px; background: #1a4984; color: #fff; font: inherit; font-size: .77rem; font-weight: 800; cursor: pointer; }
+.ui-acceptance-panel__review-actions button:last-child { border-color: #9d5c65; background: #4d2830; }
+.ui-acceptance-panel__maker-note { color: #f4d188 !important; }
+.ui-acceptance-panel__empty { padding: 8px 0 0; color: var(--uat-muted); font-size: .84rem; }
+
+@media (max-width: 960px) { .ui-acceptance-panel__grid { grid-template-columns: 1fr; } }
+@media (max-width: 700px) { .ui-acceptance-panel__header { align-items: stretch; flex-direction: column; padding: 18px; } .ui-acceptance-panel__score { min-width: 0; } .ui-acceptance-panel__roles { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ui-acceptance-panel__review article { grid-template-columns: 1fr; } .ui-acceptance-panel__review-actions { width: 100%; } }
+@media (max-width: 430px) { .ui-acceptance-panel__roles { grid-template-columns: 1fr; } .ui-acceptance-panel__journeys, .ui-acceptance-panel__record, .ui-acceptance-panel__review { padding: 15px; } }

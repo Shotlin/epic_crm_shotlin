@@ -1,0 +1,89 @@
+.retail-device-setup {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+  color: #17243b;
+}
+
+.retail-device-setup__hero,
+.retail-device-setup__form,
+.retail-device-setup__profiles {
+  border: 1px solid rgba(37, 99, 235, .18);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(30, 64, 175, .06);
+}
+
+.retail-device-setup__hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: clamp(18px, 3vw, 28px);
+  background: radial-gradient(circle at 90% 0%, rgba(37, 99, 235, .16), transparent 31%), linear-gradient(135deg, #f8fbff, #eef5ff);
+}
+
+.retail-device-setup__hero > div > span,
+.retail-device-setup__section-heading > div > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #2563eb;
+  font-size: .66rem;
+  font-weight: 850;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.retail-device-setup h3,
+.retail-device-setup h4 { margin: 5px 0 0; letter-spacing: -.02em; }
+.retail-device-setup h3 { font-size: clamp(1.18rem, 2vw, 1.65rem); }
+.retail-device-setup h4 { font-size: .95rem; }
+.retail-device-setup__hero p { max-width: 660px; margin: 8px 0 0; color: #50627b; font-size: .8rem; line-height: 1.5; }
+
+.retail-device-setup__steps { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; max-width: 300px; }
+.retail-device-setup__steps span { padding: 6px 9px; border: 1px solid #cdddff; border-radius: 999px; color: #1d4ed8; background: #fff; font-size: .65rem; font-weight: 800; }
+
+.retail-device-setup__form,
+.retail-device-setup__profiles { display: grid; gap: 14px; padding: 18px; }
+.retail-device-setup__section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.retail-device-setup__section-heading > svg { color: #2563eb; }
+.retail-device-setup__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.retail-device-setup label { display: grid; gap: 5px; color: #344a66; font-size: .69rem; font-weight: 800; }
+.retail-device-setup input,
+.retail-device-setup select { width: 100%; min-width: 0; box-sizing: border-box; border: 1px solid #d5e1f3; border-radius: 9px; padding: 9px 10px; color: #142b4a; background: #fff; font: inherit; font-size: .77rem; }
+.retail-device-setup input:focus,
+.retail-device-setup select:focus { border-color: #2563eb; outline: none; box-shadow: 0 0 0 3px rgba(37, 99, 235, .14); }
+.retail-device-setup__boundary { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 10px; border: 1px solid #cdddff; border-radius: 10px; color: #355271; background: #f5f8ff; font-size: .72rem; line-height: 1.45; }
+.retail-device-setup__boundary svg { flex: 0 0 auto; color: #2563eb; }
+.retail-device-setup__form > .button { justify-self: start; min-height: 42px; }
+
+.retail-device-setup__profiles { background: #fbfdff; }
+.retail-device-setup__profile { display: grid; gap: 10px; padding: 14px; border: 1px solid #dce7f6; border-radius: 12px; background: #fff; }
+.retail-device-setup__profile[data-status='operational'] { border-color: rgba(22, 163, 74, .3); background: #f6fff9; }
+.retail-device-setup__profile[data-status='suspended'] { border-color: rgba(220, 38, 38, .28); background: #fff8f8; }
+.retail-device-setup__profile > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.retail-device-setup__profile header span { display: block; color: #5d7290; font-size: .66rem; font-weight: 800; text-transform: uppercase; }
+.retail-device-setup__profile header small { display: block; margin-top: 3px; color: #64748b; font-size: .68rem; }
+.retail-device-setup__profile header em { flex: 0 0 auto; padding: 4px 7px; border-radius: 999px; color: #1d4ed8; background: #eaf1ff; font-size: .61rem; font-style: normal; font-weight: 850; text-transform: uppercase; }
+.retail-device-setup__profile[data-status='operational'] header em { color: #147444; background: #dcfce7; }
+.retail-device-setup__profile[data-status='suspended'] header em { color: #b42318; background: #fee4e2; }
+.retail-device-setup__profile > p { margin: 0; color: #51647e; font-size: .72rem; line-height: 1.45; }
+.retail-device-setup__profile form { display: grid; gap: 8px; margin: 0; padding-top: 2px; }
+.retail-device-setup__profile form .button { justify-self: start; min-height: 38px; }
+.retail-device-setup__profile form small,
+.retail-device-setup__wait,
+.retail-device-setup__hold { color: #61748e; font-size: .68rem; line-height: 1.4; }
+.retail-device-setup__hold { color: #9a4b2b; }
+.retail-device-setup__live { display: flex; align-items: center; gap: 6px; color: #187047; font-size: .7rem; font-weight: 750; }
+.retail-device-setup__hold-details { border-top: 1px solid #e4ebf5; padding-top: 9px; }
+.retail-device-setup__hold-details summary { color: #6f2d24; cursor: pointer; font-size: .7rem; font-weight: 800; }
+.retail-device-setup__empty,
+.retail-device-setup__notice { margin: 0; padding: 12px; border-radius: 10px; color: #526a88; background: #f2f6fc; font-size: .74rem; line-height: 1.45; }
+.retail-device-setup__notice { border: 1px solid #b8d1ff; color: #1e4f9a; background: #eff6ff; }
+
+@media (max-width: 760px) {
+  .retail-device-setup__hero { align-items: flex-start; flex-direction: column; }
+  .retail-device-setup__steps { justify-content: flex-start; max-width: none; }
+  .retail-device-setup__grid { grid-template-columns: 1fr; }
+}

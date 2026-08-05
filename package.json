@@ -1,0 +1,81 @@
+{
+  "name": "epic-bos",
+  "productName": "Epic BOS",
+  "version": "0.1.77",
+  "description": "The operating system for modern business.",
+  "main": ".vite/build/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron-forge start",
+    "dev": "electron-forge start",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint --ext .ts,.tsx .",
+    "verify": "pnpm typecheck && pnpm test && pnpm lint",
+    "build": "electron-forge package",
+    "package": "electron-forge package",
+    "make": "electron-forge make",
+    "publish": "electron-forge publish",
+    "verify:artifact": "node scripts/verify-release-artifact.mjs",
+    "verify:artifacts": "node scripts/verify-release-artifacts.mjs",
+    "smoke:package": "node scripts/smoke-packaged-app.mjs",
+    "verify:smoke-evidence": "node scripts/verify-smoke-evidence.mjs",
+    "prepare:release-pack": "node scripts/create-release-certification-pack.mjs",
+    "test:e2e:electron": "node scripts/run-electron-e2e.mjs"
+  },
+  "keywords": [
+    "electron",
+    "erp",
+    "crm",
+    "business-management"
+  ],
+  "author": {
+    "name": "Shotlin",
+    "email": "shotlin085@gmail.com"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^7.11.2",
+    "@electron-forge/maker-deb": "^7.11.2",
+    "@electron-forge/maker-rpm": "^7.11.2",
+    "@electron-forge/maker-squirrel": "^7.11.2",
+    "@electron-forge/maker-zip": "^7.11.2",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.11.2",
+    "@electron-forge/plugin-fuses": "^7.11.2",
+    "@electron-forge/plugin-vite": "^7.11.2",
+    "@electron-forge/shared-types": "^7.11.2",
+    "@electron/fuses": "^1.8.0",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/electron-squirrel-startup": "^1.0.2",
+    "@types/node": "^24.10.1",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@typescript-eslint/eslint-plugin": "^8.46.1",
+    "@typescript-eslint/parser": "^8.46.1",
+    "@vitejs/plugin-react": "^4.7.0",
+    "electron": "43.1.1",
+    "eslint": "^8.57.1",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "jsdom": "^27.2.0",
+    "typescript": "^5.9.3",
+    "vite": "^5.4.21",
+    "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "@fontsource-variable/ibm-plex-sans": "^5.2.8",
+    "@fontsource-variable/sora": "^5.2.8",
+    "electron-squirrel-startup": "^1.0.1",
+    "lucide-react": "^1.24.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "scheduler": "^0.27.0",
+    "zod": "^4.4.3"
+  }
+}

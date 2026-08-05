@@ -1,0 +1,85 @@
+name: Epic BOS native release matrix
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  package-and-verify:
+    name: ${{ matrix.platform }} / unsigned package verification
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: win32
+            runner: windows-latest
+            arch: x64
+            target: '@electron-forge/maker-squirrel'
+          - platform: linux
+            runner: ubuntu-latest
+            arch: x64
+            target: '@electron-forge/maker-zip'
+          - platform: darwin
+            runner: macos-13
+            arch: x64
+            target: '@electron-forge/maker-zip'
+    runs-on: ${{ matrix.runner }}
+    env:
+      EPIC_BOS_BUILD_REVISION: ci-${{ github.sha }}-${{ matrix.platform }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.x
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify source
+        run: pnpm verify
+
+      - name: Read package version
+        id: package-version
+        shell: bash
+        run: echo "version=$(node -p \"require('./package.json').version\")" >> "$GITHUB_OUTPUT"
+
+      - name: Build native unsigned artifact
+        run: pnpm exec electron-forge make --platform=${{ matrix.platform }} --arch=${{ matrix.arch }} --targets=${{ matrix.target }}
+
+      - name: Launch packaged application smoke test
+        env:
+          EPIC_BOS_SMOKE_EVIDENCE: out/smoke-evidence/${{ matrix.platform }}.json
+        run: pnpm smoke:package -- ${{ matrix.platform }}
+
+      - name: Verify every artifact manifest and checksum
+        run: pnpm verify:artifacts -- out/make ${{ matrix.platform }} ${{ steps.package-version.outputs.version }}
+
+      - name: Bind smoke evidence to release identity
+        run: pnpm verify:smoke-evidence -- out/make out/smoke-evidence/${{ matrix.platform }}.json ${{ matrix.platform }} ${{ steps.package-version.outputs.version }}
+
+      - name: Upload unsigned artifacts for independent certification
+        uses: actions/upload-artifact@v4
+        with:
+          name: epic-bos-${{ matrix.platform }}-${{ steps.package-version.outputs.version }}
+          path: |
+            out/make/**
+            out/smoke-evidence/**
+          if-no-files-found: error
+
+      # Signing, macOS notarisation, and provider/device certification are
+      # intentionally separate controlled steps. No secret or unverified
+      # signature is manufactured by this workflow.

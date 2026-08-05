@@ -1,0 +1,23 @@
+import { describe, expect, it } from 'vitest';
+import { buildCustomerPortalSnapshot } from './customer-portal';
+import { createInitialRevenueOpsState } from './revenue-ops';
+
+describe('customer portal projection', () => {
+  it('projects scoped orders, delivery evidence, invoices, and open service tickets', () => {
+    const state = createInitialRevenueOpsState();
+    const account = { id: 'account-1', tenantId: 'tenant-1', companyId: state.scope.companyId, displayName: 'Acme Customer', legalName: 'Acme Customer Pvt Ltd', domain: 'acme.example', industry: 'Manufacturing', relationship: 'customer' as const, ownerId: 'owner', status: 'active' as const, version: 1 };
+    const order = { id: 'order-1', number: 'SO-1', quoteId: 'quote-1', quoteNumber: 'Q-1', accountId: account.id, currency: 'INR' as const, orderDate: '2026-07-01', requiredBy: '2026-07-10', status: 'fulfilling' as const, fulfilmentStatus: 'in-progress' as const, lines: [{ id: 'line-1', productInterestId: 'interest-1', itemVariantId: 'variant-1', description: 'Industrial filter', hsnSac: '8421', quantity: 2, unitPrice: 500, taxableValue: 1000, gstRate: 18 }], subtotal: 1000, discountTotal: 0, taxPreview: { treatment: 'intra-state' as const, taxableValue: 1000, cgst: 90, sgst: 90, igst: 0, totalTax: 180, grandTotal: 1180, determination: 'commercial-estimate' as const }, approvedQuoteVersion: 1, createdBy: 'internal', createdAt: '2026-07-01T00:00:00.000Z', scope: state.scope, version: 1 };
+    const next = { ...state, accounts: [account], salesOrders: [order], fulfilmentTasks: [{ id: 'task-1', salesOrderId: order.id, lineId: 'line-1', kind: 'delivery' as const, title: 'Dispatch order', ownerUserId: 'internal', dueAt: '2026-07-09', status: 'in-progress' as const, scope: state.scope, version: 1 }], deliveryEvidence: [{ id: 'evidence-1', salesOrderId: order.id, type: 'dispatch' as const, reference: 'POD-1', occurredAt: '2026-07-08', notes: 'Dispatched', capturedBy: 'internal', capturedAt: '2026-07-08T00:00:00.000Z', scope: state.scope }], invoices: [{ id: 'invoice-1', number: 'INV-1', documentKind: 'tax-invoice' as const, salesOrderId: order.id, quoteId: 'quote-1', accountId: account.id, recipientTreatment: 'registered' as const, recipientGstin: '27AAAAA0000A1Z5', placeOfSupplyStateCode: '27', reverseCharge: false, currency: 'INR' as const, invoiceDate: '2026-07-02', dueDate: '2026-08-01', paymentTermId: 'net-30', status: 'issued' as const, irpStatus: 'registered' as const, serviceMilestoneIds: [], shipmentPackageIds: [], lines: order.lines, subtotal: 1000, discountTotal: 0, taxPreview: order.taxPreview, amountDue: 1180, createdBy: 'internal', createdAt: '2026-07-02T00:00:00.000Z', scope: state.scope, version: 1 }], receivables: [{ id: 'rec-1', invoiceId: 'invoice-1', accountId: account.id, invoiceNumber: 'INV-1', invoiceDate: '2026-07-02', dueDate: '2026-08-01', originalAmount: 1180, adjustmentAmount: 0, paidAmount: 0, outstandingAmount: 1180, status: 'current' as const, scope: state.scope, version: 1 }], supportTickets: [{ id: 'ticket-1', number: 'T-1', agreementId: 'agreement-1', accountId: account.id, title: 'Need delivery update', details: 'Please confirm arrival.', channel: 'portal' as const, priority: 'normal' as const, reportedBy: 'customer', reportedAt: '2026-07-03T00:00:00.000Z', responseDueAt: '2026-07-03T04:00:00.000Z', resolutionDueAt: '2026-07-04T00:00:00.000Z', status: 'new' as const, scope: state.scope, version: 1 }] };
+    const projection = buildCustomerPortalSnapshot(next, account.id, '2026-07-15T00:00:00.000Z');
+    expect(projection).toMatchObject({ accountId: account.id, accountName: 'Acme Customer', generatedAt: '2026-07-15T00:00:00.000Z', orders: [{ number: 'SO-1', fulfilmentStatus: 'in-progress', amount: 1180, fulfilment: [{ kind: 'delivery' }], deliveryEvidence: [{ reference: 'POD-1' }] }], invoices: [{ number: 'INV-1', outstandingAmount: 1180 }], tickets: [{ number: 'T-1', status: 'new' }] });
+    expect(projection?.orders[0]).not.toHaveProperty('createdBy');
+    expect(projection?.tickets[0]).not.toHaveProperty('details');
+  });
+
+  it('fails closed for non-customers and cross-scope records', () => {
+    const state = createInitialRevenueOpsState();
+    const account = { id: 'account-1', tenantId: 'tenant-1', companyId: 'other-company', displayName: 'Other', legalName: 'Other', domain: 'other.example', industry: 'Other', relationship: 'customer' as const, ownerId: 'owner', status: 'active' as const, version: 1 };
+    expect(buildCustomerPortalSnapshot({ ...state, accounts: [account] }, account.id)).toBeNull();
+    expect(buildCustomerPortalSnapshot({ ...state, accounts: [] }, 'missing')).toBeNull();
+  });
+});

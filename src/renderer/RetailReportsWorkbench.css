@@ -1,0 +1,371 @@
+/* RetailReportsWorkbench.css
+ * Phase R6 – Retail Reporting & Analytics Workbench
+ * Dark-themed, premium data-table design aligned with the Epic BOS design system.
+ */
+
+.retail-reports-workbench {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #0d1117;
+  color: #e2e8f0;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+.retail-reports-workbench__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: #141925;
+  border-bottom: 1px solid #1e2d3d;
+  flex-shrink: 0;
+}
+
+.retail-reports-workbench__header h2 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #e2e8f0;
+}
+
+.retail-reports-workbench__header small {
+  font-size: 0.7rem;
+  color: #6b7280;
+  font-weight: 400;
+}
+
+/* ── Controls bar ───────────────────────────────────────────────────────── */
+.retail-reports-workbench__controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  background: #111827;
+  border-bottom: 1px solid #1e2d3d;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.retail-reports-workbench__controls label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: #9ca3af;
+}
+
+.retail-reports-workbench__controls input[type="date"],
+.retail-reports-workbench__controls select {
+  padding: 4px 8px;
+  background: #1a2233;
+  border: 1px solid #2d3d50;
+  border-radius: 4px;
+  color: #e2e8f0;
+  font-size: 0.78rem;
+  outline: none;
+}
+
+.retail-reports-workbench__controls input[type="date"]:focus,
+.retail-reports-workbench__controls select:focus {
+  border-color: #3b82f6;
+}
+
+.retail-reports-workbench__generate-btn {
+  margin-left: auto;
+  padding: 6px 14px;
+  background: linear-gradient(135deg, #3b82f6, #6366f1);
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: opacity 0.15s;
+}
+.retail-reports-workbench__generate-btn:hover { opacity: 0.88; }
+.retail-reports-workbench__generate-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Tab bar ────────────────────────────────────────────────────────────── */
+.retail-reports-workbench__tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid #1e2d3d;
+  background: #111827;
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+
+.retail-reports-workbench__tab {
+  padding: 8px 16px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #6b7280;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.retail-reports-workbench__tab:hover { color: #93c5fd; }
+.retail-reports-workbench__tab--active {
+  color: #60a5fa;
+  border-bottom-color: #3b82f6;
+}
+
+/* ── Content area ───────────────────────────────────────────────────────── */
+.retail-reports-workbench__content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+}
+
+/* ── KPI row ────────────────────────────────────────────────────────────── */
+.retail-reports-workbench__kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.retail-reports-workbench__kpi-card {
+  background: #141925;
+  border: 1px solid #1e2d3d;
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.retail-reports-workbench__kpi-label {
+  font-size: 0.65rem;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+
+.retail-reports-workbench__kpi-value {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #e2e8f0;
+  letter-spacing: -0.01em;
+}
+
+.retail-reports-workbench__kpi-value--positive { color: #34d399; }
+.retail-reports-workbench__kpi-value--accent { color: #fbbf24; }
+.retail-reports-workbench__kpi-value--blue { color: #60a5fa; }
+
+/* ── Data table ─────────────────────────────────────────────────────────── */
+.retail-reports-workbench__table-wrapper {
+  overflow-x: auto;
+  border-radius: 8px;
+  border: 1px solid #1e2d3d;
+}
+
+.retail-reports-workbench__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.76rem;
+}
+
+.retail-reports-workbench__table thead th {
+  background: #141925;
+  color: #6b7280;
+  padding: 9px 12px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid #1e2d3d;
+  white-space: nowrap;
+}
+
+.retail-reports-workbench__table thead th.right { text-align: right; }
+
+.retail-reports-workbench__table tbody tr {
+  border-bottom: 1px solid #1a2030;
+  transition: background 0.1s;
+}
+.retail-reports-workbench__table tbody tr:last-child { border-bottom: none; }
+.retail-reports-workbench__table tbody tr:hover { background: #141925; }
+
+.retail-reports-workbench__table td {
+  padding: 8px 12px;
+  color: #cbd5e1;
+  white-space: nowrap;
+}
+.retail-reports-workbench__table td.right {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+.retail-reports-workbench__table td.positive { color: #34d399; }
+.retail-reports-workbench__table td.negative { color: #f87171; }
+.retail-reports-workbench__table td.accent { color: #fbbf24; }
+.retail-reports-workbench__table td.dim { color: #4b5563; }
+.retail-reports-workbench__status-ok,
+.retail-reports-workbench__status-warning {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.retail-reports-workbench__status-ok { background: #123b2b; color: #6ee7b7; }
+.retail-reports-workbench__status-warning { background: #422b0b; color: #fbbf24; }
+
+/* Totals row */
+.retail-reports-workbench__table tfoot td {
+  padding: 9px 12px;
+  font-weight: 700;
+  color: #e2e8f0;
+  border-top: 2px solid #2d3d50;
+  font-variant-numeric: tabular-nums;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+.retail-reports-workbench__table tfoot td.right { text-align: right; }
+
+/* ── Export bar ─────────────────────────────────────────────────────────── */
+.retail-reports-workbench__export-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.retail-reports-workbench__export-btn {
+  padding: 5px 12px;
+  background: #1a2233;
+  border: 1px solid #2d3d50;
+  border-radius: 4px;
+  color: #9ca3af;
+  font-size: 0.73rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: color 0.15s, border-color 0.15s;
+}
+.retail-reports-workbench__export-btn:hover {
+  color: #e2e8f0;
+  border-color: #3b82f6;
+}
+
+/* ── Empty state ────────────────────────────────────────────────────────── */
+.retail-reports-workbench__empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: #374151;
+  font-size: 0.85rem;
+}
+
+/* ── Shift selector ─────────────────────────────────────────────────────── */
+.retail-reports-workbench__shift-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  background: #141925;
+  border: 1px solid #1e2d3d;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  color: #9ca3af;
+}
+.retail-reports-workbench__shift-selector select {
+  flex: 1;
+  padding: 4px 8px;
+  background: #0d1117;
+  border: 1px solid #2d3d50;
+  border-radius: 4px;
+  color: #e2e8f0;
+  font-size: 0.78rem;
+  outline: none;
+}
+
+/* ── Notice banner ─────────────────────────────────────────────────────── */
+.retail-reports-workbench__notice {
+  padding: 8px 12px;
+  background: #1a3a2a;
+  border-left: 3px solid #34d399;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  color: #6ee7b7;
+  margin-bottom: 12px;
+}
+
+/* ── Tender badge ───────────────────────────────────────────────────────── */
+.tender-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 3px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.tender-badge--cash    { background: #1a3a20; color: #4ade80; }
+.tender-badge--upi     { background: #1a2a45; color: #60a5fa; }
+.tender-badge--card    { background: #2a1a3a; color: #c084fc; }
+.tender-badge--store-credit { background: #3a2a10; color: #fbbf24; }
+.tender-badge--other   { background: #1e2030; color: #94a3b8; }
+
+/* ── Margin pill ────────────────────────────────────────────────────────── */
+.margin-pill {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+.margin-pill--high   { background: #14532d; color: #4ade80; }
+.margin-pill--medium { background: #78350f; color: #fcd34d; }
+.margin-pill--low    { background: #450a0a; color: #f87171; }
+
+/* ── Progress bar (sell-through) ────────────────────────────────────────── */
+.sell-through-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sell-through-bar__track {
+  flex: 1;
+  height: 5px;
+  background: #1e2d3d;
+  border-radius: 3px;
+  overflow: hidden;
+  min-width: 60px;
+}
+.sell-through-bar__fill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #3b82f6, #6366f1);
+  transition: width 0.3s ease;
+}
+.sell-through-bar__label {
+  font-size: 0.68rem;
+  color: #6b7280;
+  min-width: 36px;
+  text-align: right;
+}
