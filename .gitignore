@@ -1,0 +1,26 @@
+# deps
+node_modules/
+.pnp/
+.yarn/
+
+# build output
+server/dist/
+desktop/dist/
+*.tsbuildinfo
+
+# runtime data (per-tenant JSON snapshots)
+server/data/
+desktop/*.json
+epic.json
+
+# logs
+*.log
+npm-debug.log*
+
+# electron-builder caches
+electron-builder-cache/
+
+# misc
+.DS_Store
+*.exe
+.aider*

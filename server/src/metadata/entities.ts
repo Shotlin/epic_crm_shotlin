@@ -1,0 +1,1432 @@
+import type { EntityDef } from '../kernel/types.js';
+
+// Phase-0 entity metadata. In production this ships as versioned JSON and is overridable
+// per-tenant (docs/02-architecture/02-platform-core.md §1). Here it is code for clarity.
+
+// ---- Returns: Credit Note (sales return) & Debit Note (purchase return) ----
+export const creditNoteEntity: EntityDef = {
+  name: 'credit_note',
+  label: 'Credit Note',
+  kind: 'document',
+  module: 'sales',
+  naming: { series: 'CN-{FY}-{#####}', example: 'CN-26-00001' },
+  lifecycle: { submit: true, cancel: true, amend: false },
+  posting: 'credit_note_posting',
+  fields: [
+    { name: 'reference_invoice', type: 'link', target: 'sales_invoice', required: true },
+    { name: 'posting_date', type: 'date', required: true },
+    { name: 'warehouse', type: 'link', target: 'warehouse' },
+    { name: 'reason', type: 'long_text' },
+    { name: 'items', type: 'table', child: 'credit_note_item' },
+    { name: 'grand_total', type: 'currency', computed: true, readonly: true },
+    { name: 'status', type: 'select', options: ['Draft', 'Submitted', 'Cancelled'] },
+  ],
+  permissions: [{ role: 'admin', read: true, write: true, submit: true, cancel: true }],
+};
+
+export const debitNoteEntity: EntityDef = {
+  name: 'debit_note',
+  label: 'Debit Note',
+  kind: 'document',
+  module: 'purchase',
+  naming: { series: 'DN-{FY}-{#####}', example: 'DN-26-00001' },
+  lifecycle: { submit: true, cancel: true, amend: false },
+  posting: 'debit_note_posting',
+  fields: [
+    { name: 'reference_invoice', type: 'link', target: 'purchase_invoice', required: true },
+    { name: 'posting_date', type: 'date', required: true },
+    { name: 'reason', type: 'long_text' },
+    { name: 'items', type: 'table', child: 'debit_note_item' },
+    { name: 'grand_total', type: 'currency', computed: true, readonly: true },
+    { name: 'status', type: 'select', options: ['Draft', 'Submitted', 'Cancelled'] },
+  ],
+  permissions: [{ role: 'admin', read: true, write: true, submit: true, cancel: true }],
+};
+
+export const ENTITIES: EntityDef[] = [
+  {
+    name: 'party',
+    label: 'Party',
+    kind: 'master',
+    module: 'parties',
+    naming: { series: 'PRT-{#####}', example: 'PRT-00001' },
+    fields: [
+      { name: 'name', type: 'text', required: true },
+      { name: 'gstin', type: 'gstin' },
+      { name: 'phone', type: 'phone' },
+      { name: 'email', type: 'email' },
+      { name: 'is_customer', type: 'check' },
+      { name: 'is_supplier', type: 'check' },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true }],
+  },
+  {
+    name: 'item',
+    label: 'Item',
+    kind: 'master',
+    module: 'catalog',
+    naming: { series: 'ITM-{#####}', example: 'ITM-00001' },
+    fields: [
+      { name: 'name', type: 'text', required: true },
+      { name: 'item_code', type: 'text', required: true },
+      { name: 'uom', type: 'select', options: ['NOS', 'KG', 'LTR', 'MTR', 'BORI'] },
+      { name: 'rate', type: 'currency' },
+      { name: 'hsn', type: 'text' },
+      { name: 'gst_rate', type: 'percent' },
+      { name: 'default_supplier', type: 'link', target: 'party' },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true }],
+  },
+
+  // ---- Phase-11 Multi-entity / Multi-currency / Branches ----
+  {
+    name: 'company',
+    label: 'Company',
+    kind: 'master',
+    module: 'core',
+    naming: { series: 'CO-{#####}', example: 'CO-00001' },
+    fields: [
+      { name: 'name', type: 'text', required: true },
+      { name: 'gstin', type: 'gstin' },
+      { name: 'default_currency', type: 'text' },
+      { name: 'address', type: 'long_text' },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true }],
+  },
+  {
+    name: 'branch',
+    label: 'Branch',
+    kind: 'master',
+    module: 'core',
+    naming: { series: 'BR-{#####}', example: 'BR-00001' },
+    fields: [
+      { name: 'name', type: 'text', required: true },
+      { name: 'code', type: 'text', required: true },
+      { name: 'company', type: 'link', target: 'company' },
+      { name: 'address', type: 'long_text' },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true }],
+  },
+  {
+    name: 'currency',
+    label: 'Currency',
+    kind: 'master',
+    module: 'core',
+    naming: { series: 'CCY-{#####}', example: 'CCY-00001' },
+    fields: [
+      { name: 'code', type: 'text', required: true },
+      { name: 'symbol', type: 'text' },
+      { name: 'exchange_rate', type: 'float', required: true },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true }],
+  },
+
+  // ---- Phase-12 Platform & Ecosystem: RBAC users + vertical-app marketplace catalog ----
+  {
+    name: 'user',
+    label: 'User',
+    kind: 'master',
+    module: 'core',
+    naming: { series: 'USR-{#####}', example: 'USR-00001' },
+    fields: [
+      { name: 'username', type: 'text', required: true },
+      { name: 'role', type: 'select', options: ['admin', 'accountant', 'sales', 'cashier', 'viewer'] },
+      { name: 'employee', type: 'link', target: 'employee' },
+      { name: 'active', type: 'check' },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true }],
+  },
+  {
+    name: 'app_def',
+    label: 'Marketplace App',
+    kind: 'master',
+    module: 'platform',
+    naming: { series: 'APP-{#####}', example: 'APP-00001' },
+    fields: [
+      { name: 'name', type: 'text', required: true },
+      { name: 'module', type: 'text', required: true },
+      { name: 'description', type: 'long_text' },
+      { name: 'version', type: 'text' },
+      { name: 'price', type: 'currency' },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true }],
+  },
+
+  // ---- Phase-14 Ops pack: pricing rules + recurring invoices (subscriptions) ----
+  {
+    name: 'pricing_rule',
+    label: 'Pricing Rule',
+    kind: 'master',
+    module: 'selling',
+    naming: { series: 'PRR-{#####}', example: 'PRR-00001' },
+    fields: [
+      { name: 'name', type: 'text', required: true },
+      { name: 'item', type: 'link', target: 'item' },            // empty = all items
+      { name: 'customer', type: 'link', target: 'party' },       // empty = all customers
+      { name: 'min_qty', type: 'float' },
+      { name: 'discount_pct', type: 'percent' },
+      { name: 'rate_override', type: 'currency' },
+      { name: 'valid_from', type: 'date' },
+      { name: 'valid_upto', type: 'date' },
+      { name: 'active', type: 'check' },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true }],
+  },
+  {
+    name: 'subscription',
+    label: 'Subscription (Recurring Invoice)',
+    kind: 'master',
+    module: 'selling',
+    naming: { series: 'SUB-{#####}', example: 'SUB-00001' },
+    fields: [
+      { name: 'name', type: 'text', required: true },
+      { name: 'customer', type: 'link', target: 'party', required: true },
+      { name: 'frequency', type: 'select', required: true, options: ['Monthly', 'Quarterly', 'Yearly'] },
+      { name: 'next_date', type: 'date', required: true },
+      { name: 'place_of_supply', type: 'text' },
+      { name: 'items', type: 'table', child: 'subscription_item' },
+      { name: 'active', type: 'check' },
+      { name: 'last_invoice', type: 'link', target: 'sales_invoice' },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true }],
+  },
+
+  {
+    name: 'sales_invoice',
+    label: 'Sales Invoice',
+    kind: 'document',
+    module: 'sales',
+    naming: { series: 'INV-{FY}-{#####}', example: 'INV-26-00001' },
+    lifecycle: { submit: true, cancel: true, amend: false },
+    posting: 'sales_invoice_posting',
+    fields: [
+      { name: 'customer', type: 'link', target: 'party', required: true },
+      { name: 'posting_date', type: 'date', required: true },
+      { name: 'place_of_supply', type: 'text', required: true },
+      { name: 'currency', type: 'text' },
+      { name: 'exchange_rate', type: 'float' },
+      { name: 'branch', type: 'link', target: 'branch' },
+      { name: 'items', type: 'table', child: 'sales_invoice_item' },
+      { name: 'grand_total', type: 'currency', computed: true, readonly: true },
+      { name: 'base_grand_total', type: 'currency', computed: true, readonly: true },
+      { name: 'status', type: 'select', options: ['Draft', 'Submitted', 'Cancelled'] },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true, submit: true, cancel: true }],
+  },
+
+  // ---- Phase-15 Accounting dimensions: cost centers, manual journal entry, budgets ----
+  {
+    name: 'cost_center',
+    label: 'Cost Center',
+    kind: 'master',
+    module: 'accounts',
+    naming: { series: 'CC-{#####}', example: 'CC-00001' },
+    fields: [
+      { name: 'name', type: 'text', required: true },
+      { name: 'parent', type: 'link', target: 'cost_center' },
+      { name: 'is_group', type: 'check' },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true }],
+  },
+  {
+    name: 'journal_entry',
+    label: 'Journal Entry',
+    kind: 'document',
+    module: 'accounts',
+    naming: { series: 'JV-{FY}-{#####}', example: 'JV-26-00001' },
+    lifecycle: { submit: true, cancel: true, amend: false },
+    posting: 'journal_entry_posting',
+    fields: [
+      { name: 'posting_date', type: 'date', required: true },
+      { name: 'voucher_type', type: 'text' },
+      { name: 'entries', type: 'table', child: 'journal_entry_account' },
+      { name: 'status', type: 'select', options: ['Draft', 'Submitted', 'Cancelled'] },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true, submit: true, cancel: true }],
+  },
+  {
+    name: 'budget',
+    label: 'Budget',
+    kind: 'master',
+    module: 'accounts',
+    naming: { series: 'BDG-{#####}', example: 'BDG-00001' },
+    fields: [
+      { name: 'name', type: 'text', required: true },
+      { name: 'fiscal_year', type: 'text', required: true },
+      { name: 'cost_center', type: 'link', target: 'cost_center' },
+      { name: 'account', type: 'link', target: 'account' },
+      { name: 'budget_amount', type: 'currency', required: true },
+      { name: 'alert_at_pct', type: 'percent' },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true }],
+  },
+
+  // ---- Phase-6 Advanced Selling: Quotation / Sales Order / Delivery Note ----
+  {
+    name: 'quotation',
+    label: 'Quotation',
+    kind: 'document',
+    module: 'sales',
+    naming: { series: 'QTN-{FY}-{#####}', example: 'QTN-26-00001' },
+    lifecycle: { submit: true, cancel: true, amend: false },
+    posting: 'quotation_posting',
+    fields: [
+      { name: 'customer', type: 'link', target: 'party', required: true },
+      { name: 'valid_till', type: 'date' },
+      { name: 'items', type: 'table', child: 'quotation_item' },
+      { name: 'grand_total', type: 'currency', computed: true, readonly: true },
+      { name: 'status', type: 'select', options: ['Draft', 'Submitted', 'Cancelled'] },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true, submit: true, cancel: true }],
+  },
+  {
+    name: 'sales_order',
+    label: 'Sales Order',
+    kind: 'document',
+    module: 'sales',
+    naming: { series: 'SO-{FY}-{#####}', example: 'SO-26-00001' },
+    lifecycle: { submit: true, cancel: true, amend: false },
+    posting: 'sales_order_posting',
+    fields: [
+      { name: 'customer', type: 'link', target: 'party', required: true },
+      { name: 'delivery_date', type: 'date' },
+      { name: 'items', type: 'table', child: 'sales_order_item' },
+      { name: 'grand_total', type: 'currency', computed: true, readonly: true },
+      { name: 'status', type: 'select', options: ['Draft', 'Submitted', 'Cancelled', 'Delivered'] },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true, submit: true, cancel: true }],
+  },
+  {
+    name: 'delivery_note',
+    label: 'Delivery Note',
+    kind: 'document',
+    module: 'sales',
+    naming: { series: 'DEL-{FY}-{#####}', example: 'DEL-26-00001' },
+    lifecycle: { submit: true, cancel: true, amend: false },
+    posting: 'delivery_note_posting',
+    fields: [
+      { name: 'customer', type: 'link', target: 'party', required: true },
+      { name: 'sales_order', type: 'link', target: 'sales_order' },
+      { name: 'warehouse', type: 'link', target: 'warehouse', required: true },
+      { name: 'items', type: 'table', child: 'delivery_item' },
+      { name: 'status', type: 'select', options: ['Draft', 'Submitted', 'Cancelled'] },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true, submit: true, cancel: true }],
+  },
+
+  // ---- CRM ----
+  {
+    name: 'lead',
+    label: 'Lead',
+    kind: 'master',
+    module: 'crm',
+    naming: { series: 'LEAD-{#####}', example: 'LEAD-00001' },
+    fields: [
+      { name: 'name', type: 'text', required: true },
+      { name: 'org', type: 'text' },
+      { name: 'phone', type: 'phone' },
+      { name: 'email', type: 'email' },
+      { name: 'gstin', type: 'gstin' },
+      { name: 'source', type: 'select', options: ['Website', 'Referral', 'Cold Call', 'Walk-in', 'WhatsApp', 'IndiaMART', 'JustDial', 'Missed Call', 'Campaign', 'Other'] },
+      { name: 'campaign', type: 'link', target: 'campaign' },
+      { name: 'stage', type: 'select', options: ['New', 'Contacted', 'Qualified', 'Proposal', 'Won', 'Lost'] },
+      { name: 'expected_value', type: 'currency' },
+      { name: 'territory', type: 'link', target: 'territory' },
+      { name: 'sales_team', type: 'link', target: 'sales_team' },
+      { name: 'owner', type: 'text' },
+      { name: 'score', type: 'int', readonly: true },
+      { name: 'score_band', type: 'select', options: ['Hot', 'Warm', 'Cold'], readonly: true },
+      { name: 'next_activity_date', type: 'date' },
+      { name: 'last_activity_date', type: 'date', readonly: true },
+      { name: 'consent', type: 'check' },
+      { name: 'consent_channel', type: 'select', options: ['WhatsApp', 'Email', 'SMS', 'Call'] },
+      { name: 'notes', type: 'long_text' },
+      { name: 'customer', type: 'link', target: 'party', readonly: true },
+      { name: 'opportunity', type: 'link', target: 'opportunity', readonly: true },
+      { name: 'converted', type: 'check', readonly: true },
+      { name: 'lost_reason', type: 'link', target: 'lost_reason' },
+      { name: 'duplicate_of', type: 'link', target: 'lead', readonly: true },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true }],
+  },
+  {
+    name: 'opportunity',
+    label: 'Opportunity',
+    kind: 'document',
+    module: 'crm',
+    naming: { series: 'OPP-{FY}-{#####}', example: 'OPP-26-00001' },
+    lifecycle: { submit: true, cancel: true, amend: false },
+    posting: 'opportunity_posting',
+    fields: [
+      { name: 'title', type: 'text', required: true },
+      { name: 'customer', type: 'link', target: 'party' },
+      { name: 'lead', type: 'link', target: 'lead', readonly: true },
+      { name: 'pipeline', type: 'link', target: 'pipeline' },
+      { name: 'stage', type: 'select', options: ['Qualification', 'Needs Analysis', 'Proposal', 'Negotiation', 'Won', 'Lost'] },
+      { name: 'expected_value', type: 'currency', required: true },
+      { name: 'probability', type: 'percent' },
+      { name: 'weighted_value', type: 'currency', computed: true, readonly: true },
+      { name: 'expected_close_date', type: 'date' },
+      { name: 'territory', type: 'link', target: 'territory' },
+      { name: 'sales_team', type: 'link', target: 'sales_team' },
+      { name: 'owner', type: 'text' },
+      { name: 'source', type: 'text' },
+      { name: 'campaign', type: 'link', target: 'campaign' },
+      { name: 'contacts', type: 'table', child: 'opportunity_contact' },
+      { name: 'quotation', type: 'link', target: 'quotation', readonly: true },
+      { name: 'lost_reason', type: 'link', target: 'lost_reason' },
+      { name: 'notes', type: 'long_text' },
+      { name: 'status', type: 'select', options: ['Draft', 'Submitted', 'Cancelled'] },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true, submit: true, cancel: true }],
+  },
+  {
+    name: 'pipeline',
+    label: 'Pipeline',
+    kind: 'master',
+    module: 'crm',
+    naming: { series: 'PIPE-{#####}', example: 'PIPE-00001' },
+    fields: [
+      { name: 'name', type: 'text', required: true },
+      { name: 'stages', type: 'table', child: 'pipeline_stage' },
+      { name: 'is_default', type: 'check' },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true }],
+  },
+  {
+    name: 'crm_activity',
+    label: 'Activity',
+    kind: 'master',
+    module: 'crm',
+    naming: { series: 'ACT-{#####}', example: 'ACT-00001' },
+    fields: [
+      { name: 'activity_type', type: 'select', options: ['Call', 'WhatsApp', 'Email', 'Meeting', 'Note', 'Visit', 'Task'], required: true },
+      { name: 'ref_entity', type: 'select', options: ['lead', 'opportunity', 'party'] },
+      { name: 'ref_id', type: 'text', required: true },
+      { name: 'subject', type: 'text', required: true },
+      { name: 'body', type: 'long_text' },
+      { name: 'direction', type: 'select', options: ['Inbound', 'Outbound'] },
+      { name: 'due_date', type: 'date' },
+      { name: 'done', type: 'check' },
+      { name: 'owner', type: 'text' },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true }],
+  },
+  {
+    name: 'campaign',
+    label: 'Campaign',
+    kind: 'master',
+    module: 'crm',
+    naming: { series: 'CMP-{#####}', example: 'CMP-00001' },
+    fields: [
+      { name: 'name', type: 'text', required: true },
+      { name: 'channel', type: 'select', options: ['WhatsApp', 'Email', 'SMS', 'IndiaMART', 'Google', 'Meta', 'Field', 'Other'] },
+      { name: 'start_date', type: 'date' },
+      { name: 'end_date', type: 'date' },
+      { name: 'budget', type: 'currency' },
+      { name: 'status', type: 'select', options: ['Planned', 'Active', 'Completed', 'Paused'] },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true }],
+  },
+  {
+    name: 'territory',
+    label: 'Territory',
+    kind: 'master',
+    module: 'crm',
+    naming: { series: 'TER-{#####}', example: 'TER-00001' },
+    fields: [
+      { name: 'name', type: 'text', required: true },
+      { name: 'state', type: 'text' },
+      { name: 'parent_territory', type: 'link', target: 'territory' },
+      { name: 'manager', type: 'text' },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true }],
+  },
+  {
+    name: 'sales_team',
+    label: 'Sales Team',
+    kind: 'master',
+    module: 'crm',
+    naming: { series: 'TEAM-{#####}', example: 'TEAM-00001' },
+    fields: [
+      { name: 'name', type: 'text', required: true },
+      { name: 'members', type: 'long_text' },
+      { name: 'target', type: 'currency' },
+      { name: 'assignment_rule', type: 'select', options: ['Round Robin', 'Territory', 'Load Based', 'Manual'] },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true }],
+  },
+  {
+    name: 'lost_reason',
+    label: 'Lost Reason',
+    kind: 'master',
+    module: 'crm',
+    naming: { series: 'LR-{#####}', example: 'LR-00001' },
+    fields: [
+      { name: 'name', type: 'text', required: true },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true }],
+  },
+
+  // ---- P19 Engagement: message templates, campaign touches, notifications ----
+  {
+    name: 'message_template',
+    label: 'Message Template',
+    kind: 'master',
+    module: 'crm',
+    naming: { series: 'TMPL-{#####}', example: 'TMPL-00001' },
+    fields: [
+      { name: 'name', type: 'text', required: true },
+      { name: 'channel', type: 'select', options: ['WhatsApp', 'Email', 'SMS'], required: true },
+      { name: 'subject', type: 'text' },                       // Email only
+      { name: 'body', type: 'long_text', required: true },     // supports {{name}} {{org}} {{amount}} {{invoice}} {{due_date}}
+      { name: 'category', type: 'select', options: ['Marketing', 'Transactional', 'Reminder', 'Festival', 'Utility'] },
+      { name: 'language', type: 'select', options: ['English', 'Hindi', 'Hinglish', 'Tamil', 'Telugu', 'Kannada', 'Marathi', 'Bengali', 'Gujarati'] },
+      { name: 'active', type: 'check' },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true }],
+  },
+  {
+    name: 'campaign_touch',
+    label: 'Campaign Touch',
+    kind: 'master',
+    module: 'crm',
+    naming: { series: 'TOUCH-{#####}', example: 'TOUCH-00001' },
+    fields: [
+      { name: 'campaign', type: 'link', target: 'campaign', required: true },
+      { name: 'channel', type: 'select', options: ['WhatsApp', 'Email', 'SMS'] },
+      { name: 'party', type: 'link', target: 'party' },
+      { name: 'lead', type: 'link', target: 'lead' },
+      { name: 'recipient', type: 'phone' },
+      { name: 'template', type: 'link', target: 'message_template' },
+      { name: 'status', type: 'select', options: ['Queued', 'Sent', 'Delivered', 'Failed', 'Skipped'] },
+      { name: 'detail', type: 'text' },
+      { name: 'sent_at', type: 'datetime' },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true }],
+  },
+  {
+    name: 'notification',
+    label: 'Notification',
+    kind: 'master',
+    module: 'crm',
+    naming: { series: 'NTF-{#####}', example: 'NTF-00001' },
+    fields: [
+      { name: 'title', type: 'text', required: true },
+      { name: 'body', type: 'long_text' },
+      { name: 'kind', type: 'select', options: ['Task', 'Alert', 'Approval', 'System', 'Payment', 'Compliance'] },
+      { name: 'severity', type: 'select', options: ['info', 'success', 'warning', 'critical'] },
+      { name: 'for_user', type: 'text' },
+      { name: 'ref_entity', type: 'text' },
+      { name: 'ref_id', type: 'text' },
+      { name: 'read', type: 'check' },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true }],
+  },
+
+  // ---- Inventory ----
+  {
+    name: 'warehouse',
+    label: 'Warehouse',
+    kind: 'master',
+    module: 'inventory',
+    naming: { series: 'WH-{#####}', example: 'WH-00001' },
+    fields: [
+      { name: 'name', type: 'text', required: true },
+      { name: 'code', type: 'text' },
+      { name: 'address', type: 'text' },
+      { name: 'state', type: 'text' },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true }],
+  },
+  {
+    name: 'stock_entry',
+    label: 'Stock Entry',
+    kind: 'document',
+    module: 'inventory',
+    naming: { series: 'STE-{FY}-{#####}', example: 'STE-26-00001' },
+    lifecycle: { submit: true, cancel: true, amend: false },
+    posting: 'stock_entry_posting',
+    fields: [
+      { name: 'stock_type', type: 'select', required: true, options: ['Material Receipt', 'Stock Issue', 'Stock Transfer', 'Manufacture'] },
+      { name: 'posting_date', type: 'date', required: true },
+      { name: 'from_warehouse', type: 'link', target: 'warehouse' },
+      { name: 'to_warehouse', type: 'link', target: 'warehouse' },
+      { name: 'work_order', type: 'link', target: 'work_order' },
+      { name: 'items', type: 'table', child: 'stock_entry_item' },
+      { name: 'status', type: 'select', options: ['Draft', 'Submitted', 'Cancelled'] },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true, submit: true, cancel: true }],
+  },
+
+  // ---- Phase-16 Inventory depth: serial/batch tracking, reconciliation, landed cost ----
+  {
+    name: 'item_serial',
+    label: 'Item Serial Number',
+    kind: 'master',
+    module: 'inventory',
+    naming: { series: 'SER-{#####}', example: 'SER-00001' },
+    fields: [
+      { name: 'name', type: 'text', required: true },
+      { name: 'serial_no', type: 'text', required: true },
+      { name: 'item', type: 'link', target: 'item', required: true },
+      { name: 'warehouse', type: 'link', target: 'warehouse' },
+      { name: 'status', type: 'select', options: ['In Stock', 'Transferred', 'Issued', 'Scrapped'] },
+      { name: 'stock_entry', type: 'link', target: 'stock_entry' },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true }],
+  },
+  {
+    name: 'stock_reconciliation',
+    label: 'Stock Reconciliation',
+    kind: 'document',
+    module: 'inventory',
+    naming: { series: 'RECON-{FY}-{#####}', example: 'RECON-26-00001' },
+    lifecycle: { submit: true, cancel: true, amend: false },
+    posting: 'stock_reconciliation_posting',
+    fields: [
+      { name: 'posting_date', type: 'date', required: true },
+      { name: 'items', type: 'table', child: 'stock_reconciliation_item' },
+      { name: 'status', type: 'select', options: ['Draft', 'Submitted', 'Cancelled'] },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true, submit: true, cancel: true }],
+  },
+  {
+    name: 'landed_cost_voucher',
+    label: 'Landed Cost Voucher',
+    kind: 'document',
+    module: 'inventory',
+    naming: { series: 'LCV-{FY}-{#####}', example: 'LCV-26-00001' },
+    lifecycle: { submit: true, cancel: true, amend: false },
+    posting: 'landed_cost_voucher_posting',
+    fields: [
+      { name: 'posting_date', type: 'date', required: true },
+      { name: 'receipt', type: 'link', target: 'stock_entry', required: true },
+      { name: 'items', type: 'table', child: 'landed_cost_item' },
+      { name: 'status', type: 'select', options: ['Draft', 'Submitted', 'Cancelled'] },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true, submit: true, cancel: true }],
+  },
+
+  // ---- Phase-7 Manufacturing: BOM + Work Order (actual material movement via Stock Entry Manufacture) ----
+  {
+    name: 'bom',
+    label: 'Bill of Materials',
+    kind: 'master',
+    module: 'manufacturing',
+    naming: { series: 'BOM-{#####}', example: 'BOM-00001' },
+    fields: [
+      { name: 'item', type: 'link', target: 'item', required: true },
+      { name: 'quantity', type: 'float', required: true },
+      { name: 'is_default', type: 'check' },
+      { name: 'is_subcontracted', type: 'check' },
+      { name: 'subcontractor', type: 'link', target: 'party' },
+      { name: 'items', type: 'table', child: 'bom_item' },
+      { name: 'operations', type: 'table', child: 'bom_operation' },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true }],
+  },
+  {
+    name: 'work_order',
+    label: 'Work Order',
+    kind: 'document',
+    module: 'manufacturing',
+    naming: { series: 'WO-{FY}-{#####}', example: 'WO-26-00001' },
+    lifecycle: { submit: true, cancel: true, amend: false },
+    fields: [
+      { name: 'production_item', type: 'link', target: 'item', required: true },
+      { name: 'bom', type: 'link', target: 'bom', required: true },
+      { name: 'qty', type: 'float', required: true },
+      { name: 'warehouse', type: 'link', target: 'warehouse' },
+      { name: 'planned_start_date', type: 'date' },
+      { name: 'subcontracting', type: 'check' },
+      { name: 'subcontractor', type: 'link', target: 'party' },
+      { name: 'status', type: 'select', options: ['Draft', 'Submitted', 'In Process', 'Completed', 'Cancelled'] },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true, submit: true, cancel: true }],
+  },
+  {
+    name: 'workstation',
+    label: 'Workstation',
+    kind: 'master',
+    module: 'manufacturing',
+    naming: { series: 'WS-{#####}', example: 'WS-00001' },
+    fields: [
+      { name: 'name', type: 'text', required: true },
+      { name: 'code', type: 'text' },
+      { name: 'hourly_rate', type: 'currency', required: true },
+      { name: 'cost_center', type: 'link', target: 'cost_center' },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true }],
+  },
+
+  // ---- Phase-8 Projects & Services: Project + Timesheet (billing via sales invoice) ----
+  {
+    name: 'project',
+    label: 'Project',
+    kind: 'master',
+    module: 'projects',
+    naming: { series: 'PRJ-{#####}', example: 'PRJ-00001' },
+    fields: [
+      { name: 'name', type: 'text', required: true },
+      { name: 'customer', type: 'link', target: 'party' },
+      { name: 'start_date', type: 'date' },
+      { name: 'end_date', type: 'date' },
+      { name: 'billing_type', type: 'select', options: ['Fixed', 'Time & Material'] },
+      { name: 'estimated_cost', type: 'currency' },
+      { name: 'status', type: 'select', options: ['Planning', 'In Progress', 'On Hold', 'Completed', 'Cancelled'] },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true }],
+  },
+  {
+    name: 'timesheet',
+    label: 'Timesheet',
+    kind: 'document',
+    module: 'projects',
+    naming: { series: 'TS-{FY}-{#####}', example: 'TS-26-00001' },
+    lifecycle: { submit: true, cancel: true, amend: false },
+    fields: [
+      { name: 'employee', type: 'link', target: 'employee', required: true },
+      { name: 'project', type: 'link', target: 'project', required: true },
+      { name: 'date', type: 'date', required: true },
+      { name: 'hours', type: 'float', required: true },
+      { name: 'billing_rate', type: 'currency' },
+      { name: 'description', type: 'long_text' },
+      { name: 'billed', type: 'check', readonly: true },
+      { name: 'status', type: 'select', options: ['Draft', 'Submitted', 'Cancelled'] },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true, submit: true, cancel: true }],
+  },
+
+  // ---- Phase-9 Fixed Assets: Asset register + Depreciation ----
+  {
+    name: 'asset',
+    label: 'Asset',
+    kind: 'master',
+    module: 'assets',
+    naming: { series: 'AST-{#####}', example: 'AST-00001' },
+    fields: [
+      { name: 'name', type: 'text', required: true },
+      { name: 'asset_category', type: 'text' },
+      { name: 'purchase_date', type: 'date', required: true },
+      { name: 'purchase_value', type: 'currency', required: true },
+      { name: 'salvage_value', type: 'currency' },
+      { name: 'useful_life', type: 'float', required: true },
+      { name: 'depreciation_method', type: 'select', options: ['Straight Line', 'Written Down Value'] },
+      { name: 'warehouse', type: 'link', target: 'warehouse' },
+      { name: 'accumulated_depreciation', type: 'currency', computed: true, readonly: true },
+      { name: 'book_value', type: 'currency', computed: true, readonly: true },
+      { name: 'status', type: 'select', options: ['In Use', 'Idle', 'Sold', 'Scrapped'] },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true }],
+  },
+  {
+    name: 'depreciation_entry',
+    label: 'Depreciation Entry',
+    kind: 'document',
+    module: 'assets',
+    naming: { series: 'DEP-{FY}-{#####}', example: 'DEP-26-00001' },
+    lifecycle: { submit: true, cancel: true, amend: false },
+    posting: 'depreciation_posting',
+    fields: [
+      { name: 'asset', type: 'link', target: 'asset', required: true },
+      { name: 'period', type: 'text', required: true },
+      { name: 'amount', type: 'currency', computed: true, readonly: true },
+      { name: 'status', type: 'select', options: ['Draft', 'Submitted', 'Cancelled'] },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true, submit: true, cancel: true }],
+  },
+
+  // ---- Phase-10 Compliance: TCS collection + statutory summary + audit trail ----
+  {
+    name: 'tcs_entry',
+    label: 'TCS Entry',
+    kind: 'document',
+    module: 'compliance',
+    naming: { series: 'TCS-{FY}-{#####}', example: 'TCS-26-00001' },
+    lifecycle: { submit: true, cancel: true, amend: false },
+    posting: 'tcs_posting',
+    fields: [
+      { name: 'party', type: 'link', target: 'party', required: true },
+      { name: 'posting_date', type: 'date', required: true },
+      { name: 'amount', type: 'currency', required: true },
+      { name: 'status', type: 'select', options: ['Draft', 'Submitted', 'Cancelled'] },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true, submit: true, cancel: true }],
+  },
+
+  // ---- POS ----
+  {
+    name: 'pos_invoice',
+    label: 'POS Invoice',
+    kind: 'document',
+    module: 'pos',
+    naming: { series: 'POS-{FY}-{#####}', example: 'POS-26-00001' },
+    lifecycle: { submit: true, cancel: true, amend: false },
+    posting: 'pos_invoice_posting',
+    fields: [
+      { name: 'counter', type: 'text' },
+      { name: 'customer', type: 'link', target: 'party' },
+      { name: 'payment_mode', type: 'select', required: true, options: ['Cash', 'UPI', 'Card'] },
+      { name: 'warehouse', type: 'link', target: 'warehouse', required: true },
+      { name: 'posting_date', type: 'date', required: true },
+      { name: 'items', type: 'table', child: 'pos_invoice_item' },
+      { name: 'grand_total', type: 'currency', computed: true, readonly: true },
+      { name: 'status', type: 'select', options: ['Draft', 'Submitted', 'Cancelled'] },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true, submit: true, cancel: true }],
+  },
+
+  // ---- Accounting: Chart of Accounts ----
+  {
+    name: 'account',
+    label: 'Account',
+    kind: 'master',
+    module: 'accounting',
+    naming: { series: 'ACC-{#####}', example: 'ACC-00001' },
+    fields: [
+      { name: 'name', type: 'text', required: true },
+      { name: 'account_type', type: 'select', required: true, options: ['Asset', 'Liability', 'Equity', 'Income', 'Expense'] },
+      { name: 'parent', type: 'text' },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true }],
+  },
+
+  // ---- Purchasing ----
+  {
+    name: 'purchase_invoice',
+    label: 'Purchase Invoice',
+    kind: 'document',
+    module: 'purchase',
+    naming: { series: 'PUR-{FY}-{#####}', example: 'PUR-26-00001' },
+    lifecycle: { submit: true, cancel: true, amend: false },
+    posting: 'purchase_invoice_posting',
+    fields: [
+      { name: 'supplier', type: 'link', target: 'party', required: true },
+      { name: 'bill_no', type: 'text' },
+      { name: 'posting_date', type: 'date', required: true },
+      { name: 'place_of_supply', type: 'text', required: true },
+      { name: 'currency', type: 'text' },
+      { name: 'exchange_rate', type: 'float' },
+      { name: 'branch', type: 'link', target: 'branch' },
+      { name: 'warehouse', type: 'link', target: 'warehouse', required: true },
+      { name: 'items', type: 'table', child: 'purchase_invoice_item' },
+      { name: 'grand_total', type: 'currency', computed: true, readonly: true },
+      { name: 'base_grand_total', type: 'currency', computed: true, readonly: true },
+      { name: 'status', type: 'select', options: ['Draft', 'Submitted', 'Cancelled'] },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true, submit: true, cancel: true }],
+  },
+  creditNoteEntity,
+  debitNoteEntity,
+
+  // ---- Banking & Payments ----
+  {
+    name: 'payment_entry',
+    label: 'Payment Entry',
+    kind: 'document',
+    module: 'banking',
+    naming: { series: 'PAY-{FY}-{#####}', example: 'PAY-26-00001' },
+    lifecycle: { submit: true, cancel: true, amend: false },
+    posting: 'payment_posting',
+    fields: [
+      { name: 'payment_type', type: 'select', required: true, options: ['Receive', 'Pay'] },
+      { name: 'party', type: 'link', target: 'party' },
+      { name: 'posting_date', type: 'date', required: true },
+      { name: 'mode', type: 'select', required: true, options: ['Cash', 'Bank', 'UPI', 'Card'] },
+      { name: 'bank_account', type: 'text' },
+      { name: 'amount', type: 'currency', required: true },
+      { name: 'against_sales', type: 'link', target: 'sales_invoice' },
+      { name: 'against_purchase', type: 'link', target: 'purchase_invoice' },
+      { name: 'remarks', type: 'long_text' },
+      { name: 'status', type: 'select', options: ['Draft', 'Submitted', 'Cancelled'] },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true, submit: true, cancel: true }],
+  },
+  {
+    name: 'bank_statement',
+    label: 'Bank Statement',
+    kind: 'document',
+    module: 'banking',
+    naming: { series: 'BANK-{FY}-{#####}', example: 'BANK-26-00001' },
+    lifecycle: { submit: false, cancel: false, amend: false },
+    fields: [
+      { name: 'bank_name', type: 'text' },
+      { name: 'account_no', type: 'text' },
+      { name: 'period', type: 'text' },
+      { name: 'lines', type: 'table', child: 'bank_statement_line' },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true }],
+  },
+
+  // ---- CRM: support / engagement ----
+  {
+    name: 'support_ticket',
+    label: 'Support Ticket',
+    kind: 'master',
+    module: 'crm',
+    naming: { series: 'TKT-{#####}', example: 'TKT-00001' },
+    fields: [
+      { name: 'customer', type: 'link', target: 'party', required: true },
+      { name: 'subject', type: 'text', required: true },
+      { name: 'description', type: 'long_text' },
+      { name: 'priority', type: 'select', options: ['Low', 'Medium', 'High', 'Urgent'] },
+      { name: 'status', type: 'select', options: ['Open', 'In Progress', 'Resolved', 'Closed'] },
+      { name: 'assigned_to', type: 'text' },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true }],
+  },
+
+  // ---- Buying & Supply Chain ----
+  {
+    name: 'request_for_quotation',
+    label: 'Request for Quotation',
+    kind: 'document',
+    module: 'buying',
+    naming: { series: 'RFQ-{FY}-{#####}', example: 'RFQ-26-00001' },
+    lifecycle: { submit: true, cancel: true, amend: false },
+    fields: [
+      { name: 'supplier', type: 'link', target: 'party', required: true },
+      { name: 'validity_date', type: 'date' },
+      { name: 'items', type: 'table', child: 'rfq_item' },
+      { name: 'status', type: 'select', options: ['Draft', 'Submitted', 'Cancelled'] },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true, submit: true, cancel: true }],
+  },
+  {
+    name: 'purchase_order',
+    label: 'Purchase Order',
+    kind: 'document',
+    module: 'buying',
+    naming: { series: 'PO-{FY}-{#####}', example: 'PO-26-00001' },
+    lifecycle: { submit: true, cancel: true, amend: false },
+    posting: 'purchase_order_posting',
+    fields: [
+      { name: 'supplier', type: 'link', target: 'party', required: true },
+      { name: 'schedule_date', type: 'date' },
+      { name: 'is_subcontracted', type: 'check' },
+      { name: 'items', type: 'table', child: 'purchase_order_item' },
+      { name: 'supplied_items', type: 'table', child: 'purchase_supplied_item' },
+      { name: 'grand_total', type: 'currency', computed: true, readonly: true },
+      { name: 'status', type: 'select', options: ['Draft', 'Submitted', 'Received', 'Cancelled'] },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true, submit: true, cancel: true }],
+  },
+  {
+    name: 'quality_inspection',
+    label: 'Quality Inspection',
+    kind: 'document',
+    module: 'buying',
+    naming: { series: 'QA-{FY}-{#####}', example: 'QA-26-00001' },
+    lifecycle: { submit: true, cancel: true, amend: false },
+    fields: [
+      { name: 'reference', type: 'link', target: 'purchase_invoice' },
+      { name: 'item', type: 'link', target: 'item', required: true },
+      { name: 'qty', type: 'float', required: true },
+      { name: 'accepted_qty', type: 'float' },
+      { name: 'rejected_qty', type: 'float' },
+      { name: 'status', type: 'select', options: ['Pass', 'Fail', 'Partial'] },
+      { name: 'remarks', type: 'long_text' },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true, submit: true, cancel: true }],
+  },
+  {
+    name: 'price_list',
+    label: 'Price List',
+    kind: 'master',
+    module: 'buying',
+    naming: { series: 'PL-{#####}', example: 'PL-00001' },
+    fields: [
+      { name: 'name', type: 'text', required: true },
+      { name: 'type', type: 'select', required: true, options: ['Buying', 'Selling'] },
+      { name: 'applies_to', type: 'text' },
+      { name: 'items', type: 'table', child: 'price_list_item' },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true }],
+  },
+
+  // ---- HR & Payroll ----
+  {
+    name: 'employee',
+    label: 'Employee',
+    kind: 'master',
+    module: 'hr',
+    naming: { series: 'EMP-{#####}', example: 'EMP-00001' },
+    fields: [
+      { name: 'employee_code', type: 'text' },
+      { name: 'name', type: 'text', required: true },
+      { name: 'department', type: 'text' },
+      { name: 'designation', type: 'text' },
+      { name: 'date_of_joining', type: 'date' },
+      { name: 'phone', type: 'phone' },
+      { name: 'email', type: 'email' },
+      { name: 'pan', type: 'gstin' },
+      { name: 'uan', type: 'text' },
+      { name: 'bank_account', type: 'text' },
+      { name: 'salary_structure', type: 'link', target: 'salary_structure' },
+      { name: 'is_active', type: 'check' },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true }],
+  },
+  {
+    name: 'salary_structure',
+    label: 'Salary Structure',
+    kind: 'master',
+    module: 'hr',
+    naming: { series: 'SS-{#####}', example: 'SS-00001' },
+    fields: [
+      { name: 'name', type: 'text', required: true },
+      { name: 'basic', type: 'currency', required: true },
+      { name: 'hra', type: 'currency' },
+      { name: 'da', type: 'currency' },
+      { name: 'other_allowances', type: 'currency' },
+      { name: 'pf_pct', type: 'percent' },
+      { name: 'esi_pct', type: 'percent' },
+      { name: 'tds_pct', type: 'percent' },
+      { name: 'professional_tax', type: 'currency' },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true }],
+  },
+  {
+    name: 'salary_slip',
+    label: 'Salary Slip',
+    kind: 'document',
+    module: 'hr',
+    naming: { series: 'SLIP-{FY}-{#####}', example: 'SLIP-26-00001' },
+    lifecycle: { submit: true, cancel: true, amend: false },
+    posting: 'salary_slip_posting',
+    fields: [
+      { name: 'employee', type: 'link', target: 'employee', required: true },
+      { name: 'period', type: 'text', required: true },
+      { name: 'paid_days', type: 'float', required: true },
+      { name: 'payment_mode', type: 'select', options: ['Bank', 'Cash', 'UPI'] },
+      { name: 'gross', type: 'currency', computed: true, readonly: true },
+      { name: 'net_pay', type: 'currency', computed: true, readonly: true },
+      { name: 'status', type: 'select', options: ['Draft', 'Submitted', 'Cancelled'] },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true, submit: true, cancel: true }],
+  },
+
+  // ---- P18 HR Depth: Attendance, Leave, Expense Claims, Loans, Recruitment ----
+  {
+    name: 'attendance',
+    label: 'Attendance',
+    kind: 'document',
+    module: 'hr',
+    naming: { series: 'ATT-{FY}-{#####}', example: 'ATT-26-00001' },
+    lifecycle: { submit: true, cancel: true, amend: false },
+    fields: [
+      { name: 'employee', type: 'link', target: 'employee', required: true },
+      { name: 'date', type: 'date', required: true },
+      { name: 'status', type: 'select', required: true, options: ['Present', 'Absent', 'Half Day', 'On Leave', 'Holiday'] },
+      { name: 'shift', type: 'text' },
+      { name: 'in_time', type: 'text' },
+      { name: 'out_time', type: 'text' },
+      { name: 'working_hours', type: 'float' },
+      { name: 'status_note', type: 'text' },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true, submit: true, cancel: true }],
+  },
+  {
+    name: 'leave_type',
+    label: 'Leave Type',
+    kind: 'master',
+    module: 'hr',
+    naming: { series: 'LT-{#####}', example: 'LT-00001' },
+    fields: [
+      { name: 'name', type: 'text', required: true },
+      { name: 'max_days_per_year', type: 'float' },
+      { name: 'is_carry_forward', type: 'check' },
+      { name: 'requires_approval', type: 'check' },
+      { name: 'color', type: 'text' },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true }],
+  },
+  {
+    name: 'leave_application',
+    label: 'Leave Application',
+    kind: 'document',
+    module: 'hr',
+    naming: { series: 'LEA-{FY}-{#####}', example: 'LEA-26-00001' },
+    lifecycle: { submit: true, cancel: true, amend: false },
+    fields: [
+      { name: 'employee', type: 'link', target: 'employee', required: true },
+      { name: 'leave_type', type: 'link', target: 'leave_type', required: true },
+      { name: 'from_date', type: 'date', required: true },
+      { name: 'to_date', type: 'date', required: true },
+      { name: 'total_days', type: 'float', required: true },
+      { name: 'reason', type: 'long_text' },
+      { name: 'status', type: 'select', options: ['Draft', 'Submitted', 'Approved', 'Rejected', 'Cancelled'] },
+      { name: 'approver', type: 'link', target: 'employee' },
+      { name: 'approved_on', type: 'date' },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true, submit: true, cancel: true }],
+  },
+  {
+    name: 'leave_balance',
+    label: 'Leave Balance',
+    kind: 'master',
+    module: 'hr',
+    naming: { series: 'LB-{#####}', example: 'LB-00001' },
+    fields: [
+      { name: 'employee', type: 'link', target: 'employee', required: true },
+      { name: 'leave_type', type: 'link', target: 'leave_type', required: true },
+      { name: 'fiscal_year', type: 'text', required: true },
+      { name: 'entitled_days', type: 'float' },
+      { name: 'carried_forward', type: 'float' },
+      { name: 'availed_days', type: 'float' },
+      { name: 'balance_days', type: 'float', computed: true, readonly: true },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true }],
+  },
+  {
+    name: 'expense_claim',
+    label: 'Expense Claim',
+    kind: 'document',
+    module: 'hr',
+    naming: { series: 'EXP-{FY}-{#####}', example: 'EXP-26-00001' },
+    lifecycle: { submit: true, cancel: true, amend: false },
+    fields: [
+      { name: 'employee', type: 'link', target: 'employee', required: true },
+      { name: 'posting_date', type: 'date', required: true },
+      { name: 'items', type: 'table', child: 'expense_claim_item' },
+      { name: 'total_amount', type: 'currency', computed: true, readonly: true },
+      { name: 'status', type: 'select', options: ['Draft', 'Submitted', 'Approved', 'Rejected', 'Paid'] },
+      { name: 'approver', type: 'link', target: 'employee' },
+      { name: 'paid_on', type: 'date' },
+      { name: 'payment_mode', type: 'select', options: ['Bank', 'Cash', 'UPI'] },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true, submit: true, cancel: true }],
+  },
+  {
+    name: 'employee_loan',
+    label: 'Employee Loan',
+    kind: 'document',
+    module: 'hr',
+    naming: { series: 'LN-{FY}-{#####}', example: 'LN-26-00001' },
+    lifecycle: { submit: true, cancel: true, amend: false },
+    fields: [
+      { name: 'employee', type: 'link', target: 'employee', required: true },
+      { name: 'loan_type', type: 'select', required: true, options: ['Salary Advance', 'Personal Loan', 'Vehicle Loan', 'Housing Loan', 'Other'] },
+      { name: 'principal_amount', type: 'currency', required: true },
+      { name: 'interest_rate', type: 'percent' },
+      { name: 'repayment_mode', type: 'select', options: ['Fixed Installment', 'Salary Deduction'] },
+      { name: 'installment_amount', type: 'currency' },
+      { name: 'start_date', type: 'date', required: true },
+      { name: 'end_date', type: 'date' },
+      { name: 'total_installments', type: 'float' },
+      { name: 'paid_installments', type: 'float' },
+      { name: 'balance_amount', type: 'currency', computed: true, readonly: true },
+      { name: 'status', type: 'select', options: ['Draft', 'Active', 'Completed', 'Defaulted', 'Cancelled'] },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true, submit: true, cancel: true }],
+  },
+  {
+    name: 'job_opening',
+    label: 'Job Opening',
+    kind: 'document',
+    module: 'hr',
+    naming: { series: 'JO-{FY}-{#####}', example: 'JO-26-00001' },
+    lifecycle: { submit: true, cancel: true, amend: false },
+    fields: [
+      { name: 'title', type: 'text', required: true },
+      { name: 'department', type: 'text' },
+      { name: 'designation', type: 'text' },
+      { name: 'description', type: 'long_text' },
+      { name: 'requirements', type: 'long_text' },
+      { name: 'min_experience', type: 'float' },
+      { name: 'max_experience', type: 'float' },
+      { name: 'salary_min', type: 'currency' },
+      { name: 'salary_max', type: 'currency' },
+      { name: 'employment_type', type: 'select', options: ['Full-time', 'Part-time', 'Contract', 'Internship'] },
+      { name: 'status', type: 'select', options: ['Draft', 'Open', 'On Hold', 'Closed', 'Cancelled'] },
+      { name: 'opened_on', type: 'date' },
+      { name: 'closed_on', type: 'date' },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true, submit: true, cancel: true }],
+  },
+  {
+    name: 'job_applicant',
+    label: 'Job Applicant',
+    kind: 'document',
+    module: 'hr',
+    naming: { series: 'JA-{FY}-{#####}', example: 'JA-26-00001' },
+    lifecycle: { submit: true, cancel: true, amend: false },
+    fields: [
+      { name: 'job_opening', type: 'link', target: 'job_opening', required: true },
+      { name: 'applicant_name', type: 'text', required: true },
+      { name: 'email', type: 'email' },
+      { name: 'phone', type: 'phone' },
+      { name: 'resume', type: 'text' },
+      { name: 'experience_years', type: 'float' },
+      { name: 'current_ctc', type: 'currency' },
+      { name: 'expected_ctc', type: 'currency' },
+      { name: 'status', type: 'select', options: ['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'Rejected', 'Withdrawn'] },
+      { name: 'applied_on', type: 'date' },
+      { name: 'offered_on', type: 'date' },
+      { name: 'joined_on', type: 'date' },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true, submit: true, cancel: true }],
+  },
+  {
+    name: 'interview',
+    label: 'Interview',
+    kind: 'document',
+    module: 'hr',
+    naming: { series: 'INT-{FY}-{#####}', example: 'INT-26-00001' },
+    lifecycle: { submit: true, cancel: true, amend: false },
+    fields: [
+      { name: 'job_applicant', type: 'link', target: 'job_applicant', required: true },
+      { name: 'round', type: 'select', options: ['Screening', 'Technical 1', 'Technical 2', 'HR', 'Final'] },
+      { name: 'interviewer', type: 'link', target: 'employee' },
+      { name: 'scheduled_on', type: 'date' },
+      { name: 'duration_minutes', type: 'float' },
+      { name: 'feedback', type: 'long_text' },
+      { name: 'rating', type: 'select', options: ['Strong No', 'No', 'Maybe', 'Yes', 'Strong Yes'] },
+      { name: 'status', type: 'select', options: ['Scheduled', 'Completed', 'Cancelled', 'Rescheduled'] },
+    ],
+    permissions: [{ role: 'admin', read: true, write: true, submit: true, cancel: true }],
+  },
+];
+
+// Inline child row types (stored inside the parent row's data).
+export const CHILD_SALES_INVOICE_ITEM = {
+  name: 'sales_invoice_item',
+  fields: [
+    { name: 'item', type: 'link', target: 'item', required: true },
+    { name: 'qty', type: 'float', required: true },
+    { name: 'rate', type: 'currency', required: true },
+    { name: 'gst_rate', type: 'percent' },
+  ],
+};
+
+export const CHILD_STOCK_ENTRY_ITEM = {
+  name: 'stock_entry_item',
+  fields: [
+    { name: 'item', type: 'link', target: 'item', required: true },
+    { name: 'qty', type: 'float', required: true },
+    { name: 'rate', type: 'currency' },
+    { name: 'serial_nos', type: 'text', readonly: false },
+    { name: 'batch_no', type: 'text' },
+    { name: 'expiry_date', type: 'date' },
+  ],
+};
+
+export const CHILD_STOCK_RECONCILIATION_ITEM = {
+  name: 'stock_reconciliation_item',
+  fields: [
+    { name: 'item', type: 'link', target: 'item', required: true },
+    { name: 'warehouse', type: 'link', target: 'warehouse', required: true },
+    { name: 'qty', type: 'float', required: true },
+    { name: 'rate', type: 'currency' },
+  ],
+};
+
+export const CHILD_LANDED_COST_ITEM = {
+  name: 'landed_cost_item',
+  fields: [
+    { name: 'item', type: 'link', target: 'item', required: true },
+    { name: 'amount', type: 'currency', required: true },
+    { name: 'description', type: 'text' },
+  ],
+};
+
+export const CHILD_POS_INVOICE_ITEM = {
+  name: 'pos_invoice_item',
+  fields: [
+    { name: 'item', type: 'link', target: 'item', required: true },
+    { name: 'qty', type: 'float', required: true },
+    { name: 'rate', type: 'currency', required: true },
+    { name: 'gst_rate', type: 'percent' },
+  ],
+};
+
+export const CHILD_PURCHASE_INVOICE_ITEM = {
+  name: 'purchase_invoice_item',
+  fields: [
+    { name: 'item', type: 'link', target: 'item', required: true },
+    { name: 'qty', type: 'float', required: true },
+    { name: 'rate', type: 'currency', required: true },
+    { name: 'gst_rate', type: 'percent' },
+  ],
+};
+
+export const CHILD_CREDIT_NOTE_ITEM = {
+  name: 'credit_note_item',
+  fields: [
+    { name: 'item', type: 'link', target: 'item', required: true },
+    { name: 'qty', type: 'float', required: true },
+    { name: 'rate', type: 'currency', required: true },
+    { name: 'gst_rate', type: 'percent' },
+  ],
+};
+
+export const CHILD_DEBIT_NOTE_ITEM = {
+  name: 'debit_note_item',
+  fields: [
+    { name: 'item', type: 'link', target: 'item', required: true },
+    { name: 'qty', type: 'float', required: true },
+    { name: 'rate', type: 'currency', required: true },
+    { name: 'gst_rate', type: 'percent' },
+  ],
+};
+
+export const CHILD_BANK_STATEMENT_LINE = {
+  name: 'bank_statement_line',
+  fields: [
+    { name: 'date', type: 'date' },
+    { name: 'narration', type: 'text' },
+    { name: 'withdrawal', type: 'currency' },
+    { name: 'deposit', type: 'currency' },
+    { name: 'balance', type: 'currency' },
+    { name: 'reconciled', type: 'check' },
+  ],
+};
+
+export const CHILD_RFQ_ITEM = {
+  name: 'rfq_item',
+  fields: [
+    { name: 'item', type: 'link', target: 'item', required: true },
+    { name: 'qty', type: 'float', required: true },
+    { name: 'target_rate', type: 'currency' },
+  ],
+};
+
+export const CHILD_PURCHASE_ORDER_ITEM = {
+  name: 'purchase_order_item',
+  fields: [
+    { name: 'item', type: 'link', target: 'item', required: true },
+    { name: 'qty', type: 'float', required: true },
+    { name: 'rate', type: 'currency', required: true },
+    { name: 'gst_rate', type: 'percent' },
+  ],
+};
+
+export const CHILD_PRICE_LIST_ITEM = {
+  name: 'price_list_item',
+  fields: [
+    { name: 'item', type: 'link', target: 'item', required: true },
+    { name: 'rate', type: 'currency', required: true },
+  ],
+};
+
+// ---- Phase-6 Advanced Selling child item rows ----
+export const CHILD_QUOTATION_ITEM = {
+  name: 'quotation_item',
+  fields: [
+    { name: 'item', type: 'link', target: 'item', required: true },
+    { name: 'qty', type: 'float', required: true },
+    { name: 'rate', type: 'currency', required: true },
+    { name: 'gst_rate', type: 'percent' },
+  ],
+};
+
+export const CHILD_SALES_ORDER_ITEM = {
+  name: 'sales_order_item',
+  fields: [
+    { name: 'item', type: 'link', target: 'item', required: true },
+    { name: 'qty', type: 'float', required: true },
+    { name: 'rate', type: 'currency', required: true },
+    { name: 'gst_rate', type: 'percent' },
+  ],
+};
+
+export const CHILD_DELIVERY_ITEM = {
+  name: 'delivery_item',
+  fields: [
+    { name: 'item', type: 'link', target: 'item', required: true },
+    { name: 'qty', type: 'float', required: true },
+  ],
+};
+
+// ---- Phase-7 Manufacturing child rows ----
+export const CHILD_BOM_ITEM = {
+  name: 'bom_item',
+  fields: [
+    { name: 'item', type: 'link', target: 'item', required: true },
+    { name: 'qty', type: 'float', required: true },
+  ],
+};
+
+export const CHILD_BOM_OPERATION = {
+  name: 'bom_operation',
+  fields: [
+    { name: 'operation', type: 'text', required: true },
+    { name: 'workstation', type: 'link', target: 'workstation', required: true },
+    { name: 'time_in_minutes', type: 'float', required: true },
+    { name: 'description', type: 'text' },
+  ],
+};
+
+export const CHILD_PURCHASE_SUPPLIED_ITEM = {
+  name: 'purchase_supplied_item',
+  fields: [
+    { name: 'item', type: 'link', target: 'item', required: true },
+    { name: 'qty', type: 'float', required: true },
+    { name: 'warehouse', type: 'link', target: 'warehouse' },
+  ],
+};
+
+export const CHILD_EXPENSE_CLAIM_ITEM = {
+  name: 'expense_claim_item',
+  fields: [
+    { name: 'date', type: 'date', required: true },
+    { name: 'category', type: 'select', required: true, options: ['Travel', 'Meals', 'Lodging', 'Office Supplies', 'Client Entertainment', 'Training', 'Other'] },
+    { name: 'description', type: 'text' },
+    { name: 'amount', type: 'currency', required: true },
+    { name: 'currency', type: 'text', default: 'INR' },
+    { name: 'receipt_attached', type: 'check' },
+  ],
+};
+
+export const CHILD_WORK_ORDER_ITEM = {
+  name: 'work_order_item',
+  fields: [
+    { name: 'item', type: 'link', target: 'item', required: true },
+    { name: 'qty', type: 'float', required: true },
+  ],
+};
+
+export const CHILD_SUBSCRIPTION_ITEM = {
+  name: 'subscription_item',
+  fields: [
+    { name: 'item', type: 'link', target: 'item', required: true },
+    { name: 'qty', type: 'float', required: true },
+    { name: 'rate', type: 'currency', required: true },
+    { name: 'gst_rate', type: 'percent' },
+  ],
+};
+
+export const CHILD_JOURNAL_ENTRY_ACCOUNT = {
+  name: 'journal_entry_account',
+  fields: [
+    { name: 'account', type: 'link', target: 'account', required: true },
+    { name: 'debit', type: 'currency' },
+    { name: 'credit', type: 'currency' },
+    { name: 'cost_center', type: 'link', target: 'cost_center' },
+    { name: 'party', type: 'link', target: 'party' },
+    { name: 'remark', type: 'text' },
+  ],
+};
+
+// ---- CRM child rows (stored inline in the parent's data, like the other children) ----
+export const CHILD_OPPORTUNITY_CONTACT = {
+  name: 'opportunity_contact',
+  fields: [
+    { name: 'contact_name', type: 'text', required: true },
+    { name: 'role', type: 'select', options: ['Decision Maker', 'Influencer', 'User', 'Gatekeeper', 'Finance'] },
+    { name: 'phone', type: 'phone' },
+    { name: 'email', type: 'email' },
+  ],
+};
+
+export const CHILD_PIPELINE_STAGE = {
+  name: 'pipeline_stage',
+  fields: [
+    { name: 'stage', type: 'text', required: true },
+    { name: 'probability', type: 'percent' },
+    { name: 'order', type: 'int' },
+  ],
+};
+
+// ---- Returns: Credit Note (sales return) & Debit Note (purchase return) ----
