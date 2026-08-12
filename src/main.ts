@@ -14,7 +14,8 @@ import { KernelStore } from './main/kernel-store';
 import { BusinessDatabase } from './main/database';
 import { AuthService } from './main/auth-service';
 import { ProtectedKeyStore } from './main/key-store';
-import { AttachmentVault } from './main/attachment-vault';
+import { ProtectedDatabaseFile } from './main/protected-database-file';
+import { ACTIVE_ATTACHMENT_KEY_VERSION, AttachmentVault } from './main/attachment-vault';
 import { BackupService } from './main/backup-service';
 import { PartyStore } from './main/party-store';
 import { CrmDepthStore } from './main/crm-depth-store';
@@ -34,6 +35,12 @@ import { AutomationScheduleStore } from './main/automation-schedule-store';
 import { FinanceCompletionStore } from './main/finance-completion-store';
 import { RetailWorkspaceModeStore } from './main/retail-workspace-mode-store';
 import { WorkspaceProvisioner } from './main/workspace-provisioner';
+import { ArtifactKeyRotationService } from './main/artifact-key-rotation';
+import {
+  assertRuntimeDatabaseEncryptionReady,
+  getRuntimeDatabaseEncryptionEvidence,
+  isNativeRuntimeEncryptionRequired,
+} from './main/runtime-database-security';
 
 process.env.ELECTRON_ENABLE_SECURITY_WARNINGS = 'true';
 app.enableSandbox();
@@ -303,23 +310,39 @@ app.whenReady().then(async () => {
 
   const dataDirectory = path.join(app.getPath('userData'), 'data');
   const databasePath = path.join(dataDirectory, 'epic-bos.sqlite3');
-  BusinessDatabase.applyStagedRestore(databasePath);
-  const database = new BusinessDatabase(databasePath);
+  const keyStore = new ProtectedKeyStore(dataDirectory);
+  const masterKey = await keyStore.getOrCreateKey();
+  const runtimeDatabaseEncryption = getRuntimeDatabaseEncryptionEvidence();
+  assertRuntimeDatabaseEncryptionReady(
+    runtimeDatabaseEncryption,
+    isNativeRuntimeEncryptionRequired(process.env.EPIC_BOS_REQUIRE_NATIVE_SQLITE),
+  );
+  const protectedDatabase = new ProtectedDatabaseFile(databasePath, masterKey);
+  await protectedDatabase.prepareRuntime();
+  const archivedRestorePath = BusinessDatabase.applyStagedRestore(protectedDatabase.runtimePath);
+  if (archivedRestorePath) await protectedDatabase.removePlaintextPath(archivedRestorePath);
+  const database = new BusinessDatabase(protectedDatabase.runtimePath);
   await database.initialize();
   const crmStore = new CrmStore(database, dataDirectory);
   const kernelStore = new KernelStore(database, dataDirectory);
   const partyStore = new PartyStore(database);
   const crmDepthStore = new CrmDepthStore(database, crmStore, partyStore);
-  const authService = new AuthService(database);
-  const keyStore = new ProtectedKeyStore(dataDirectory);
-  const masterKey = await keyStore.getOrCreateKey();
+  const authService = new AuthService(database, masterKey);
   const attachmentVault = new AttachmentVault(
     database,
     path.join(dataDirectory, 'attachments'),
     masterKey,
+    ACTIVE_ATTACHMENT_KEY_VERSION,
   );
   const statutoryGateway = new StatutoryGatewayService(database, masterKey);
   const providerGateway = new ProviderGatewayService(database, masterKey);
+  const artifactKeyRotation = new ArtifactKeyRotationService(
+    database,
+    providerGateway,
+    statutoryGateway,
+    authService,
+    attachmentVault,
+  );
   const revenueOpsStore = new RevenueOpsStore(database, crmStore, partyStore, kernelStore, crmDepthStore, statutoryGateway, providerGateway);
   const generalLedgerStore = new GeneralLedgerStore(
     database,
@@ -366,6 +389,7 @@ app.whenReady().then(async () => {
   const backupService = new BackupService(
     database,
     path.join(dataDirectory, 'backups'),
+    masterKey,
   );
   authService.pruneSessions();
   // On a truly empty database, do not let store initialization manufacture a
@@ -407,8 +431,22 @@ app.whenReady().then(async () => {
     retailWorkspaceModeStore,
     database,
     deferFirstRunState ? workspaceProvisioner : undefined,
+    runtimeDatabaseEncryption,
+    artifactKeyRotation,
   );
-  app.once('before-quit', () => database.close());
+  let sealingDatabase = false;
+  app.once('before-quit', (event) => {
+    if (sealingDatabase) return;
+    event.preventDefault();
+    sealingDatabase = true;
+    database.close();
+    void protectedDatabase.sealRuntime()
+      .then(() => app.exit(0))
+      .catch((error: unknown) => {
+        console.error('EPIC_BOS_DATABASE_SEAL_FAILED', error);
+        app.exit(1);
+      });
+  });
   createWindow();
 
   app.on('activate', () => {

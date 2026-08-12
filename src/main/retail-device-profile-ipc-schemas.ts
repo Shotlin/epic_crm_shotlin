@@ -33,6 +33,7 @@ const retailDeviceDriverSchema = z.object({
     'network-tcp-boundary',
     'manual-evidence-only',
   ]),
+  attestationPublicKeyPem: z.string().trim().min(80).max(4096).optional(),
 }).strict();
 
 const retailDeviceProfileConfigurationSchema = z.discriminatedUnion('connection', [

@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { RevenueOpsState } from '../shared/revenue-ops-contracts';
-import type { CheckoutRetailSaleInput } from '../shared/retail-pos-contracts';
+import type { CheckoutRetailSaleInput, RetailSale } from '../shared/retail-pos-contracts';
+import type { RetailHubStoreEdgeSyncEvent } from '../shared/retail-hub-store-edge-sync-contracts';
+import { buildRetailHubStoreEdgeSalePayload } from '../shared/retail-hub-store-edge-sync-projection';
 import type { ResolveRetailOfflineSaleInput, RetailOfflineSaleQueueItem, RetailOfflineSyncPlan, RetailOfflineSyncReceiptStatus, SyncRetailOfflineQueueInput, SyncRetailOfflineSaleInput } from '../shared/retail-offline-sync-contracts';
 import { checkoutRetailSale } from './retail-pos';
 
@@ -95,6 +97,32 @@ export function planRetailOfflineSync(state: RevenueOpsState, generatedAt = new 
     else if (item.status === 'discarded') plan.discarded.push(item.id);
   }
   return plan;
+}
+
+/**
+ * Projects one completed local sale into the Hub's append-only event shape.
+ * The projection is deliberately narrow: no credentials or renderer-only
+ * state can cross the Store Edge boundary, and the caller supplies the
+ * branch-local sequence allocated by its outbox coordinator.
+ */
+export function buildRetailHubStoreEdgeSaleEvent(
+  sale: RetailSale,
+  sequence: number,
+  eventId = `retail-sale:${sale.id}:v${sale.version}`,
+): RetailHubStoreEdgeSyncEvent {
+  if (sale.status !== 'completed') throw new Error('Only a completed retail sale can be projected to the Retail Hub.');
+  if (!Number.isSafeInteger(sequence) || sequence < 1) throw new Error('Retail Hub sale event sequence must be a positive safe integer.');
+  const payload = buildRetailHubStoreEdgeSalePayload(sale);
+  return {
+    eventId,
+    eventType: 'retail.sale.completed',
+    aggregateId: sale.id,
+    transactionKey: sale.transactionKey,
+    sequence,
+    producedAt: sale.completedAt ?? sale.saleAt,
+    payloadChecksum: checksum(payload),
+    payload,
+  };
 }
 
 export function syncRetailOfflineSale(state: RevenueOpsState, input: SyncRetailOfflineSaleInput, actorId: string, now = new Date().toISOString()): RevenueOpsState {

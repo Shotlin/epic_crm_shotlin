@@ -25,8 +25,10 @@ export async function pullAndRegisterScopedShadowImport(
   input: RegisterScopedShadowImportPullInput,
   registeredAt = new Date().toISOString(),
 ): Promise<RegisteredScopedShadowImportPull> {
-  const registerPlan = repository.registerPlan;
-  if (!registerPlan) throw new Error('Durable shadow-import repository does not expose immutable registration.');
+  const registerPlanAndPullReceipt = repository.registerPlanAndPullReceipt;
+  if (!registerPlanAndPullReceipt) {
+    throw new Error('Durable shadow-import repository does not expose immutable registration: atomic plan-and-receipt registration is required.');
+  }
   const normalizedRegisteredAt = timestamp(registeredAt);
   const batchId = nonBlank(input.batchId, 'Batch ID');
   if (await repository.getPlan(scope, batchId)) throw new Error('Shadow-import batch already exists; use a new batch ID instead of replacing reviewed evidence.');
@@ -35,12 +37,7 @@ export async function pullAndRegisterScopedShadowImport(
   if (await repository.getPlan(scope, result.plan.batch.id)) throw new Error('Shadow-import batch already exists; use a new batch ID instead of replacing reviewed evidence.');
   const normalizedScope = normalizeScope(scope);
   const receipt = createShadowImportPullReceipt(result, normalizedScope, normalizedRegisteredAt);
-  if (repository.registerPlanAndPullReceipt) {
-    await repository.registerPlanAndPullReceipt(normalizedScope, result.plan, receipt);
-  } else {
-    await registerPlan.call(repository, scope, result.plan);
-    if (repository.registerPullReceipt) await repository.registerPullReceipt(normalizedScope, receipt);
-  }
+  await registerPlanAndPullReceipt.call(repository, normalizedScope, result.plan, receipt);
   return { ...result, registeredAt: normalizedRegisteredAt, scope: normalizedScope, receipt };
 }
 

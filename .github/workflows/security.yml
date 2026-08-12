@@ -1,0 +1,26 @@
+name: Epic BOS security checks
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  secret-history-scan:
+    name: Redacted secret and history scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out complete repository history
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Scan tracked files and Git history
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

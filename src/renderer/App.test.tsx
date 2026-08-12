@@ -94,6 +94,10 @@ function installBridge(): void {
       logout: async () => ({ configured: true, session: null }),
       lock: async () => ({ configured: true, session: null }),
       changePassword: async () => undefined,
+      getMfaStatus: async () => ({ enabled: false, pending: false }),
+      beginMfaEnrollment: async () => ({ secret: 'JBSWY3DPEHPK3PXP', otpauthUri: 'otpauth://totp/Epic%20BOS:test@example.com?secret=JBSWY3DPEHPK3PXP', recoveryCodes: [] }),
+      confirmMfaEnrollment: async () => ({ enabled: true, pending: false }),
+      disableMfa: async () => undefined,
     },
     storage: {
       listAttachments: async () => [],
@@ -105,6 +109,7 @@ function installBridge(): void {
         sha256: 'a'.repeat(64),
         size: 4096,
         verifiedAt: '2026-07-15T12:00:01.000Z',
+        keyVersion: 2,
       }),
       restoreDatabaseBackup: async () => null,
       listRestoreDrills: async () => [],
@@ -142,8 +147,10 @@ function installBridge(): void {
       revokeApiKey: async () => undefined,
       exportApiKeyInventory: async () => null,
       exportProviderCertificationPackage: async () => null,
+      verifyProviderCertificationPackage: async () => null,
       getRetailCertificationPack: async () => null as never,
       exportRetailCertificationPack: async () => null,
+      verifyRetailCertificationPack: async () => null,
     },
     release: {
       listGates: async () => [],
@@ -335,7 +342,11 @@ function installBridge(): void {
       syncRetailOfflineSale: async () => getRevenueOpsSnapshot(revenueOpsState, { opportunities: state.opportunities, accounts: partyState.accounts, contacts: partyState.contacts, addresses: partyState.addresses, activeUserIds: kernelState.users.map(({ id }) => id) }),
       syncRetailOfflineQueue: async () => getRevenueOpsSnapshot(revenueOpsState, { opportunities: state.opportunities, accounts: partyState.accounts, contacts: partyState.contacts, addresses: partyState.addresses, activeUserIds: kernelState.users.map(({ id }) => id) }),
       resolveRetailOfflineSale: async () => getRevenueOpsSnapshot(revenueOpsState, { opportunities: state.opportunities, accounts: partyState.accounts, contacts: partyState.contacts, addresses: partyState.addresses, activeUserIds: kernelState.users.map(({ id }) => id) }),
+      sendRetailHubStoreEdgeSync: async () => getRevenueOpsSnapshot(revenueOpsState, { opportunities: state.opportunities, accounts: partyState.accounts, contacts: partyState.contacts, addresses: partyState.addresses, activeUserIds: kernelState.users.map(({ id }) => id) }),
+      syncRetailHubStoreEdgeQueue: async () => getRevenueOpsSnapshot(revenueOpsState, { opportunities: state.opportunities, accounts: partyState.accounts, contacts: partyState.contacts, addresses: partyState.addresses, activeUserIds: kernelState.users.map(({ id }) => id) }),
+      saveRetailHubStoreEdgeSyncPolicy: async () => getRevenueOpsSnapshot(revenueOpsState, { opportunities: state.opportunities, accounts: partyState.accounts, contacts: partyState.contacts, addresses: partyState.addresses, activeUserIds: kernelState.users.map(({ id }) => id) }),
       ingestRetailUnifiedOrder: async () => getRevenueOpsSnapshot(revenueOpsState, { opportunities: state.opportunities, accounts: partyState.accounts, contacts: partyState.contacts, addresses: partyState.addresses, activeUserIds: kernelState.users.map(({ id }) => id) }),
+      reconcileRetailUnifiedOrderCancellation: async () => getRevenueOpsSnapshot(revenueOpsState, { opportunities: state.opportunities, accounts: partyState.accounts, contacts: partyState.contacts, addresses: partyState.addresses, activeUserIds: kernelState.users.map(({ id }) => id) }),
       prepareRetailUnifiedOrderHandoff: async () => getRevenueOpsSnapshot(revenueOpsState, { opportunities: state.opportunities, accounts: partyState.accounts, contacts: partyState.contacts, addresses: partyState.addresses, activeUserIds: kernelState.users.map(({ id }) => id) }),
       prepareRetailOrderHubHandoff: async () => getRevenueOpsSnapshot(revenueOpsState, { opportunities: state.opportunities, accounts: partyState.accounts, contacts: partyState.contacts, addresses: partyState.addresses, activeUserIds: kernelState.users.map(({ id }) => id) }),
       recordRetailOrderHubHandoffResult: async () => getRevenueOpsSnapshot(revenueOpsState, { opportunities: state.opportunities, accounts: partyState.accounts, contacts: partyState.contacts, addresses: partyState.addresses, activeUserIds: kernelState.users.map(({ id }) => id) }),
@@ -354,7 +365,6 @@ function installBridge(): void {
       recordRetailUnifiedOrderCarrierCallback: async () => getRevenueOpsSnapshot(revenueOpsState, { opportunities: state.opportunities, accounts: partyState.accounts, contacts: partyState.contacts, addresses: partyState.addresses, activeUserIds: kernelState.users.map(({ id }) => id) }),
       prepareRetailDeviceTransport: async () => getRevenueOpsSnapshot(revenueOpsState, { opportunities: state.opportunities, accounts: partyState.accounts, contacts: partyState.contacts, addresses: partyState.addresses, activeUserIds: kernelState.users.map(({ id }) => id) }),
       recordRetailDeviceTransport: async () => getRevenueOpsSnapshot(revenueOpsState, { opportunities: state.opportunities, accounts: partyState.accounts, contacts: partyState.contacts, addresses: partyState.addresses, activeUserIds: kernelState.users.map(({ id }) => id) }),
-      recordRetailNativeDeviceDriverResult: async () => getRevenueOpsSnapshot(revenueOpsState, { opportunities: state.opportunities, accounts: partyState.accounts, contacts: partyState.contacts, addresses: partyState.addresses, activeUserIds: kernelState.users.map(({ id }) => id) }),
       executeRetailDeviceTransport: async () => getRevenueOpsSnapshot(revenueOpsState, { opportunities: state.opportunities, accounts: partyState.accounts, contacts: partyState.contacts, addresses: partyState.addresses, activeUserIds: kernelState.users.map(({ id }) => id) }),
       retryRetailDeviceTransport: async () => getRevenueOpsSnapshot(revenueOpsState, { opportunities: state.opportunities, accounts: partyState.accounts, contacts: partyState.contacts, addresses: partyState.addresses, activeUserIds: kernelState.users.map(({ id }) => id) }),
       preflightRetailDeviceTransport: async () => ({ kind: 'barcode-scanner', connection: 'network', status: 'unsupported', responseReference: 'driver-required:test', responseChecksum: '0'.repeat(64), responseByteLength: 0, elapsedMs: 0 }),
@@ -1643,9 +1653,42 @@ describe('Epic BOS renderer', () => {
     expect(screen.getByRole('heading', { name: 'Release evidence ledger' })).toBeTruthy();
     expect(screen.getByText(/Deferred provider certification stays blocked/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Export provider template' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Verify provider package' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Export retail pack' })).toBeTruthy();
     expect(await screen.findByText('Installed app updater')).toBeTruthy();
     expect(screen.getByText(/disabled in the renderer test/i)).toBeTruthy();
+  }, 20_000);
+
+  it('captures provider handoff references without exposing credential fields', async () => {
+    const user = userEvent.setup();
+    let captured: Parameters<typeof window.epicBos.integration.exportProviderCertificationPackage>[0] | null = null;
+    window.epicBos.integration.exportProviderCertificationPackage = async (input) => {
+      captured = input;
+      return { filePath: 'provider.json', checksum: 'a'.repeat(64), readyForSandbox: true, readyForProduction: false, exportedAt: '2026-07-17T00:00:00.000Z' };
+    };
+    window.epicBos.integration.verifyProviderCertificationPackage = async () => ({ filePath: 'provider.json', verifiedAt: '2026-07-17T00:00:00.000Z', valid: true, declaredChecksum: 'b'.repeat(64), computedChecksum: 'b'.repeat(64), readyForSandbox: true, readyForProduction: false, missing: ['production approval reference'], errors: [] });
+    render(<App />);
+    await openCrmHome();
+    await user.click(screen.getByRole('button', { name: /^Home$/ }));
+    await user.click(screen.getByRole('button', { name: 'Approvals and evidence' }));
+    await screen.findByRole('heading', { name: 'Governance is operational' });
+    await user.click(screen.getByRole('button', { name: 'Store setup' }));
+    await screen.findByRole('heading', { name: 'Business control room' });
+    await user.click(screen.getByRole('tab', { name: 'release' }));
+    await user.click(screen.getByRole('button', { name: 'Export provider template' }));
+    expect(screen.getByRole('form', { name: 'Provider certification handoff form' })).toBeTruthy();
+    expect(screen.queryByLabelText(/API key|password|token/i)).toBeNull();
+    await user.type(screen.getByLabelText('Provider name'), 'GST Partner');
+    await user.type(screen.getByLabelText('Contract reference'), 'CONTRACT-GST-1');
+    await user.type(screen.getByLabelText('Credential owner'), 'Finance team');
+    await user.type(screen.getByLabelText('Credential revision'), '1');
+    await user.type(screen.getByLabelText('Sandbox evidence reference'), 'SANDBOX-GST-1');
+    await user.type(screen.getByLabelText('Test-case references'), 'AUTH-1, GST-1');
+    await user.click(screen.getByRole('button', { name: 'Export handoff package' }));
+    expect(captured).toMatchObject({ domain: 'gsp-irp', providerName: 'GST Partner', contractReference: 'CONTRACT-GST-1', sandboxEvidenceReference: 'SANDBOX-GST-1', credentialRevision: 1, credentialOwner: 'Finance team', testCaseReferences: ['AUTH-1', 'GST-1'] });
+    expect(screen.getByRole('status').textContent).toContain('Provider handoff exported');
+    await user.click(screen.getByRole('button', { name: 'Verify provider package' }));
+    expect(screen.getByRole('status').textContent).toContain('Provider package verified');
   }, 20_000);
 
   it('records release evidence through the authenticated bridge and refreshes the ledger', async () => {

@@ -19,6 +19,7 @@ const emptyState = (): RetailOrderIngestionState => ({
   deliveryExecutions: [],
   rtoReconciliationExecutions: [],
   returnReconciliationExecutions: [],
+  cancellationReconciliationExecutions: [],
   carrierCallbackEvidence: [],
 });
 
@@ -101,5 +102,56 @@ describe('RetailUnifiedOrderInboxPanel', () => {
     expect(onRecordHubHandoffResult).not.toHaveBeenCalled();
     expect(onRecordCarrierCallback).not.toHaveBeenCalled();
     expect(onConfirmDelivery).not.toHaveBeenCalled();
+  });
+
+  it('exposes cancellation evidence capture without offering a provider-side cancellation action', async () => {
+    const user = userEvent.setup();
+    const sourceDigest = 'c'.repeat(64);
+    const ingestion = emptyState();
+    ingestion.orders.push({
+      id: 'unified-cancel-1',
+      identityKey: 'website:bakaloo:WEB-CANCEL-1',
+      source: { channel: 'website', connectionId: 'bakaloo-retail-hub' },
+      externalOrderId: 'WEB-CANCEL-1',
+      observedStatus: 'cancelled',
+      handlingState: 'awaiting-local-handoff',
+      currency: 'INR',
+      totalAmountPaise: 5000,
+      lines: [{ externalLineId: 'line-cancel-1', sku: 'BAK-MILK-1L', quantity: 1, unitAmountPaise: 5000 }],
+      sourceDigest,
+      sourceEvents: [{ externalEventId: 'hub-cancel-event-1', sourceDigest, occurredAt: '2026-08-04T10:00:00.000Z', observedStatus: 'cancelled', receivedAt: '2026-08-04T10:00:05.000Z' }],
+    });
+    ingestion.reconciliationRequirements.push({
+      id: 'reconciliation-cancel-1',
+      orderId: 'unified-cancel-1',
+      externalOrderId: 'WEB-CANCEL-1',
+      sourceDigest,
+      kind: 'cancellation',
+      status: 'required',
+      actions: ['release-or-confirm-no-stock-reservation', 'reconcile-payment-or-wallet-reversal'],
+      requiredAt: '2026-08-04T10:00:05.000Z',
+      boundary: 'requires-approved-stock-payment-and-tax-workflows',
+    });
+    const onReconcileCancellation = vi.fn().mockResolvedValue(undefined);
+
+    render(<RetailUnifiedOrderInboxPanel
+      revenue={revenueFor(ingestion)}
+      busy={false}
+      activeActorId="cancellation-reviewer"
+      onIngest={vi.fn()}
+      onReconcileCancellation={onReconcileCancellation}
+    />);
+
+    expect(screen.getByText('Reconcile cancelled order')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /cancel provider order/i })).toBeNull();
+    await user.type(screen.getByLabelText('Stock release / no-reservation evidence'), 'stock-review-cancel-1');
+    await user.type(screen.getByLabelText('Payment / wallet reversal evidence'), 'payment-review-cancel-1');
+    await user.click(screen.getByRole('button', { name: 'Record cancellation reconciliation' }));
+    expect(onReconcileCancellation).toHaveBeenCalledWith({
+      orderId: 'unified-cancel-1',
+      expectedSourceDigest: sourceDigest,
+      stockEvidenceReference: 'stock-review-cancel-1',
+      paymentEvidenceReference: 'payment-review-cancel-1',
+    });
   });
 });

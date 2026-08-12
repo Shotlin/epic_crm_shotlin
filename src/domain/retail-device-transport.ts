@@ -1,6 +1,6 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, createPublicKey, randomUUID, verify } from 'node:crypto';
 import type { RevenueOpsState } from '../shared/revenue-ops-contracts';
-import type { PrepareRetailDeviceTransportInput, RecordRetailDeviceTransportInput, RecordRetailNativeDeviceDriverResultInput, RetryRetailDeviceTransportInput, RetailDeviceResponseProtocol, RetailDeviceTransportCommand, RetailDeviceTransportEvidence, RetailPhysicalDeviceKind } from '../shared/retail-device-transport-contracts';
+import type { PrepareRetailDeviceTransportInput, RecordRetailDeviceTransportInput, RecordRetailNativeDeviceDriverResultInput, RetryRetailDeviceTransportInput, RetailDeviceAcknowledgementSource, RetailDeviceResponseProtocol, RetailDeviceTransportCommand, RetailDeviceTransportEvidence, RetailPhysicalDeviceKind } from '../shared/retail-device-transport-contracts';
 import { RETAIL_DEVICE_PRIMARY_CAPABILITY, type RetailDeviceAdapterProfile } from '../shared/retail-device-profile-contracts';
 
 const checksum = (value: string) => createHash('sha256').update(value, 'utf8').digest('hex');
@@ -25,6 +25,10 @@ const responseProtocolForKind: Record<RetailPhysicalDeviceKind, RetailDeviceResp
   'cash-drawer': 'cash-drawer-status-v1',
   'weighing-scale': 'weighing-scale-reading-v1',
 };
+const NATIVE_ATTESTATION_MAX_SKEW_MS = 5 * 60 * 1000;
+const BASE64_SIGNATURE = /^[A-Za-z0-9+/]{86}==$/;
+const FINGERPRINT = /^[a-f0-9]{64}$/i;
+const NONCE = /^[A-Za-z0-9_-]{16,128}$/;
 
 /**
  * All live TCP commands must be tied to one reviewed device profile. The
@@ -82,20 +86,27 @@ function recordDeviceTransport(
   state: RevenueOpsState,
   input: RecordRetailDeviceTransportInput,
   actorId: string,
-  acknowledgementSource: 'operator-evidence' | 'network-tcp-execution',
+  acknowledgementSource: RetailDeviceAcknowledgementSource,
   now = new Date().toISOString(),
-  nativeEvidence?: Pick<RetailDeviceTransportEvidence, 'nativeDriverStatus' | 'nativeDriverCode' | 'nativeDriverVersion'>,
+  nativeEvidence?: Pick<RetailDeviceTransportEvidence, 'nativeDriverStatus' | 'nativeDriverCode' | 'nativeDriverVersion' | 'nativeAttestationKeyFingerprint' | 'nativeAttestationNonce' | 'nativeAttestedAt' | 'nativeAttestationSignature'>,
   failureReasonOverride?: string,
 ): RevenueOpsState {
   const record = state.retailDeviceTransportEvidence.find((candidate) => candidate.id === input.id && sameScope(state, candidate));
   if (!record || record.status !== 'prepared' || record.version !== input.expectedVersion) throw new Error('Device transport evidence is stale or no longer awaiting acknowledgement.');
   if (record.requestedBy === actorId) throw new Error('Device acknowledgement requires an independent operator.');
+  const boundProfile = record.profileId
+    ? (state.retailDeviceAdapterProfiles ?? []).find((candidate) => candidate.id === record.profileId && sameScope(state, candidate))
+    : undefined;
+  if (boundProfile?.driver.boundary === 'native-driver-required' && !nativeEvidence) {
+    throw new Error('Native USB/Bluetooth evidence must be submitted by the installed main-process bridge, not operator acknowledgement.');
+  }
   const responseReference = clean(input.responseReference, 'Device response reference', 4, 240);
   if (input.responseProtocol !== responseProtocolForKind[record.kind]) throw new Error(`This ${record.kind} command requires ${responseProtocolForKind[record.kind]} response evidence.`);
   if (input.result === 'acknowledged' && (!input.responseChecksum || !/^[a-f0-9]{64}$/i.test(input.responseChecksum))) throw new Error('A successful device acknowledgement requires a 64-character response checksum.');
   if (input.result === 'acknowledged' && (!Number.isInteger(input.responseByteLength) || (input.responseByteLength ?? 0) <= 0 || (input.responseByteLength ?? 0) > 65_536)) throw new Error('A successful device acknowledgement requires a positive response byte length up to 65536.');
   const responseChecksum = input.responseChecksum?.trim().toLowerCase();
-  const replayed = acknowledgementSource === 'operator-evidence' && state.retailDeviceTransportEvidence.some((candidate) => candidate.id !== record.id && sameScope(state, candidate) && candidate.status !== 'prepared' && (candidate.responseReference === responseReference || Boolean(responseChecksum && candidate.responseChecksum === responseChecksum)));
+  const attestationNonce = nativeEvidence?.nativeAttestationNonce;
+  const replayed = acknowledgementSource !== 'network-tcp-execution' && state.retailDeviceTransportEvidence.some((candidate) => candidate.id !== record.id && sameScope(state, candidate) && candidate.status !== 'prepared' && (candidate.responseReference === responseReference || Boolean(responseChecksum && candidate.responseChecksum === responseChecksum) || Boolean(attestationNonce && candidate.nativeAttestationNonce === attestationNonce)));
   if (replayed) throw new Error('Device response evidence has already been used for another command; possible replay.');
   const next = structuredClone(state);
   next.revision += 1;
@@ -153,6 +164,72 @@ function nativeProfileForTransport(state: RevenueOpsState, record: RetailDeviceT
 }
 
 /**
+ * Builds the exact detached message a native bridge must sign. Keeping this
+ * canonical representation in the main-process domain prevents a bridge from
+ * signing one command while the store records another response envelope.
+ */
+export function buildRetailNativeDeviceAttestationMessage(record: RetailDeviceTransportEvidence, input: RecordRetailNativeDeviceDriverResultInput): string {
+  return JSON.stringify({
+    schema: 'epic-bos.native-device-attestation.v1',
+    profileId: record.profileId ?? null,
+    profileVersion: record.profileVersion ?? null,
+    commandId: record.id,
+    commandVersion: record.version,
+    kind: record.kind,
+    deviceCode: record.deviceCode,
+    command: record.command,
+    payloadChecksum: record.payloadChecksum,
+    result: input.result,
+    driverCode: input.driverCode.trim().toUpperCase(),
+    driverVersion: input.driverVersion.trim(),
+    responseReference: input.responseReference.trim(),
+    responseProtocol: input.responseProtocol,
+    responseChecksum: input.responseChecksum?.trim().toLowerCase() ?? null,
+    responseByteLength: input.responseByteLength ?? null,
+    errorMessage: input.errorMessage?.trim() || null,
+    signedAt: input.attestation.signedAt,
+    nonce: input.attestation.nonce,
+  });
+}
+
+function verifyNativeDeviceAttestation(
+  record: RetailDeviceTransportEvidence,
+  profile: RetailDeviceAdapterProfile,
+  input: RecordRetailNativeDeviceDriverResultInput,
+  now: string,
+): Pick<RetailDeviceTransportEvidence, 'nativeAttestationKeyFingerprint' | 'nativeAttestationNonce' | 'nativeAttestedAt' | 'nativeAttestationSignature'> {
+  const attestation = input.attestation;
+  if (attestation.algorithm !== 'ed25519') throw new Error('Native device attestation must use Ed25519.');
+  if (!FINGERPRINT.test(attestation.keyFingerprint)) throw new Error('Native device attestation key fingerprint is invalid.');
+  if (!BASE64_SIGNATURE.test(attestation.signature)) throw new Error('Native device attestation signature is invalid.');
+  if (!NONCE.test(attestation.nonce)) throw new Error('Native device attestation nonce is invalid.');
+  const signedAtMs = Date.parse(attestation.signedAt);
+  const nowMs = Date.parse(now);
+  if (!Number.isFinite(signedAtMs) || !Number.isFinite(nowMs) || Math.abs(nowMs - signedAtMs) > NATIVE_ATTESTATION_MAX_SKEW_MS) {
+    throw new Error('Native device attestation is stale or outside the allowed clock window.');
+  }
+  if (!profile.driver.attestationPublicKeyPem) {
+    throw new Error('The native device profile has no attestation public key; install a signed bridge profile before recording hardware evidence.');
+  }
+  let publicKey;
+  try {
+    publicKey = createPublicKey(profile.driver.attestationPublicKeyPem);
+  } catch (error) {
+    throw new Error(`Native device attestation public key is invalid: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const fingerprint = createHash('sha256').update(publicKey.export({ format: 'der', type: 'spki' })).digest('hex');
+  if (fingerprint !== attestation.keyFingerprint.toLowerCase()) throw new Error('Native device attestation key fingerprint does not match the approved profile.');
+  const valid = verify(null, Buffer.from(buildRetailNativeDeviceAttestationMessage(record, input), 'utf8'), publicKey, Buffer.from(attestation.signature, 'base64'));
+  if (!valid) throw new Error('Native device attestation signature is invalid for this command and response envelope.');
+  return {
+    nativeAttestationKeyFingerprint: fingerprint,
+    nativeAttestationNonce: attestation.nonce,
+    nativeAttestedAt: attestation.signedAt,
+    nativeAttestationSignature: attestation.signature,
+  };
+}
+
+/**
  * Records a result from a future native USB/Bluetooth bridge. This is an
  * explicit seam, not a simulated driver: the bridge must supply its own
  * driver identity and bounded response metadata. Unsupported results remain
@@ -171,6 +248,7 @@ export function recordRetailNativeDeviceDriverResult(
   const driverVersion = clean(input.driverVersion, 'Native driver version', 1, 40);
   if (driverCode !== profile.driver.code || driverVersion !== profile.driver.version) throw new Error('Native driver identity does not match the approved device profile.');
   if (record.requestedBy === actorId) throw new Error('Native device acknowledgement requires an independent operator.');
+  const attestation = verifyNativeDeviceAttestation(record, profile, { ...input, driverCode, driverVersion }, now);
   const result = input.result === 'acknowledged' ? 'acknowledged' : 'failed';
   const failureReason = input.result === 'unsupported'
     ? `Native driver unsupported: ${clean(input.errorMessage ?? '', 'Native driver reason', 4, 500)}`
@@ -179,9 +257,9 @@ export function recordRetailNativeDeviceDriverResult(
     state,
     { id: input.id, result, responseReference: input.responseReference, responseProtocol: input.responseProtocol, responseChecksum: input.responseChecksum, responseByteLength: input.responseByteLength, expectedVersion: input.expectedVersion },
     actorId,
-    'operator-evidence',
+    'native-driver-attestation',
     now,
-    { nativeDriverStatus: input.result, nativeDriverCode: driverCode, nativeDriverVersion: driverVersion },
+    { nativeDriverStatus: input.result, nativeDriverCode: driverCode, nativeDriverVersion: driverVersion, ...attestation },
     failureReason,
   );
 }

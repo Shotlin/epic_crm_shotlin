@@ -43,6 +43,14 @@ describe('statutory lifecycle control', () => {
     expect(() => prepareStatutoryOperation(controlled(), { kind: 'cancel-irn', exchangeId: 'irn-1', adapterId: 'adapter-1', reasonCode: '1', remarks: 'Incorrect invoice details' }, 'maker', 'late', '2026-07-18T12:00:00.000Z')).toThrow('within 24 hours');
   });
 
+  it('invalidates prepared statutory work when the adapter credential generation rotates', () => {
+    let state = prepareStatutoryOperation(controlled(), { kind: 'cancel-ewb', exchangeId: 'ewb-1', adapterId: 'adapter-1', reasonCode: '2', remarks: 'Credential rotation replay' }, 'maker', 'rotation-operation', '2026-07-16T12:00:00.000Z');
+    expect(state.statutoryAdapters[0]).toMatchObject({ credentialRevision: 1 });
+    state = markStatutoryCredentials(state, 'adapter-1', 'new-fingerprint-2026');
+    expect(state.statutoryAdapters[0]).toMatchObject({ credentialRevision: 2 });
+    expect(() => submitStatutoryOperation(state, { id: 'rotation-operation', requestReference: 'REQ-ROTATED', expectedVersion: 1 }, 'checker')).toThrow('credentials changed');
+  });
+
   it('permits validity extension only in the expiry window and records the new boundary', () => {
     let state = prepareStatutoryOperation(controlled(), { kind: 'extend-ewb', exchangeId: 'ewb-1', adapterId: 'adapter-1', reasonCode: '99', remarks: 'Route blocked by monsoon', requestedValidUntil: '2026-07-18T10:00:00.000Z', transportMode: 'road', vehicleNumber: 'MH12AB1234', fromPlace: 'Pune', fromStateCode: '27', fromPincode: '411001', remainingDistanceKm: 460 }, 'maker', 'extension-1', '2026-07-17T03:00:00.000Z');
     state = submitStatutoryOperation(state, { id: 'extension-1', requestReference: 'REQ-EXTEND-1', expectedVersion: 1 }, 'checker', '2026-07-17T03:05:00.000Z');

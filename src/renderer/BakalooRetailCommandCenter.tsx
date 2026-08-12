@@ -13,7 +13,7 @@ import { useMemo, type ReactNode } from 'react';
 import { computeRetailCommandCenter } from '../domain/retail-command-center';
 import { toIndiaBusinessDate } from '../shared/india-business-date';
 import type { RevenueOpsSnapshot } from '../shared/revenue-ops-contracts';
-import { DonutChart, TrendLineChart, type ChartDatum } from './ExecutiveCharts';
+import { BarChart, DonutChart, TrendLineChart, type ChartDatum } from './ExecutiveCharts';
 
 export interface BakalooRetailCommandCenterProps {
   /** The governed local retail projection. The component never invents values. */
@@ -173,8 +173,11 @@ export function BakalooRetailCommandCenter({
     }
     const trend: ChartDatum[] = [...daily.entries()].sort(([left], [right]) => left.localeCompare(right)).slice(-7).map(([date, value]) => ({ label: date.slice(5), value }));
     const tenderSplit: ChartDatum[] = [...tenders.entries()].sort(([, left], [, right]) => right - left).map(([label, value]) => ({ label: label.replace('-', ' '), value }));
-    return { trend, tenderSplit };
-  }, [revenue.retailSales]);
+    const channelQueue: ChartDatum[] = Object.entries(command.channelPendingOrders)
+      .filter(([, queue]) => queue.count > 0)
+      .map(([channel, queue]) => ({ label: channelLabels[channel as keyof typeof channelLabels], value: queue.count }));
+    return { trend, tenderSplit, channelQueue };
+  }, [command.channelPendingOrders, revenue.retailSales]);
 
   return (
     <section className="bakaloo-command" aria-labelledby="bakaloo-command-title" data-testid="bakaloo-retail-command-center">
@@ -326,7 +329,7 @@ export function BakalooRetailCommandCenter({
           </ol>
         </article>
       </div>
-      <section className="epic-visual-analytics" aria-labelledby="command-visual-analytics-title"><header className="epic-visual-analytics__header"><div><span className="bakaloo-command__eyebrow">Store pulse</span><h3 id="command-visual-analytics-title">Sales and tender at a glance</h3><p>Only completed local sales are shown. Empty visuals stay empty until your store has governed records.</p></div></header><div className="epic-visual-analytics__grid"><TrendLineChart title="Sales by recorded day" data={chartData.trend} formatValue={(value) => inrFormatter.format(value)} /><DonutChart title="Tender mix" data={chartData.tenderSplit} formatValue={(value) => inrFormatter.format(value)} /></div></section>
+      <section className="epic-visual-analytics" aria-labelledby="command-visual-analytics-title"><header className="epic-visual-analytics__header"><div><span className="bakaloo-command__eyebrow">Store pulse</span><h3 id="command-visual-analytics-title">Decisions at a glance</h3><p>These visuals use completed local records only. Empty charts stay empty until governed data exists.</p></div></header><div className="epic-visual-analytics__grid"><TrendLineChart title="Sales by recorded day" data={chartData.trend} formatValue={(value) => inrFormatter.format(value)} /><DonutChart title="Tender mix" data={chartData.tenderSplit} formatValue={(value) => inrFormatter.format(value)} /><BarChart title="Online orders by channel" data={chartData.channelQueue} formatValue={(value) => numberFormatter.format(value)} /></div></section>
     </section>
   );
 }

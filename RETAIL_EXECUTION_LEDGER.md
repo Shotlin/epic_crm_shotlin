@@ -1,5 +1,16 @@
 # Epic BOS Retail Execution Ledger
 
+### Build 0.1.81 verification (2026-08-08)
+
+Windows x64 was rebuilt from the current source after the keyring, MFA,
+authorization, cart, stock, allocation, native-attestation, and Hub-startup
+boundary fixes. The installer, NuGet package, and `RELEASES` feed share one
+build revision and pass manifest/checksum verification. A portable Linux x64
+ZIP was also produced in the explicit ZIP-only cross-build mode and passes its
+manifest/checksum verification. These are locally verified unsigned artifacts;
+the release matrix still holds until native macOS/Linux smoke, signing,
+notarisation, device and provider evidence, and role-by-role UAT are supplied.
+
 Scope: Indian retail first. “Live” means a governed workflow exists in the Electron product; it does not imply a provider, hardware, or government portal has been certified.
 
 ## Production-safe Bakaloo migration (current execution wave)
@@ -78,6 +89,192 @@ provider accounts. This is a parallel migration, not a replacement release.
 No API key, map credential, customer payload, order update, stock update,
 payment, delivery event, or provider acknowledgement is fabricated or stored
 in the Electron renderer.
+
+## Bakaloo admin-order shop isolation (2026-08-08)
+
+The `/api/v1/admin/orders` surface now resolves `request.shopId` after
+authentication and carries that scope through listing, status statistics,
+detail/child reads, notes, status transitions, delivery rescheduling, rider
+assignment, bulk assignment/status, cancellation/refund, invoice/packing-slip
+generation, CSV export, and manual-order creation. Shop-scoped SQL predicates
+are parameterised; HQ users without a shop scope retain the intentional
+cross-shop view. A scoped status update locks and updates the same shop-owned
+row, and a scoped detail cannot retrieve child items, payments, delivery
+assignments, notes, or timeline rows from another shop.
+
+Focused repository proof passed **3 tests**, and the existing admin-order
+regression group passed **26 tests**. This is local code/test evidence only;
+the full backend suite still needs PostgreSQL/Redis for its integration
+fixtures, and route-wide live multi-shop evidence remains open.
+
+## Bakaloo admin-customer shop isolation (2026-08-08)
+
+The `/api/v1/admin/customers` surface now resolves the same effective shop
+scope. Customer lists, order aggregates, detail, order history, addresses,
+LTV/churn/VIP reports, exports, wallet credit/debit authorization, personal
+notifications, and block/unblock writes are limited to customers with an
+order relationship at the requested shop. HQ users without a shop scope
+retain the intentional global view. Wallet and notification actions fail
+closed when a shop-scoped customer is not visible in that shop.
+
+Focused repository proof passed **3 tests**, including scoped aggregate
+queries, detail/order/address reads, and a negative block mutation. This is
+local evidence only; live multi-shop PostgreSQL/Redis integration and
+route-wide adoption across remaining modules remain open.
+
+## Bakaloo admin-rider shop isolation (2026-08-08)
+
+The `/api/v1/admin/riders` surface now derives the effective shop scope after
+authentication and admin authorization. Fleet lists, rider detail, earnings,
+payout history, live locations, KYC document reads, approval, suspension,
+commission, document verification, and payout creation are restricted to
+riders explicitly allocated to the shop or carrying a delivery assignment for
+one of its orders. Scoped earnings join the order owner before aggregation;
+scoped payouts now persist `shop_id` through migration `095_rider_payout_shop_scope.sql`,
+so a multi-shop rider's money is not presented as one shop's total. A scoped
+payout for an unassociated rider is rejected before the insert. HQ calls keep
+the intentional global fleet view and legacy payouts remain visible only to HQ.
+
+Focused repository proof passed **5/5 tests** covering list/detail/earnings/
+payout reads, KYC/live-location scope, a negative cross-shop mutation, and the
+scoped payout guard. This is local SQL evidence only; applying migration 095,
+live multi-shop PostgreSQL/Redis route tests, and hardware/provider
+certification remain open.
+
+## Bakaloo admin-abandoned-cart shop isolation (2026-08-08)
+
+The `/api/v1/admin/abandoned-carts` surface now resolves the effective shop
+scope after authentication. Because a cart snapshot may contain products from
+multiple outlets, a shop operator only sees an episode when it has at least one
+item for that shop and no item from another shop or with an unknown shop. This
+single-shop invariant covers list/count, detail children, summary metrics,
+reminder recording, and coupon recovery actions. Scoped recovery writes use a
+parameterized visibility predicate before inserting their audit link; HQ users
+retain the intentional global view.
+
+Focused repository proof passed **4/4 tests**. This is local SQL evidence only;
+live PostgreSQL/Redis route tests, notification-provider delivery, and
+production customer-consent evidence remain open.
+
+## Packaged retail UI certification (2026-08-08)
+
+The packaged Windows executable passed the exhaustive retailer navigation
+journey after the evidence writer was hardened to create a clean output
+directory. The run exercised all **8** primary workspaces, **31** visible
+submodules, and **45** workspace shortcuts; it found **0** renderer errors,
+retired demo strings, or unlabeled visible controls. Desktop and 700px-wide
+viewport checks confirmed a single usable main scroll owner (`overflow-y:
+auto`) with no horizontal overflow. The machine-readable result is
+`test-evidence/e2e-ui-certification-bound/retail-navigation-certification.json`,
+bound to build revision `ci-local-e964155a642ecd6f33d4ce2b06f031cd`.
+
+This closes the automated packaged-navigation gate for this Windows build. It
+does not replace human role-by-role UAT, native macOS/Linux visual review,
+provider/device certification, or signed production release approval.
+
+The same build also passed the packaged POS and recovery journeys: a cash sale
+survived restart, an offline sale synchronized through the governed boundary,
+and an offline conflict required independent supervisor evidence before
+discard. Intelligence and maintenance route journeys passed in the same
+certification run. The protected E2E proof helpers now understand the active
+v2 artifact envelope (with a fail-closed v1 fallback), so recovery evidence
+continues to exercise the real keyring and derived database key rather than a
+test-only plaintext shortcut.
+
+The complete local retail-core gate is green after these changes: capability
+registry current, **537** permissioned IPC handlers aligned, renderer encoding
+guard passed, Electron **246 files / 1,057 tests**, Retail Hub **27 files / 126
+tests**, both typechecks, and ESLint all passed. This remains local evidence;
+native SQLCipher/equivalent runtime encryption, live Hub infrastructure,
+provider/device credentials, native macOS/Linux smoke/signing, and independent
+human UAT are still release blockers.
+
+## Verification note after scope hardening (2026-08-08)
+
+The latest `verify:retail-core` rerun passed capability-registry, IPC-policy,
+renderer-copy, Electron/Retail Hub typechecks, then reached the Electron test
+stage with **245/246 files and 1,056/1,057 tests passing**. One provider-handoff
+journey timed out under the parallel full-suite resource load; that same test
+passes in isolation (**1/1**, 7.1 seconds). The bounded runner evidence above
+remains the authoritative full-suite result until a fresh bounded run is
+completed; no current timeout is being reported as a product pass.
+
+## Credential and attachment envelope version gate
+
+Provider connector secrets, statutory adapter secrets, and encrypted attachment
+records now carry an explicit active envelope version. Main-process decryption
+fails closed when persisted data reports an unknown version, so a future key
+rotation cannot silently downgrade or reinterpret an artifact with the current
+derived key. The active Electron build dual-reads v1 and v2, writes v2, and
+provides a release-control-admin-only rewrap-and-verify operation that migrates
+provider credentials, statutory credentials, MFA factors, and attachment files
+one record at a time. The operation is resumable and reports any remaining
+legacy records. This is envelope-key rotation evidence, not a claim that native
+SQLite page encryption or OS master-key rotation is complete.
+
+### Encrypted artifact rewrap (2026-08-07)
+
+The Electron main process now derives versioned v1/v2 envelope keys from the
+OS-protected master key. Provider connector credentials, statutory adapter
+credentials, TOTP MFA factors, and attachment files dual-read the legacy v1
+format, write v2, and expose a resumable, checksum-verified rewrap service.
+The release-control admin surface can run the migration and returns counts plus
+the remaining-legacy total; it never retires v1 automatically. The migration
+is covered by a focused four-artifact test and the full suite (246 files,
+1,054 tests) passes in single-worker mode. Native SQLCipher/page encryption,
+OS master-key rotation, provider/device credentials, and external certification
+remain separate production gates.
+
+Legacy plaintext SQLite migration now removes the old source (and sidecars)
+immediately after the copied runtime passes `PRAGMA integrity_check`; only the
+runtime copy remains while the process is open and it is sealed on shutdown.
+Interrupted launches still recover a validated runtime, while native page-level
+encryption remains an explicit driver/certification gate.
+
+## Bakaloo payment signature consistency
+
+The live backend's Razorpay client-payment verification and wallet top-up path
+now share a shape-validated, constant-time HMAC comparison helper with the raw
+webhook boundary. Invalid-length or malformed signatures are rejected before
+state transitions. The webhook replay ledger, applied migration, sandbox replay,
+and settlement reconciliation remain required external evidence before live
+payment promotion.
+
+## Encrypted authenticator MFA (2026-08-07)
+
+Epic BOS Electron now supports a real TOTP second factor without an external
+QR or identity service. Enrollment generates a random RFC 6238 secret, stores
+only an AES-256-GCM encrypted secret derived from the protected application
+key, and returns the manual `otpauth://` URI plus eight recovery codes only in
+the enrollment response. Recovery codes are stored as SHA-256 hashes and are
+removed after one successful use. Login enforces the MFA challenge with a
+five-attempt/15-minute factor lockout, accepts a +/-1 time-step window to handle
+clock drift, and fails closed on an unknown factor-envelope key version.
+
+The authenticated Control Room access tab exposes enrollment, confirmation,
+recovery-code display, and password-protected disablement. Disabling MFA
+revokes every active session. Focused verification covers the database
+migration, encrypted enrollment, challenge, one-time recovery, and revocation;
+the browser dashboard has the same source-level boundary below, but provider,
+device, deployment, and map certification is not complete.
+
+The separate Bakaloo browser dashboard now has the same source-level MFA
+boundary: migration `094_admin_mfa.sql`, AES-256-GCM TOTP-secret envelopes,
+one-use hashed login challenges with attempt limits, replay-safe TOTP steps,
+hashed one-use recovery codes, and authenticated setup/confirm/disable routes.
+Its login and Settings screens call those routes instead of simulating a QR,
+secret, or verification timer. Applying the migration to the live backend,
+running browser role/UAT and recovery drills, and confirming the deployment's
+MFA encryption key remain open evidence gates.
+
+## Truthful rider map boundary (2026-08-07)
+
+The Bakaloo dashboard rider map no longer uses a fixed Kolkata center or
+labels an empty/polling state as live. It renders only connected Socket.IO
+locations with valid coordinates and a verified timestamp no older than two
+minutes, shows an explicit unavailable state otherwise, and includes map
+attribution. Real rider consent, provider provenance, cross-shop deployment,
+and reconnect/stale-location evidence remain certification gates.
 
 ## Live foundation
 
@@ -606,6 +803,52 @@ and manifest SHA-256
 This is unsigned Windows build evidence only; clean-install review, signing,
 macOS/Linux packaging, update publication, and real provider/device evidence
 remain open.
+The final certification-binding regression is green at **225 files / 1,915
+tests** with ESLint clean; Redis warnings reflect the stopped local service.
+
+### P1-05 GST invoice evidence staging update (2026-08-09)
+
+PARTIAL remains truthful. Migrations 125/126 add shop-scoped invoice evidence
+with HSN, GSTIN, supply-state, and paise-level tax-split invariants. The
+`/api/v1/gst-workpaper/evidence` endpoints provide idempotent preparation and
+independent approval with checksums, optimistic versions, and audit events. The
+workpaper now exposes approved evidence coverage and blocks incomplete coverage.
+GSTR-1 generation, GSP/IRP credentials, portal reconciliation, and accounting
+posting remain deliberately outside this staging boundary.
+The rate-to-component relationship is validated at both contract and database
+layers, with cess kept as a separate evidence component.
+
+### P0-05 shop-scope route coverage update (2026-08-09)
+
+PARTIAL remains truthful. The boot-time route audit now detects shop-owned
+routes that omit strict shop scope or a resource-level shop match. Shop-staff
+operations require an active outlet context; HQ payout transitions now resolve
+the target financial row's shop before mutation. The guard is verified locally;
+live multi-shop PostgreSQL/Redis behavior and independent security review remain
+open.
+
+### P0-05 regression verification update (2026-08-09)
+
+The post-change backend suite is green at **221 files / 1,907 tests** with
+ESLint clean. The focused staff, payout, finance, scope, and boot-audit set is
+also green at **151 tests**. This is code-level evidence; live multi-shop
+PostgreSQL/Redis testing and an independent security review remain open.
+
+### P0-06 provider credential vault boundary (2026-08-09)
+
+An AES-256-GCM, context-bound provider credential envelope and migration 127
+now provide encrypted revision storage, a single active revision per shop/
+provider/environment, and automatic revocation of stale approved certification
+evidence. The boundary never returns secrets in metadata. Provider CRUD,
+deployment key management, real provider credentials, and external certification
+are still required before live use.
+The full backend regression after this change is green at **223 files / 1,911
+tests** with ESLint clean.
+
+The encrypted vault is now reachable only through shop-scoped, administrator-
+permissioned list/rotate routes. Rotation is transactional and audited, and
+the API returns no credential values. Live deployment key custody and provider
+certification remain open.
 
 Credential-free Bakaloo HTTPS transport completed on 2026-08-04. The Hub now
 offers a GET-only same-origin HTTPS adapter around the bounded shadow pull
@@ -1148,7 +1391,7 @@ Cache-safe Windows artifact: version `0.1.73`, build revision `ci-retail-0.1.73-
 Web Bluetooth diagnostic boundary completed on 2026-08-04. Bluetooth adapter profiles now validate and retain an explicit service and characteristic UUID, with a `web-bluetooth-diagnostic-only` boundary distinct from native-driver-required activation. The device transport workbench can bind a prepared Bluetooth command to the current approved profile, ask the operator to select one GATT device, write one bounded payload, read one bounded response, close the connection, and record response checksum/byte-length evidence. A cancelled picker, missing response, unsupported runtime, or timeout remains failed/unsupported evidence; no native Bluetooth driver, production pairing, live activation, payment, stock, or Bakaloo write is fabricated. Full suite passes 226 files / 935 tests; TypeScript and ESLint pass. Provider credentials, physical-device/native-driver certification, signing, and independent review remain required.
 Cache-safe Windows artifact: version `0.1.74`, build revision `ci-retail-0.1.74-web-bluetooth-diagnostic-boundary-2026.08.04.1`, unsigned installer `out/make/squirrel.windows/x64/Epic BOS-0.1.74 Setup.exe`. Schema revision is 24. Packaged smoke, smoke-evidence binding, multi-artifact checksum verification, and release-certification pack generation passed. Installer artifact SHA-256 `5b14ce7ab7487285eac86bc137e057a6cd0005a12c53c66a339192ed1cd8d28a`, installer manifest SHA-256 `0d54abac350dacd6b7b02acd87e20066dd7d0478fba43c315331cd07ad08ccf0`, smoke evidence SHA-256 `3a1be5d63bac0ef2e75f2f9b65861b94f4044570fe69c4324436f886be79f1fb`, and release-certification pack SHA-256 `e754cbe7e3290ce261295e02d4befa71cb80f2e235ce2a4ffa48ab04f73fd44b`. The release remains a hold until code signing, provider/device/native-driver certification, and independent review are supplied.
 
-Native device bridge evidence handoff completed on 2026-08-04. Prepared USB/Bluetooth commands bound to a `native-driver-required` profile now have a plain-language evidence form in the device workbench. The form is shown only for the current approved profile/version, requires a different operator, uses the approved driver code/version, validates response protocol/checksum/length through the existing main-process domain boundary, and keeps failed or unsupported bridge results explicit. It does not install a driver, pair hardware, claim a mechanical action, or activate a profile; native bridge implementation and hardware acceptance remain external certification work. Full suite passes 226 files / 936 tests; TypeScript and ESLint pass. Provider credentials, physical-device/native-driver certification, signing, and independent review remain required.
+Native device bridge evidence handoff completed on 2026-08-04. Prepared USB/Bluetooth commands bound to a `native-driver-required` profile have an explicit external bridge boundary in the device workbench. Since 2026-08-08 the renderer no longer exposes an evidence form or IPC route for native results; generic operator acknowledgement is rejected by the domain. Only a future signed main-process bridge may submit bounded driver identity and response metadata. It does not install a driver, pair hardware, claim a mechanical action, or activate a profile; native bridge implementation and hardware acceptance remain external certification work. Provider credentials, physical-device/native-driver certification, signing, and independent review remain required.
 Cache-safe Windows artifact: version `0.1.75`, build revision `ci-retail-0.1.75-native-device-bridge-evidence-2026.08.04.1`, unsigned installer `out/make/squirrel.windows/x64/Epic BOS-0.1.75 Setup.exe`. Schema revision is 24. Packaged smoke, smoke-evidence binding, multi-artifact checksum verification, and release-certification pack generation passed. Installer artifact SHA-256 `900f2b8403fe2016f296d5f4eed248dc3f6aee97a3b12f50b8b04ad2abb60b4a`, installer manifest SHA-256 `4698679feb0c8d572df48cb393d7dec9a8cb6668c6708692e2812ab56963c444`, smoke evidence SHA-256 `7bcd0a6dbfd2f5aed444993e211e7f6034af4f4fe38337dfc07f14940ce223ad`, and release-certification pack SHA-256 `9917e893e0f0f7b3bf842cb02986bd6727e683910f279a57075d2009733d41b8`. The release remains a hold until code signing, provider/device/native-driver certification, and independent review are supplied.
 
 Premium UI system and navigation wave completed on 2026-08-04. The Electron renderer now uses one persisted blue-white Executive Dashboard / Minimal Swiss contract across the retail shell and legacy workbenches. The left rail stacks Home, Sell, Stock, Deliver, Customers, Money, Insights, and Setup; each reveals labelled submodules in-place, while authorised users can disclose Command, CRM, Sales, Finance, Operations, People, Service, Intelligence, and Settings. Shared tokens normalise panels, forms, buttons, focus, empty/error/loading states, responsive breakpoints, reduced motion, and the single scroll-owner contract. Reusable source-linked SVG line, bar, and donut charts expose accessible labels, visible legends, and truthful empty states; Home and Insights now show governed store pulse visuals without fabricated demo data. Focused navigation/chart/insights tests and the full App interaction suite pass; TypeScript and ESLint pass. Next packaged build is 0.1.76. The release remains a hold until packaged visual review, code signing, provider/device/native-driver certification, and independent review are supplied.
@@ -1159,3 +1402,1947 @@ Retail product-truth and navigation hardening began on 2026-08-04. The customer-
 Retail product-truth Phase 1 hardening expanded on 2026-08-04. The normal operator renderer no longer contains the unreachable generic demo scenarios, fake readiness panels, client handoffs, mock communications, or sample import queues; the protected backup-first legacy-reset path remains. Specialist extensions now fail closed from the signed-in policy, while direct retail work stays in the left rail. POS vouchers are now governed at the atomic checkout boundary with scoped code/version validation, GST-safe discount allocation, immutable sale evidence, one-time usage consumption, and offline replay revalidation; no local "applied" state remains. Direct exchange regression coverage now proves independent approval, exact top-up, replacement sale, return-credit settlement and cost evidence. POS keeps the full tender list after a completed sale. The first real packaged Electron E2E journey now proves visible owner enrollment, clean workspace provisioning, graceful close, SQLite integrity/migration/credential/bootstrap-guard evidence, relaunch and visible sign-in against an isolated temporary profile. Current verification: `pnpm.cmd typecheck` pass; `pnpm.cmd lint` pass; full suite **227 files / 952 tests** pass; `pnpm.cmd test:e2e:electron` **1/1** pass. This created no new distributable installer and does not claim live Bakaloo migration, provider/device certification, signed release, or completed human UAT.
 
 Fresh local Windows build created on 2026-08-05. The stale default `out/` release folder and `.vite/` renderer cache were cleared before packaging; no Epic BOS database, backup, or workspace data was removed. The resulting unsigned installer is version `0.1.77` at `out/make/squirrel.windows/x64/Epic BOS-0.1.77 Setup.exe`, with SHA-256 `98a8d93eb1269bc49c71c2f6f646a0c5dadd61ace9f4ec94e96de187737bdec2`. This is a clean local build of the previously verified source, not a signed production release; code signing and the remaining external certification/human UAT gates are still required.
+
+Retail Hub local HTTP boundary completed on 2026-08-06. `retail-hub/src/node-http-adapter.ts` now wraps the durable shadow-import service in a dependency-free Node HTTP server seam without starting automatically, opening a database, reading credentials, or trusting renderer scope. Missing trusted authorization returns `403`; review bodies are bounded JSON with explicit oversized, non-JSON, and malformed-body failures; all non-review writes retain the service's read-only `405` boundary. Hub verification passes 16 files / 65 tests, Hub TypeScript and root lint pass, and the full Electron regression remains green at 239 files / 1,011 tests. This is local contract evidence only: authenticated Fastify/PostgreSQL/Redis/TLS deployment, real Bakaloo shadow import, provider/device certification, signing, and human UAT remain open.
+
+Packaged UI usability follow-up completed on 2026-08-06. The retailer navigation E2E now drives the real Ctrl/Cmd-K command palette and verifies focus, checks a 700px viewport for no horizontal overflow, exercises mobile workspace-rail open/close semantics, opens all 31 retail submodule actions plus 45 observed workspace shortcut actions, audits every shortcut destination for labelled visible controls and the single `.main-content` scroll-owner assertion. The packaged journey passed 1/1 in 219.96 seconds with no renderer errors; evidence is disposable at `tmp/e2e-evidence-navigation27/`. The catalog device handoff selectors were corrected to explicit `Certified printer` and `Label run` labels, and the package was rebuilt with revision `ui-certification-2026.08.06.1`. This strengthens automated usability evidence but does not replace the required independent cashier, manager, finance, and administrator UAT.
+The independent execution script is now captured in `docs/phase-0/RETAIL_UI_UAT_CHECKLIST.md`, with role-specific workflows, accessibility checks, recovery/error-state checks, and sign-off fields.
+
+Retail Hub deployment readiness gate completed on 2026-08-06. The pure `evaluateRetailHubDeploymentReadiness` / `assertRetailHubDeploymentReady` boundary now requires explicit origins, trusted auth, TLS, PostgreSQL, transaction-local database RLS context, Redis, server-side credential vault, observability, backups, and shadow/parallel-run mode for a deployable configuration; it never exposes config values, opens connections, or permits `write-enabled` mode. Hub verification passes 17 files / 73 tests. This prepares—but does not perform—the authenticated Fastify/PostgreSQL/Redis deployment, real Bakaloo shadow import, provider/device certification, or cutover.
+
+Durable Hub database isolation hardening completed on 2026-08-06. The shadow-import migration now forces row-level security on batches, review decisions, and pull receipts, with explicit tenant/company/branch policies using transaction-local `epic_bos.*` settings for both reads and writes. Missing settings match no rows. `ShadowImportSqlClient.withScope` is honored by repository/review queries, and `createRlsScopedSqlClient` provides a fail-closed adapter that rejects direct unscoped SQL and applies parameterized `set_config(..., true)` inside the pool transaction. Schema tests and the 17-file/73-test Hub suite pass; a live PostgreSQL migration/transaction drill remains required before deployment certification.
+
+Retail Hub deployment configuration boundary completed on 2026-08-06. `readRetailHubDeploymentConfig` maps only server-side environment values into the readiness contract, records malformed or missing control flags as invalid keys, and defaults unsafe values to hold states without contacting a database or connector. Three parser tests cover valid production shadow mode, missing controls, and malformed values; the Hub suite now passes 18 files / 76 tests. This does not expose secrets or claim a live deployment.
+
+Full regression after the deployment boundary passed 239 files / 1,011 tests on 2026-08-06; root TypeScript and ESLint remain green. This is source-level evidence only and does not replace the required live PostgreSQL migration/transaction drill, real Bakaloo shadow import, provider/device certification, signing, or independent human UAT.
+The current packaged executable revision `ui-certification-2026.08.06.1` also passed the owner bootstrap/restart journey and the POS checkout/restart journey (1/1 each). The POS path completed a real INR cash sale, persisted it to SQLite, restarted the application, and displayed the receipt again. Disposable evidence is at `tmp/e2e-evidence-owner-current/` and `tmp/e2e-evidence-pos-current/`; return/exchange, cash-close, offline recovery, and independent role UAT remain open.
+
+### Packaged independent cash-close evidence (2026-08-06)
+
+- Cashier-to-reviewer custody is exercised through the packaged Electron UI: an
+  INR cash sale is completed, every tender rail is declared, drawer evidence is
+  submitted, and an independent reviewer rotates credentials, signs in,
+  records review evidence, and approves the close.
+- SQLite proof confirms the cash receipt is reconciled and the shift is closed
+  by the independent reviewer with zero variance. Evidence:
+  `tmp/e2e-evidence-pos-cash-close-final10/`.
+- This does not claim production hardware, provider settlement, human UAT,
+  live Hub deployment, or Bakaloo cutover. Return/exchange and offline-store
+  recovery packaged journeys remain next.
+
+Latest verification: TypeScript, ESLint, and the full root suite are green at
+239 files / 1,012 tests. The Windows executable is still an unsigned local
+certification build; release signing, provider/device evidence, live Hub
+deployment, and human UAT remain held.
+
+### Packaged counter-return journey (2026-08-06)
+
+- The packaged POS journey now drives a receipt-based return end to end:
+  immutable receipt selection, counter-return request, physical inspection,
+  eligible-bin classification, condition evidence, independent approval, and
+  then the cashier/reviewer cash-close sequence.
+- SQLite proof confirms the return is `approved`, requester and inspector are
+  `user-avery`, approver is `user-priya`, stock is restored to 20, a return
+  inventory-ledger event exists, and the return COGS journal draft is balanced.
+  No refund or GST portal success is inferred.
+- Packaged journey: **1/1 passed** with the rebuilt unsigned executable at
+  `out/Epic BOS-win32-x64/epic-bos.exe`. Evidence:
+  `tmp/e2e-evidence-pos-return-final/`.
+- This remains local packaged evidence. Physical provider/device certification,
+  live Hub deployment, human role-based UAT, signing, and controlled Bakaloo
+  cutover remain open.
+
+### Packaged offline-store recovery journey (2026-08-06)
+
+- The cashier now has a packaged journey for saving an INR sale securely to
+  the local offline queue, closing the app, reopening it, and observing the
+  queued sale still available for synchronization.
+- The same renderer then synchronizes the queued sale through the governed
+  checkout boundary. A second restart proves the completed receipt remains
+  visible after synchronization.
+- Protected SQLite proof confirms one queue item reached `synced` after one
+  attempt, the append-only journal contains `queued`, `syncing`, and `synced`
+  events, the sale is completed, and counter stock reconciles to 19 units.
+- Packaged journey: **1/1 passed** in 31 seconds using
+  `out/Epic BOS-win32-x64/epic-bos.exe`. Evidence:
+  `tmp/e2e-evidence-offline-recovery/offline-recovery/`.
+- This proves local restart/recovery behavior only. Real power-loss hardware,
+  network interruption, multi-terminal conflict drills, live Hub deployment,
+  provider/device certification, human UAT, and cutover remain open.
+
+### Packaged offline-conflict recovery journey (2026-08-06)
+
+- Added a disposable packaged journey that queues an INR sale, deliberately
+  detects a persisted payload/checksum mismatch, and surfaces the conflict to
+  the cashier without posting a sale or stock movement.
+- The cashier cannot resolve their own conflict. An independent supervisor
+  rotates credentials through the real password-change gate, signs in, enters
+  `POWER-FAIL-STORE-001`, and discards the queue item through the governed UI.
+- Protected SQLite proof confirms integrity `ok`, queue status `discarded`, one
+  attempt, `user-avery` as queue owner, `user-priya` as resolver, journal
+  statuses `queued`/`syncing`/`conflict`/`discarded`, and zero retail sales.
+- Packaged verification: **1/1 passed** in 40 seconds using
+  `out/Epic BOS-win32-x64/epic-bos.exe`. Evidence:
+  `tmp/e2e-evidence-offline-conflict/offline-conflict-recovery/`.
+- This proves local authenticated conflict handling only. Real power-loss and
+  multi-terminal drills, physical devices, live Hub deployment, provider
+  certification, human UAT, signing, and controlled Bakaloo cutover remain
+  open.
+
+### Store Edge → Hub offline sync boundary (2026-08-06)
+
+- Added a bounded `store-edge:sync` inbox contract and Node HTTP seam for the
+  next offline-coordination stage. Events are scope-bound to trusted
+  tenant/company/branch context, checksum-verified, secret-key rejected, and
+  limited to 96 KB.
+- Replayed event IDs with the same checksum return `idempotent`; event-ID or
+  transaction-key payload drift and stale sequence numbers return explicit
+  `conflicted` receipts. `GET /v1/store-edge/sync/receipts` exposes only the
+  scoped receipt trail.
+- The inbox is evidence-only: it does not write orders, stock, payments, GST,
+  Bakaloo, or Epic BOS business state. The current implementation is an
+  in-memory contract seam; production requires a transactionally durable
+  PostgreSQL inbox/outbox relay, retry/lease handling, backup/restore, and a
+  deployed authenticated Hub.
+- Retail Hub verification: **19 files / 83 tests**; root TypeScript and ESLint
+  remain green. Live deployment, real Store Edge coordination, provider/device
+  certification, signing, human UAT, and controlled cutover remain open.
+
+### Durable Store Edge sync repository and RLS migration (2026-08-06)
+
+- Added `createPostgresStoreEdgeSyncRepository` as the durable replacement
+  seam for the local inbox. It performs scoped event lookup, idempotent replay,
+  transaction-key drift checks, stale-sequence checks, event registration, and
+  append-only receipt registration through the injected SQL client.
+- Extended `shadowImportPostgresSchema` with
+  `retail_store_edge_sync_events` and `retail_store_edge_sync_receipts`, both
+  forced behind transaction-local tenant/company/branch RLS policies and
+  indexed for scoped sequence/receipt reads.
+- The repository never opens a pool, trusts renderer scope, or changes
+  business records. A production migration runner must execute the SQL in a
+  real transaction and prove rollback/restore before the inbox is considered
+  operational.
+- Retail Hub verification: **20 files / 86 tests**; root TypeScript and ESLint
+  remain green. Live PostgreSQL/RLS drill, queue/lease worker, deployment,
+  provider/device certification, human UAT, signing, and cutover remain open.
+
+### Store Edge sync worker leases and retry policy (2026-08-06)
+
+- Added bounded worker semantics for the durable Store Edge inbox:
+  `pending → leased → completed`, retryable backoff, lease expiry reclaim, and
+  dead-letter after a configurable maximum attempt count.
+- Claims are scope-bound and ordered by availability, use a worker identity,
+  and require an active unexpired lease for completion or retry. Duplicate
+  enqueue is idempotent; other branches cannot see or claim the work.
+- Added PostgreSQL claim/update SQL using `FOR UPDATE SKIP LOCKED`, plus an
+  RLS-forced `retail_store_edge_sync_work` table and claim index in the Hub
+  migration contract. A real transaction pool, worker process, metrics,
+  backup/restore, and deployment drill are still required.
+- Retail Hub verification: **22 files / 94 tests**; root TypeScript and ESLint
+  remain green. This remains an internal coordination boundary and does not
+  authorize writes to Bakaloo, orders, stock, payments, or GST.
+
+### Store Edge sync worker runtime and metrics (2026-08-06)
+
+- Added a bounded `runOnce` worker runtime that claims a configured batch,
+  invokes an injected processor, completes successful leases, and converts
+  processor failures into retryable or dead-letter evidence without an
+  unbounded loop in Electron.
+- Each run returns worker ID, timestamps, claim/completion/retry/dead-letter
+  counts, and failing event identities. In-memory metrics retain cumulative
+  run totals and last-run time for an observability adapter.
+- Retail Hub verification: **23 files / 98 tests**; root TypeScript and ESLint
+  remain green. A deployed worker process, real metrics sink, transaction
+  pool, backup/restore, and production incident runbook remain required.
+
+### Store Edge operations deployment gate (2026-08-06)
+
+- Extended the Hub deployment readiness contract with three explicit,
+  server-side gates: worker lease/retry/dead-letter deployment,
+  Store Edge queue metric export, and current backup/restore plus
+  conflict-recovery evidence.
+- `readRetailHubDeploymentConfig` now reads
+  `RETAIL_HUB_STORE_EDGE_WORKER_CONFIGURED`,
+  `RETAIL_HUB_STORE_EDGE_METRICS_CONFIGURED`, and
+  `RETAIL_HUB_STORE_EDGE_RECOVERY_CONFIGURED`. Missing or malformed values
+  are invalid and keep the deployment on hold; no local in-memory worker can
+  satisfy these production flags.
+- Retail Hub verification: **23 files / 98 tests**; Hub TypeScript and root
+  lint remain green. This is a release-control boundary only: no worker,
+  metrics sink, database, backup drill, or live Bakaloo connection was
+  provisioned by this change.
+
+### Store Edge worker metrics observation boundary (2026-08-06)
+
+- Added authenticated `GET /v1/store-edge/worker/metrics` with a dedicated
+  `store-edge:observe` permission. The Node adapter accepts only an injected
+  scope-bound metrics projection; absent configuration is `503`, missing
+  trusted scope/permission is `403`, and non-GET methods are rejected.
+- Process-global worker totals are never exposed across tenants or branches.
+  The route remains read-only and cannot trigger a worker run or mutate
+  business state.
+- Retail Hub verification: **23 files / 99 tests**; root TypeScript and ESLint
+  remain green. A real metrics backend, deployed worker, and production
+  authentication configuration are still required.
+
+### Capability registry drift correction (2026-08-06)
+
+- Regenerated the machine-readable Phase 0 capability registry from the current
+  IPC declarations after the drift check detected stale records.
+- The registry now contains **548 capability records** and the check passes.
+  IPC handler/policy alignment also passes for **527 permissioned handlers**.
+- This is documentation/control evidence only; it does not turn local-only,
+  provider-dependent, device-dependent, or human-UAT capabilities into READY.
+- Current registry distribution is **528 LOCAL_ONLY, 15 PARTIAL, 4 BLOCKED,
+  1 PLANNED**. The largest unresolved external-system items are Bakaloo
+  socket scope, payment-webhook verification, dashboard identity/MFA, and
+  map-truth gating; these remain explicitly blocked rather than represented as
+  working demo features.
+
+### Retail Hub shadow-import preflight gate (2026-08-06)
+
+- Added `evaluateRetailHubShadowImportPreflight`, a pure read-only gate that
+  combines deployment readiness, explicit tenant/company/branch scope,
+  checksum integrity, reconciliation status, open-conflict absence, current
+  credential generation, and the immutable shadow-only flag.
+- A `ready-for-review` result permits only durable evidence registration and
+  human review. It never authorizes cutover, writes to Bakaloo, or mutates
+  Epic BOS business records.
+- Retail Hub verification: **24 files / 103 tests**; root TypeScript and ESLint
+  remain green. Real source credentials, a live PostgreSQL transaction, and
+  independent review are still required.
+
+### Full application regression after shadow preflight (2026-08-06)
+
+- Root Vitest completed **239 files / 1,012 tests passed** after the preflight
+  implementation. Root TypeScript and ESLint also pass.
+- This confirms the new read-only Hub gate did not regress Electron, renderer,
+  domain, authentication, finance, inventory, or device-boundary behavior.
+- It does not certify live Bakaloo connectivity, provider/device hardware,
+  human UAT, or a production cutover.
+
+### Machine-readable deployment preflight artifact (2026-08-06)
+
+- Added `createRetailHubDeploymentPreflight`, which converts the server-side
+  environment boundary into a value-free CI/control-room artifact containing
+  only checks, environment, invalid key names, blockers, timestamp, and
+  `writeBackAllowed: false`.
+- Database/Redis URLs, passwords, headers, credentials, and provider responses
+  are never serialized. Missing or malformed configuration remains a hold.
+- Retail Hub verification: **25 files / 106 tests**; root TypeScript and ESLint
+  remain green. This artifact does not provision infrastructure or claim live
+  connectivity.
+
+### Authenticated deployment readiness route (2026-08-06)
+
+- Added read-only `GET /v1/deployment/preflight` to the durable Hub service.
+  It returns the server-owned readiness checks without serializing deployment
+  values and remains protected by the existing trusted scope/auth boundary.
+- Missing deployment configuration returns `503`; all responses retain
+  `writeBackAllowed: false`. The route cannot start workers, contact Bakaloo,
+  or mutate business state.
+- Hub verification remains **25 files / 106 tests**; root TypeScript and ESLint
+  pass.
+
+### Retail command-centre visual consistency pass (2026-08-06)
+
+- Replaced the India executive dashboard's platform-dependent emoji quick
+  actions with labelled Lucide icons. POS, stock, returns, payments, payouts,
+  and reports now render consistently in the packaged desktop shell instead of
+  depending on the host operating system's emoji font.
+- Corrected three device-transport status labels that contained a mojibake
+  separator. No behaviour, evidence, authorization, or external-write policy
+  changed; this is a renderer readability fix within the UI certification wave.
+- Root TypeScript, the targeted command-centre/device renderer tests (**10
+  tests**), and ESLint pass. Full human UAT and packaged visual review across
+  Windows, macOS, and Linux remain open gates.
+
+### Verified Windows package for the UI milestone (2026-08-06)
+
+- Rebuilt the Electron package at version **0.1.77** after the renderer pass.
+  The current local artifact is
+  `out/Epic BOS-win32-x64/epic-bos.exe` (generated 2026-08-06).
+- Packaged smoke launch passed with `EPIC_BOS_SMOKE_OK`. This proves the local
+  Windows artifact launches; it is not code signing, notarisation, macOS/Linux
+  packaging, or human visual acceptance evidence.
+- Added `pnpm run verify:renderer-copy` and wired it into
+  `verify:retail-core`; it fails on common UTF-8 mojibake markers in renderer
+  source. The guard, TypeScript, and ESLint pass after this change.
+
+### Packaged retail navigation certification (2026-08-06)
+
+- Ran `retail-navigation.e2e.ts` against the newly rebuilt
+  `out/Epic BOS-win32-x64/epic-bos.exe`; the packaged journey passed in
+  **220.3 seconds** with no renderer errors.
+- The journey opened all **8** primary retail workspaces, all **31** left-rail
+  submodules, and **42+** governed shortcut destinations. It also verified the
+  single main scroll owner, no hidden overflow trap, accessible names, command
+  palette keyboard access, 700px narrow layout, and mobile navigation drawer.
+- This is strong local packaged UI evidence, not independent human UAT,
+  cross-platform signing, or production certification.
+
+### Retail Hub regression after packaged UI certification (2026-08-06)
+
+- Retail Hub verification remains green: **25 test files / 106 tests**, with Hub
+  TypeScript passing. The Hub contract, deployment preflight, Store Edge sync,
+  worker lease, and shadow-import boundaries remain unchanged by the renderer
+  work.
+- The combined E2E command is intentionally broader than the navigation
+  certification and can exceed a short shell timeout; the navigation result
+  above was run in isolation with its declared 300-second test budget.
+
+### Windows distributables and release-verifier alignment (2026-08-06)
+
+- Generated Windows Squirrel distributables for version **0.1.77**:
+  `out/make/squirrel.windows/x64/Epic BOS-0.1.77 Setup.exe` and the matching
+  full `.nupkg`.
+- Corrected the standalone artifact and smoke verifiers to accept the same
+  immutable Git-SHA or `ci-*` build-revision formats already accepted by the
+  application provenance contract. `verify:artifacts` now passes for **2
+  distributables**, and isolated smoke evidence verification passes for all 3
+  manifests with `EPIC_BOS_SMOKE_OK`.
+- These are unsigned local Windows artifacts. Code signing, independent
+  signature verification, macOS/Linux packaging, and production release
+  approval remain open.
+
+### Hub readiness surfaced in the Store Edge control room (2026-08-06)
+
+- Added a main-process-only HTTPS client and governed IPC action for the
+  authenticated Retail Hub `GET /v1/deployment/preflight` endpoint. The
+  renderer receives only the server-owned readiness report: status, checks,
+  environment, blockers, and the immutable `writeBackAllowed: false` flag.
+- Added a simple `Check Hub readiness` action beside the verified shadow/import
+  assessment. It is permission-gated (`release.control:read`), requires an
+  HTTPS Hub URL, never accepts credentials in the URL, and cannot start a
+  worker, call Bakaloo, or write business data.
+- Targeted UI/client coverage: **9 tests**. Full root regression: **240 files /
+  1,016 tests passed**. Capability registry regenerated to **549 records**;
+  IPC policy alignment checks **528 permissioned handlers**. Retail Hub remains
+  green at **25 files / 106 tests**.
+- This is a value-free readiness seam, not live deployment certification.
+  PostgreSQL/Redis/auth/vault/metrics/recovery evidence, Bakaloo credentials,
+  provider/device certification, and human UAT remain external gates.
+
+### Retail-core milestone gate re-run (2026-08-06)
+
+- `pnpm run verify:retail-core` completed successfully: capability registry,
+  IPC alignment, renderer-copy guard, Electron and Hub TypeScript, **240 root
+  test files / 1,016 tests**, **25 Hub files / 106 tests**, and ESLint are all
+  green.
+- Regenerated unsigned Windows v0.1.77 setup and full-package artifacts were
+  re-verified by hash and launched with `EPIC_BOS_SMOKE_OK`. The downloadable
+  installer and direct executable now correspond to the same source revision.
+
+### Final packaged navigation recheck (2026-08-06)
+
+- The regenerated `out/Epic BOS-win32-x64/epic-bos.exe` passed the isolated
+  packaged retail navigation journey in **219.4 seconds**. The journey opened
+  every primary workspace and representative submodule and rechecked renderer
+  errors, single-scroll ownership, keyboard routing, narrow layout, and the
+  mobile drawer.
+
+### Server-owned shadow-import readiness seam (2026-08-06)
+
+- Added `GET /v1/shadow-imports/preflight?batchId=...` consumption through a
+  main-process-only HTTPS client, typed IPC contract, preload bridge, and
+  `release.control:read` authorization policy. URL credentials, query/hash
+  injection, invalid schemas, oversized responses, and any attempt to set
+  `writeBackAllowed: true` fail closed.
+- The Bakaloo export preview now offers `Check Hub import readiness` after a
+  local file is selected. It shows only server-owned pass/hold checks and
+  blockers; it creates no import, sync, cutover, or business-record mutation.
+- Targeted client/UI coverage: **4 tests** for this seam. Capability registry
+  regenerated to **550 records** and IPC alignment covers **529 permissioned
+  handlers**.
+
+### Shadow-import readiness package gate (2026-08-06)
+
+- Full root regression: **241 files / 1,020 tests passed**. Retail Hub:
+  **25 files / 106 tests passed**. TypeScript, ESLint, renderer-copy guard,
+  registry and IPC alignment are green.
+- Rebuilt unsigned Windows v0.1.77 artifacts were hash-verified and launched
+  with `EPIC_BOS_SMOKE_OK`. The exact executable then passed packaged retail
+  navigation in **220.2 seconds**, including workspace/submodule routing,
+  scroll ownership, keyboard access, narrow layout and mobile drawer checks.
+- This milestone still does not certify live Hub infrastructure, Bakaloo
+  credentials, provider/device integrations, human UAT, or production cutover.
+
+### Content-bound local build provenance (2026-08-06)
+
+- Dirty local packages now receive a deterministic content-bound `ci-local-*`
+  revision over shipped source/configuration instead of silently reusing the
+  parent Git SHA. Documentation and evidence edits are intentionally excluded
+  from the binary identity.
+- The rebuilt v0.1.77 artifacts report revision
+  `ci-local-9d0da4fbc62676fd7751b4baf6a8d800`; artifact and smoke manifests
+  agree on this revision. It is an identifiable local build, not a signed
+  production release.
+
+### Current-source regression after provenance hardening (2026-08-06)
+
+- Re-ran the current source after the build-identity change: **241 root test
+  files / 1,020 tests passed** and **25 Hub files / 106 tests passed**. This
+  confirms the content-bound revision resolver did not alter application
+  behavior.
+
+### Current content-bound packaged navigation (2026-08-06)
+
+- The exact executable carrying revision
+  `ci-local-9d0da4fbc62676fd7751b4baf6a8d800` passed the isolated packaged
+  navigation journey in **220.6 seconds**, including every primary workspace,
+  representative submodule, scroll/overflow ownership, keyboard routing,
+  narrow layout and mobile drawer.
+
+### Connector health and pull-receipt evidence (2026-08-06)
+
+- Added read-only clients and IPC actions for the existing Hub
+  `/v1/shadow-imports/source-status` and `/v1/shadow-imports/pull-receipts`
+  routes. Responses are schema-validated in the main process; credential
+  generations and health messages are projected without secrets, and receipt
+  scope is deliberately removed before data reaches the renderer.
+- The shadow-import panel now offers `Check source health` and `Load pull
+  receipts` beside the preflight action. It shows connector state, credential
+  generation, check time, durable receipt counts, pages, records, and checksum
+  prefixes. All actions remain GET-only and explicitly write-back disabled.
+- Targeted status/client/UI coverage: **8 tests** (3 client + 5 review-panel).
+  Capability registry is now
+  **552 records** with **531 permissioned handlers** aligned.
+
+### Connector evidence package gate (2026-08-06)
+
+- Current full regression remains green: **242 root files / 1,024 tests** and
+  **25 Hub files / 106 tests**; TypeScript, ESLint, renderer-copy, registry,
+  and IPC alignment pass.
+- Rebuilt unsigned Windows v0.1.77 artifacts report
+  `ci-local-be616a56c749e0c684235da4db160a39`. Artifact hashes and smoke
+  evidence verify all three manifests, and the exact executable passed
+  packaged retail navigation in **220.1 seconds**.
+- No connector credentials were added, and no Bakaloo or business records were
+  written. Live reachability and provider certification remain external gates.
+
+### Consolidated retail-core gate re-run (2026-08-06)
+
+- `pnpm run verify:retail-core` completed successfully in **194.4 seconds**:
+  capability registry, **531** permissioned IPC handlers, renderer-copy guard,
+  Electron and Hub TypeScript, **242 root files / 1,024 tests**, **25 Hub files
+  / 106 tests**, and ESLint all pass.
+- This confirms the source-health and pull-receipt seam is included in the
+  current verified source tree. It does not add live credentials or claim
+  external provider/device certification.
+
+### Credential-generation-bound certification evidence (2026-08-06)
+
+- Exported certification rows now include the active **credential revision**
+  for commerce connectors, generic providers, and provider preflight evidence.
+  This gives an independent reviewer a precise generation to compare without
+  exporting a credential fingerprint or secret.
+- Stale conformance/preflight records remain excluded after rotation; the pack
+  continues to report the stale count and required replay action.
+- Focused certification/integration/provider coverage: **17 tests passed**;
+  the consolidated retail-core gate remains green at **242 / 1,024 root tests**
+  and **25 / 106 Hub tests**.
+
+### Credential-bound certification package rebuild (2026-08-06)
+
+- Rebuilt unsigned Windows v0.1.77 artifacts with revision
+  `ci-local-59fa5350372030797d4dc70623202930`.
+- Installer SHA-256:
+  `2b10e84e07249f9071ad194c5b4d70891e1b261de27c0857543c1e14e43da3df`.
+  Artifact and smoke manifests agree; `EPIC_BOS_SMOKE_OK` passed and packaged
+  navigation passed in **217.2 seconds**.
+- No live provider credentials or business records were added or written.
+
+### Independent certification-pack verification (2026-08-06)
+
+- Release control now offers a local, read-only **Verify retail pack** action.
+  The main process validates pack checksum, company/branch scope, summary
+  counts, credential generations, and external-gate state without importing
+  or mutating records.
+- Secret-like fields—including API keys, tokens, client secrets, and
+  fingerprints—are rejected. A pack cannot claim production readiness while
+  unresolved provider/device gates remain.
+- Source gate: **242 root files / 1,025 tests**, **25 Hub files / 106 tests**;
+  TypeScript, ESLint, renderer-copy, registry, and IPC policy alignment pass.
+  Registry: **553 records / 532 permissioned handlers**.
+
+### Independent-verification package rebuild (2026-08-06)
+
+- Rebuilt unsigned Windows v0.1.77 artifacts at revision
+  `ci-local-6b092b461c2eb79ced5b8539c30d30dd`.
+- Installer SHA-256:
+  `3da416b0eac942466f14b978b6d2e2178e4374d4174671b9f1132e548bf6f997`.
+  Artifact and smoke manifests verify; packaged smoke passed; packaged retail
+  navigation passed in **217.2 seconds**.
+- No live credentials or Bakaloo/business records were added or written.
+
+### Independent provider-package verification (2026-08-06)
+
+- Provider handoff JSON can now be verified independently from Release
+  control. The main-process verifier recomputes the checksum, derives
+  readiness from the evidence fields, rejects unknown/credential-like fields,
+  and never imports or mutates records.
+- Release control exposes **Verify provider package**. Focused provider
+  verification coverage: **5 tests passed**.
+- Source gate: **242 root files / 1,027 tests**, **25 Hub files / 106 tests**;
+  registry **554 records / 533 permissioned handlers** aligned.
+
+### Independent-verification package rebuild (2026-08-06)
+
+- Rebuilt unsigned Windows v0.1.77 artifacts at revision
+  `ci-local-23e801a5e8a571a0293fea78aa5e567d`.
+- Installer SHA-256:
+  `4238ea0ec19da5991d91da8a842b8b39ca66ed540302103b16bf21b7cb07f4f4`.
+  Artifact/smoke manifests verify; packaged smoke passed; packaged retailer
+  navigation passed in **221.1 seconds**.
+- No live credentials or Bakaloo/business records were added or written.
+
+### Provider certification handoff capture (2026-08-06)
+
+- Release control now includes a provider handoff form covering GSP/IRP,
+  banking, payroll, messaging, and logistics. It accepts contract and
+  evidence references, accountable ownership, test cases, and independent
+  approval metadata only; credential material is deliberately not collected.
+- The exported package remains redacted and checksum-backed. It cannot claim
+  production readiness without independent approval and production evidence.
+  Renderer coverage: **43 tests passed**.
+
+### Provider-handoff package rebuild (2026-08-06)
+
+- Source gate: **242 root files / 1,026 tests**, **25 Hub files / 106 tests**;
+  TypeScript, ESLint, renderer-copy, registry, and IPC policy alignment pass.
+- Rebuilt unsigned Windows v0.1.77 artifacts at revision
+  `ci-local-bf2b85a2d84bf7a2f862e1a751799d25`.
+- Installer SHA-256:
+  `71919fe7377a064125ba3afe3ea5a687ba6862e7bdb0b68c4a3b87c37b419016`.
+  Artifact/smoke manifests verify; packaged smoke and retailer navigation
+  passed in **217.2 seconds**.
+- No live credentials or Bakaloo/business records were added or written.
+
+### Clean-workspace demo quarantine gate (2026-08-06)
+
+- The renderer-copy release check now rejects retired Northstar/USD-era demo
+  names in shipped UI files while allowing explicit migration/test fixtures.
+- Packaged Electron navigation now asserts that a fresh owner workspace does
+  not render any retired fictional records before exercising the complete
+  retail rail. This protects against stale seeds, migrations, or packaged
+  cache leakage without deleting any real workspace data.
+- Verification: consolidated retail-core gate passed (**242 root files /
+  1,027 tests**, **25 Hub files / 106 tests**); unsigned Windows v0.1.77
+  artifact and smoke manifests verified; packaged navigation passed in
+  **217.1 seconds** with zero renderer errors and no scroll traps.
+- Installer SHA-256:
+  `2dcb930a49defb180378d4e5f59a33b0f43f01f71206cea9ffc6fb89bcd8973b`.
+  This remains an unsigned local build; live provider/device certification
+  and human UAT are still external gates.
+### Durable Store Edge → Hub transport evidence (2026-08-06)
+
+- Completed-sale events now cross a credential-free, main-process HTTPS seam
+  only after local checksum and sale-aggregate validation. The client rejects
+  secret-like payload fields, bounds payload/response sizes, and fails closed
+  on transport or receipt mismatches.
+- Store Edge persists append-only `sent`, `idempotent`, `conflicted`, and
+  `failed` receipts plus a branch sequence cursor. The POS exposes a simple
+  “Retail Hub coordination” panel that sends only real completed sales and
+  displays the resulting evidence; it never invents a Hub response or demo
+  endpoint.
+- Targeted verification: **16/16 tests passed**; TypeScript and ESLint green.
+  Authenticated Hub deployment, real credentials, and independent parallel-run
+  certification remain explicitly open under P1-02.
+
+### Packaged sync milestone verification (2026-08-06)
+
+- Retail core gate passed with **243 root files / 1,034 tests** and **25 Hub
+  files / 106 tests**; registry/policy alignment, renderer-copy, TypeScript,
+  and ESLint all passed.
+- Windows v0.1.77 rebuilt at revision
+  `ci-local-94206a8ecb93700c79b3260ea5177bf5`.
+- Installer SHA-256:
+  `e93bd8ebb983dfa1c2f7416ef8798d369391916507486151f1b20da3d85dcc3a`.
+  Full nupkg SHA-256:
+  `280a43e66d7581c1d60a4e1e724bdd9cbb6a3c3bed7053d8b6f540cdcb0c3625`.
+- Packaged smoke evidence verified and packaged Electron E2E passed **5/5**
+  journeys with no renderer errors or scroll traps. Live Hub deployment,
+  provider/device certification, and human UAT remain external gates.
+
+### Store Edge worker health evidence (2026-08-06)
+
+- Added a typed, read-only `GET /v1/store-edge/worker/metrics` seam with an
+  explicit `writeBackAllowed: false` response marker and server observation
+  time. Main-process validation rejects unauthenticated, malformed,
+  oversized, inconsistent, or write-back-claiming responses.
+- Release-control IPC now exposes **Check Store Edge worker** in the shadow
+  import review surface. It displays only server-owned completed, retryable,
+  and dead-letter counters; no replay or mutation action is exposed.
+- Focused verification passed **9 client/renderer tests** and **5 Hub adapter
+  tests**; capability registry and **535** permissioned handlers align. This
+  remains operational evidence and does not certify an authenticated
+  production deployment.
+
+### Worker-health packaged build verification (2026-08-06)
+
+- Full retail-core verification passed after the worker-health seam, including
+  registry/policy, renderer-copy, TypeScript, root and Hub tests, and ESLint.
+- Windows v0.1.77 rebuilt at revision
+  `ci-local-fd5c101e14e061e5aa83703c12603821`.
+- Installer SHA-256:
+  `7a6ebbad7c1bf150e73620a7561d6bf1c61c0836dc6ef0e235e8c223c6ad69b7`.
+  Full nupkg SHA-256:
+  `c551700d5cefaa3bc389bd63df7679ca986a82d71dd9aee4ec6eba6c9280c31f`.
+- Artifact manifests verify **2/2**; packaged smoke and Electron E2E passed
+  (**5/5** journeys). Unsigned local status and external provider/device/Hub
+  deployment gates remain unchanged.
+
+### Unified cancellation reconciliation milestone (2026-08-06)
+
+- Cancellation outcomes from every governed retail channel now have a local,
+  replay-safe reconciliation boundary. The source must authoritatively report
+  `cancelled`; the operator must submit the current source checksum, stock
+  release/no-reservation evidence, and payment or wallet reversal evidence.
+- Open source conflicts, stale checksums, missing requirements, maker-self
+  approval, malformed references, and non-cancelled sources are rejected.
+  Successful closure is append-only, moves the local order to
+  `cancelled-reconciled`, and never performs provider write-back or stock,
+  payment, wallet, or tax mutation.
+- Electron inbox controls are intentionally simple: record local evidence only;
+  there is no unsafe “cancel provider order” action. The new IPC channel is
+  authenticated and policy-aligned.
+- Verification: full retail-core gate **244 root files / 1,040 tests** and
+  **25 Hub files / 106 tests** passed; capability registry **557 records** and
+  **536 permissioned IPC handlers** aligned; focused domain/UI coverage **22
+  tests** passed.
+
+### Cancellation packaged build verification (2026-08-06)
+
+- Windows v0.1.77 unsigned build revision:
+  `ci-local-8371c3742e45dcb3d16aa4304b659ec3`.
+- Installer SHA-256:
+  `8535be4440fa03df6e8b1e870855776a1fb5c838adc3f080f6dbb3895888cda6`;
+  full nupkg SHA-256:
+  `96c5b621db8306495490164fbf478b328ab9ded1ccb81436d3b924eaffae0620`.
+  Artifact manifests **2/2** and packaged smoke (`EPIC_BOS_SMOKE_OK`) passed.
+- This build does not claim live provider/device certification, authenticated
+  Hub deployment, or human UAT. Bakaloo production remains untouched.
+
+### Packaged UI certification runner hardening (2026-08-06)
+
+- The packaged E2E helper now bounds the renderer close request and performs
+  deterministic child cleanup when Windows leaves a CDP close pending. This
+  affects only test cleanup; normal app shutdown, database sealing, and
+  recovery paths remain the exercised behavior.
+- The exhaustive navigation journey passed **1/1** in **222.6 seconds**. The
+  official packaged suite passed **5/5** journeys in **453.7 seconds** with no
+  renderer errors or scroll traps: navigation, POS checkout/restart, offline
+  conflict recovery, offline recovery, and owner bootstrap/restart.
+
+### Final cancellation-build artifact verification (2026-08-06)
+
+- Windows v0.1.77 revision:
+  `ci-local-8371c3742e45dcb3d16aa4304b659ec3`.
+- Installer SHA-256:
+  `b839aacaeb85204d3a5f20b02a872767ecedb490c500ba508b3036ef46f3e3ca`;
+  full nupkg SHA-256:
+  `7dc024b2f6d1a54c96daa914b008a4438faab475e368e681ca66a5f4fcad70ea`.
+  Artifact manifests **2/2** and packaged smoke (`EPIC_BOS_SMOKE_OK`) passed.
+
+### Windows release handoff pack (2026-08-06)
+
+- Generated `out/release-certification/win32-0.1.77` from the current artifact
+  manifests and build-identity-bound smoke evidence.
+- Pack SHA-256:
+  `a267b29761ec3eb596602684c7c7dfb6234918638f4c74023c099e263ec441ab`.
+  The machine-readable pack remains **hold** until signing, provider/device
+  certification, monitoring, and independent release approval exist.
+
+### Packaged navigation certification evidence (2026-08-06)
+
+- The packaged navigation journey now writes a build-revision-bound
+  `retail-navigation-certification.json` evidence record beside the other E2E
+  artifacts. It records the observed route, submodule, shortcut, renderer
+  error, and viewport-scroll guarantees instead of relying only on console
+  output.
+- The final Windows package passed the journey **1/1** in **259.4 seconds**:
+  **8** primary retail workspaces, **31** submodules, and **45** labelled
+  shortcuts opened successfully; renderer errors were empty.
+- Narrow viewport evidence passed at **700px** with no horizontal overflow and
+  a scrollable content surface (**5,967px** content height vs **736px** client
+  height). This is local packaged UI evidence, not a substitute for human
+  acceptance on every role, device, and operating system.
+- Stable evidence copy: `out/e2e-certification/win32-0.1.77/retail-navigation-certification.json`;
+  SHA-256 `470af1642edda91a256b258bcc5f1be1197051599c6e61656e1ee3c4b9b7bec7`.
+
+### Workspace-owner runtime authorization and corrected packaged certification (2026-08-07)
+
+- Added migration `029-workspace-owner-runtime-authorization` without changing
+  the immutable `002-workspace-owner-authorization` checksum. The bootstrap
+  owner now has explicit, governed read access to operational health and
+  read/create/approve/export access to retail release-control surfaces. Other
+  users remain default-deny, migration replay is idempotent, and tampered role
+  or grant evidence fails closed.
+- Source verification is green: **244 root test files / 1,042 tests**, **25 Hub
+  files / 106 tests**; TypeScript, ESLint, renderer-copy, capability registry,
+  and IPC policy alignment all pass. The authorization-focused suites pass
+  **35/35**.
+- Rebuilt unsigned Windows v0.1.77 at revision
+  `ci-local-34aa491ef32544e540928a40a448d740`.
+- Installer SHA-256:
+  `58226203aed6523b999329def4ef12935815810aadd08056bce5c765d425fd1e`;
+  full nupkg SHA-256:
+  `feda7dc6fd83b66d770c0012caff3b43267ee219407cbdb73b7f3091137c2367`.
+  Artifact verification passed **2/2**.
+- The corrected packaged navigation journey passed **1/1** in **251.2
+  seconds**: **8** primary routes, **31** submodules, **45** shortcuts, and
+  zero renderer errors. The actual scroll owner is `overflow-y:auto` with
+  **2,938px** content over a **707px** desktop viewport; the narrow 700px
+  check has no horizontal overflow and **6,275px / 736px** vertical content.
+  Focused packaged intelligence and maintenance routes also passed **1/1**
+  each.
+- Stable evidence:
+  `out/e2e-certification/win32-0.1.77/retail-navigation-certification.json`;
+  SHA-256 `8d04e146c2a7329f940bc91cb9f12ed78837b852fcd2f6bc03daeb3a7b595f9e`.
+- This remains an unsigned local build. Live GSP/IRP, banking, messaging,
+  logistics, device drivers, code signing, monitoring, and independent human
+  UAT are not simulated or certified by this milestone; Bakaloo production was
+  not written to.
+- Packaged smoke evidence was regenerated and independently verified against all
+  three Windows release manifests (`EPIC_BOS_SMOKE_OK`). The refreshed release
+  certification pack is at `out/release-certification/win32-0.1.77` with pack
+  SHA-256 `4ea89911d4fa5c5dd2830f932e7e3d39e2889f9c268633e678b5a6029a3c2f87`;
+  its go/no-go remains **hold** by design.
+
+### Release-matrix integrity verifier (2026-08-07)
+
+- Added `scripts/verify-release-matrix.mjs` and the `verify:release-matrix`
+  package command. It independently verifies every artifact sidecar, groups
+  artifacts by Windows/macOS/Linux, rejects mixed version/schema/build identity
+  records within a platform, and requires all three platform rows before the
+  matrix can be considered integrity-verified.
+- The current local Windows v0.1.77 output is truthful: Windows is verified
+  across **3/3** manifests, while macOS and Linux are **missing**. The command
+  therefore exits non-zero and reports `artifactIntegrityStatus: blocked`;
+  it does not infer native builds from the Windows package.
+- This verifier is an artifact-integrity gate only. It deliberately leaves the
+  release decision on **hold** until code signing, macOS notarisation, provider
+  and device certification, human UAT, monitoring, and independent approval are
+  attached to the same release line.
+
+### Linux unsigned artifact and partial native matrix (2026-08-07)
+
+- Built an unsigned Linux x64 ZIP from the current source in the isolated output
+  `out/cross-linux` with revision `ci-local-cross-linux-20260807`.
+- Artifact: `out/cross-linux/make/zip/linux/x64/Epic BOS-linux-x64-0.1.77.zip`;
+  artifact SHA-256 `7a1c58fba3d32aa23c99fa49bb6820dbebeeddec52c1e2666216f89d861210f5`;
+  manifest SHA-256 `443b20f02de330b1768a817802e0d4793756928aab9755c10e99e774bb87a48c`.
+  `verify-release-artifacts` passed **1/1** for Linux.
+- The combined matrix report now verifies Windows **3/3** and Linux **1/1**;
+  macOS is missing, so the command exits non-zero with
+  `artifactIntegrityStatus: blocked`. A Linux package created on Windows is
+  not treated as native Linux launch, visual, device, or signing evidence.
+- The macOS attempt on this Windows host produced no artifact; macOS remains
+  assigned to the native macOS CI runner in `.github/workflows/release-matrix.yml`.
+- Updated that workflow from the retired `macos-13` label to the explicit
+  x64-compatible `macos-15-intel` runner. The hosted job still must execute and
+  produce its own package, smoke, signing and notarisation evidence.
+### Bakaloo cookie-only dashboard auth boundary (2026-08-07)
+
+The live Bakaloo source checkouts now have a migration-safe browser session
+boundary. The dashboard marks requests as `X-Auth-Transport: cookie`, never
+persists `accessToken` or `admin-user` in localStorage, validates reloads with
+`/admin/auth/me`, and starts Socket.IO with `withCredentials` so the server can
+authenticate from its HttpOnly cookie. The backend keeps the legacy JSON token
+for unmarked native clients, omits it for marked dashboard login/select-shop
+responses, accepts the cookie during Socket.IO handshakes, and exposes logout
+without requiring an already-valid JWT so expired sessions can still clear
+cookies. Protected backend mutations now fail closed for untrusted browser
+Origins while preserving no-Origin native/worker requests. Focused
+verification: dashboard cookie-session/API/401 tests 4/4, backend
+cookie-transport/socket-auth/CSRF tests 9/9, dashboard production build
+passes. Remaining security evidence is production CSRF/session policy and
+browser/provider UAT; this does not authorize live cutover. The broader audit
+backend suite remains non-green in unrelated pre-existing product, cart,
+settlement, and stock-contract tests; those failures are not attributed to
+this session boundary without a separate regression investigation.
+
+### Canonical Bakaloo realtime/outlet scope boundary (2026-08-07)
+
+- Began the production-exit programme with the highest-risk local security
+  work: HTTP and Socket.IO authority now derive from the current user row and
+  active outlet assignment, rather than treating a historic `role: ADMIN`
+  claim as cross-outlet authority.
+- A socket handshake re-checks account state, session version, canonical HQ
+  platform role and active outlet assignment. The legacy `admin:dashboard`
+  room is removed; only verified HQ users join `hq:global`.
+- Order tracking is now checked against customer ownership, the exact active
+  rider assignment, the current outlet assignment, or canonical HQ authority.
+  Rider location updates cannot choose an arbitrary order room and are no
+  longer broadcast to all riders.
+- Focused verification: **46/46** HTTP scope, property, Socket.IO principal
+  policy and canonical-principal tests passed; targeted ESLint and syntax
+  checks passed. This remains partial until real Socket.IO/PostgreSQL/Redis
+  multi-shop tests, complete route adoption and independent review are
+  attached. No Bakaloo production data was changed.
+
+### Keyring lifecycle and payment-webhook integrity boundaries (2026-08-07)
+
+- Epic BOS now has a versioned v2 main-process keyring that safely migrates
+  the previous OS-wrapped master-key artifact, performs Electron-requested
+  rewrapping, and fails closed on weak Linux `basic_text` storage. It keeps the
+  existing master key for existing encrypted database envelopes, backups,
+  attachments and provider records; it deliberately does **not** claim native
+  encrypted SQLite or complete master-key rotation. Focused keyring/crypto
+  verification passed **17/17**, with targeted ESLint and full TypeScript
+  checks green.
+- Bakaloo's canonical `/api/webhook/razorpay` boundary now captures the exact
+  request bytes before JSON parsing, verifies HMAC in constant time, requires
+  `x-razorpay-event-id`, persists a replay/processing ledger through migration
+  `092_provider_webhook_events.sql`, and accepts duplicate events without
+  repeating fulfilment side effects. The duplicate legacy public webhook route
+  was retired. Atomic payment status guards prevent a late `payment.failed`
+  event from downgrading PAID money.
+- Focused backend scope/payment verification passed **54/54** tests; the raw
+  byte, invalid-signature, replay, duplicate-finalisation and out-of-order
+  payment cases are covered, and targeted ESLint/syntax/diff checks pass.
+  This does **not** replace an applied database migration, real Razorpay
+  sandbox replay, finance reconciliation, or production provider approval.
+- The current full Epic BOS source suite completed successfully after the
+  keyring change. Root TypeScript, ESLint, renderer-copy, IPC-policy alignment
+  (**536** permissioned handlers), capability-registry verification, and the
+  Retail Hub TypeScript/test suite (**25 files / 106 tests**) also pass. This
+  remains source evidence, not a signed or provider-certified release.
+
+### Canonical shop administration and delivery-map truth (2026-08-07)
+
+- Continued the canonical-principal migration through shared auth and the
+  product, staff, finance and ledger control paths. A historic/base `ADMIN`
+  label is no longer enough for an HQ-admin decision; the current canonical
+  `platform_role` must be `ADMIN` or `SUPER_ADMIN`.
+- Hardened the Bakaloo delivery boundary for the future Leaflet/OpenStreetMap
+  experience: only a `RIDER` may use delivery endpoints; pickup coordinates
+  are shown only for the rider's active assigned shop; no endpoint returns a
+  fabricated Kolkata location or `0,0`; and socket telemetry is retained and
+  emitted only after server-side active-assignment verification.
+- Focused backend verification: **9 files / 114 tests** passed, including
+  cross-shop property/integration tests, canonical-admin escalation denial,
+  financial/ledger access checks and the no-fake-map contract. Targeted ESLint
+  and diff checks pass. This is still a source boundary: consent/retention,
+  real device/network recovery and live map-provider certification remain open.
+
+### Database-enforced finance immutability (2026-08-07)
+
+- Added an idempotent PostgreSQL migration which creates a `BEFORE UPDATE OR
+  DELETE` trigger on `shop_transactions`. Historical money evidence can now be
+  corrected only through new reversal/adjustment entries once the migration is
+  applied; the API still exposes read-only transaction routes.
+- Source-level migration and append-only property verification passed **14/14**.
+  This changes neither the live database nor the remaining requirement for a
+  governed dry run, restricted production DB grants, reconciliation evidence,
+  and finance-owner approval.
+
+### Atomic Retail Hub shadow registration (2026-08-07)
+
+- Hardened `pullAndRegisterScopedShadowImport`: a durable repository must now
+  expose one atomic plan-plus-pull-receipt registration operation. The runtime
+  rejects repositories that would write the plan and receipt separately, so a
+  failed receipt write cannot leave partially registered migration evidence.
+- Hub TypeScript checking passed and the focused deployment, Node adapter,
+  PostgreSQL repository, vault pull, and scoped-pull suite passed **30/30**.
+  Live PostgreSQL/Redis deployment and real Bakaloo credentials remain
+  intentionally unconfigured.
+
+### Store Edge lease and transaction-scope hardening (2026-08-07)
+
+- Corrected the durable worker claim result: PostgreSQL now returns the
+  authoritative post-claim JSON lease record instead of reading fields that
+  the SQL statement never returned. A concurrent enqueue is re-read after the
+  insert race, so callers cannot receive a fake `pending` item for already
+  leased work.
+- Durable Store Edge inbox and worker repositories now fail closed unless a
+  trusted transaction-scoped SQL client is supplied. This keeps RLS context and
+  lease/receipt transitions inside the deployment's transaction boundary.
+- Hub TypeScript checking passed; the focused offline worker/inbox suite passed
+  **18/18**, including lease reclaim, dead-letter, scope isolation, enqueue
+  race, and missing-transaction-wrapper cases. Live store recovery drills and
+  PostgreSQL/Redis deployment evidence remain open.
+
+### Database and backup envelope key separation (2026-08-07)
+
+- Runtime database and encrypted backup files now write namespace-separated
+  v2 AES-256-GCM envelopes (`runtime-database` and `database-backup`). Existing
+  v1 direct-key envelopes remain readable through an explicit dual-read
+  resolver, so rollback and restore preserve prior evidence.
+- Unknown or truncated envelope versions fail closed, and version-specific AAD
+  is authenticated before plaintext is released. Protected database startup,
+  shutdown, key rotation, backup creation, restore inspection, and isolated
+  restore drills all use the version-aware boundary.
+- Focused verification passed: encrypted envelope **3 tests**, protected
+  database **5 tests**, backup/restore **2 tests**, and TypeScript. This is a
+  local key-derivation compatibility improvement, not native SQLite page
+  encryption or OS master-key retirement. Backup inventory/rewrap, provider
+  and device certification, and independent production approval remain open.
+
+### Managed backup inventory and rewrap (2026-08-07)
+
+- Added migration `027-backup-envelope-key-version` and key-version evidence
+  to backup receipts. Backup administrators can run **Secure local backup
+  files** from Storage; the main-process operation scans only the app-managed
+  backup directory, classifies plaintext/v1/v2/invalid files, and atomically
+  rewraps plaintext or v1 files into the active v2 namespace envelope.
+- Each replacement is reopened and checked for SQLite integrity/schema before
+  the previous file is removed. Invalid files remain visible in the receipt;
+  backups saved outside the managed directory are not silently claimed as
+  migrated.
+- Focused verification passed: backup service **3 tests**, database migration
+  suite **20 tests**, IPC alignment **537 handlers**, renderer-copy check, lint,
+  and TypeScript. Native SQLite page encryption, OS master-key retirement,
+  external backup inventory, provider/device certification, and independent
+  production approval remain open.
+
+### Store Edge lease fencing (2026-08-07)
+
+- Added a per-lease fencing token to the Store Edge worker contract and
+  PostgreSQL schema. Every claim generates a token bound to the work id,
+  worker, expiry, and attempt; completion/retry now require the exact token and
+  clear it on release.
+- The in-memory and PostgreSQL repositories reject stale acknowledgements even
+  when the same worker ID is reused after expiry. Existing tokenless leased
+  rows fail closed rather than allowing an ambiguous completion.
+- Hub verification passed **25 files / 110 tests** and TypeScript. Live
+  PostgreSQL migration application, multi-worker recovery, and independent
+  store coordination evidence remain external deployment gates.
+
+### Store Edge inbox insert-race reconciliation (2026-08-07)
+
+- Durable event insertion now uses `ON CONFLICT DO NOTHING RETURNING` and
+  re-reads the authoritative event or transaction/sequence winner when a
+  concurrent writer wins. The caller receives `idempotent` or `conflicted`
+  evidence instead of a synthetic `recorded` response for an event that was
+  not persisted.
+- Receipt identifiers now use UUIDs, preventing same-event/same-timestamp
+  collisions from returning a receipt that was never durable. The in-memory
+  and PostgreSQL paths continue to validate checksums, sequence monotonicity,
+  transaction keys, and tenant/company/branch scope.
+- Hub verification passed **25 files / 111 tests** and TypeScript. Live
+  PostgreSQL concurrency/recovery evidence and independent parallel-run
+  approval remain external gates.
+
+### Store Edge per-branch acceptance serialization (2026-08-07)
+
+- Durable Store Edge acceptance now takes a PostgreSQL
+  `pg_advisory_xact_lock` derived from the tenant/company/branch scope before
+  reading the existing event, transaction key, or branch sequence. This keeps
+  the monotonic sequence decision serialized inside the same transaction-local
+  RLS boundary and prevents two concurrent writers from both accepting against
+  one stale `MAX(sequence)` observation.
+- The lock is transaction-scoped and is released automatically with the
+  injected `withScope` transaction; no process-global lock or unbounded state is
+  introduced. Hub verification remains **25 files / 111 tests** and TypeScript
+  clean. Live PostgreSQL concurrency, failover, and store coordination evidence
+  remain external gates.
+
+### Store Edge HTTP-to-worker handoff (2026-08-07)
+
+- The Node Retail Hub adapter now accepts an injected, scope-bound
+  `StoreEdgeSyncWorkStore`. When configured, recorded and idempotent events are
+  handed to the worker queue before the adapter returns `202`/`200`; repeated
+  events reuse the existing work item instead of creating duplicates.
+- The adapter remains explicit about local-only mode when no worker store is
+  injected. A production deployment must provide a durable implementation and
+  still run inbox plus work insertion in one PostgreSQL transaction for atomic
+  outbox evidence. Hub verification passed **25 files / 112 tests** and
+  TypeScript remains clean; live deployment and atomic transaction evidence are
+  external gates.
+
+### Store Edge atomic inbox/outbox coordinator (2026-08-07)
+
+- `createPostgresStoreEdgeSyncRepository` now exposes `acceptAndEnqueue`. It
+  opens one transaction-scoped RLS boundary, reuses the event and worker
+  repositories against that same client, and commits the event row, receipt,
+  and worker item together. If worker insertion fails or has no authoritative
+  row, the transaction fails instead of returning a synthetic success.
+- The Node HTTP adapter detects and prefers this atomic operation. The worker
+  repository also fails closed when an insert race produces no authoritative
+  row. Hub verification passed **25 files / 115 tests** and TypeScript remains
+  clean; live PostgreSQL rollback/concurrency and deployed worker evidence
+  remain external gates.
+
+### Store Edge atomic deployment gate (2026-08-07)
+
+- Added `RETAIL_HUB_STORE_EDGE_ATOMIC_INBOX_CONFIGURED` to the server-owned
+  deployment configuration. Staging and production readiness now expose a
+  dedicated `store-edge-atomic-inbox` check and remain on hold until the
+  deployed adapter is wired to `acceptAndEnqueue`.
+- The preflight report returns only the check ID/status and never configuration
+  values. Missing or malformed flags remain named invalid-config blockers;
+  local source code or an in-memory queue cannot satisfy the production gate.
+- Hub verification remains **25 files / 117 tests**; root TypeScript and
+  ESLint are clean. Live transaction rollback, PostgreSQL/Redis deployment,
+  and real store recovery evidence remain external.
+
+### Retail Hub RLS scope verification (2026-08-07)
+
+- Hardened `createRlsScopedSqlClient`: after parameterized transaction-local
+  `set_config` calls, it reads `current_setting(..., true)` for all three
+  scope dimensions and refuses to invoke repository SQL if any value differs
+  or is absent. Direct unscoped queries still fail closed.
+- Added mismatch and rollback-propagation tests. Hub verification passed **25
+  files / 117 tests**; root TypeScript and ESLint remain clean. A live pool,
+  applied RLS migration, and database rollback drill are still external.
+
+### Store Edge durable worker metrics (2026-08-07)
+
+- Added the scope-bound `StoreEdgeSyncWorkerMetricsStore` seam. Worker runtime
+  counters are now loaded and saved by tenant/company/branch, and the async
+  `loadMetrics(scope)` read is available before a worker run, so a restart
+  restores history and one branch cannot expose another branch's totals.
+- Added the PostgreSQL projection repository and migration table
+  `retail_store_edge_sync_worker_metrics`, protected by a scoped primary key,
+  `FORCE ROW LEVEL SECURITY`, and the same verified transaction-local RLS
+  settings used by the event/work repositories. Missing rows start at zero;
+  malformed counters or unscoped clients fail closed.
+- Hub verification passed **26 files / 123 tests** and TypeScript; root
+  TypeScript and ESLint are clean. A live metrics exporter, applied migration,
+  restart drill, and independent production observability evidence remain
+  external deployment gates.
+
+### Provider certification credential binding (2026-08-07)
+
+- Provider certification handoffs now require a positive monotonic
+  `credentialRevision`; the revision is included in the redacted package and
+  the simple release form never accepts secret material.
+- Independent verification can receive the current vault revision and rejects
+  a package produced by an older generation, while preserving the checksum and
+  evidence references for audit. Existing connector conformance/readiness
+  projections continue to classify rotated evidence as stale.
+- Focused provider-certification and renderer verification passed **48 tests**;
+  root TypeScript remains clean. A live vault revision resolver, real provider
+  credentials, and independent sandbox/production approval remain external.
+### Build 0.1.78 — bounded Electron suite evidence (2026-08-08)
+
+- `pnpm.cmd run test:batches -- --batch-size 24 --timeout-ms 180000` passed all
+  **246 test files / 1,057 tests** in 11 auditable batches.
+- The batch summary and per-batch logs are local certification evidence; the
+  directory is ignored so release artifacts do not accidentally include test
+  logs.
+- This verifies the Electron test suite only. Release remains held for native
+  macOS/Linux artifacts and signing, physical devices, real providers, live Hub
+  deployment/shadow import, and independent click-by-click UI/UAT.
+### Native device evidence boundary hardening (2026-08-08)
+
+- Renderer IPC no longer exposes a native USB/Bluetooth driver-result action.
+- Generic operator acknowledgement now fails closed for profiles marked
+  `native-driver-required`; only the main-process bridge service seam can bind
+  native driver identity and response metadata.
+- The device UI shows a blocked, explicit “Native bridge result required” state
+  instead of an operator-entered evidence form. Web Serial/Web Bluetooth remain
+  bounded diagnostics, not live driver activation.
+- Domain/UI regression coverage and the IPC policy/registry checks are green.
+### Build 0.1.79 verification (2026-08-08)
+
+- Windows x64 installer rebuilt after native device evidence hardening.
+- Artifact manifest verification passed for `Epic BOS-0.1.79 Setup.exe`.
+- Installer SHA-256: `6dc3094a09b6412b69ab28636f33cf58bb7c3e2e0bf23b9b2a629da265b17c54`.
+- Isolated packaged Windows smoke passed with `EPIC_BOS_SMOKE_OK`; smoke
+  evidence and the three-artifact release pack verify against build revision
+  `ci-local-348b36e1767901400f2f382735ab2490` (pack SHA-256
+  `a6025b0bd492aa749d1f3d055f93b79b182b900dba76fd30c27e0cd72335fb`).
+- Windows artifact integrity is verified; release remains **HOLD** until
+  native macOS/Linux artifacts, signing/notarisation, provider/device evidence,
+  and independent UAT are supplied.
+### Native bridge attestation and Build 0.1.80 (2026-08-08)
+
+- Native USB/Bluetooth results now require an Ed25519 detached attestation
+  bound to the approved profile/version, command payload checksum, response
+  metadata, timestamp, nonce, driver identity, and public-key fingerprint.
+- Tampered, stale, wrong-key, malformed, or unsigned responses fail closed;
+  the attestation fingerprint, nonce, timestamp, and signature are retained in
+  the evidence record. Generic operator acknowledgement remains blocked for
+  native-driver-required profiles.
+- Domain/profile/store regression coverage passed **46 tests**; TypeScript and
+  ESLint passed.
+- The complete Electron suite then passed **246 files / 1,057 tests** in 11
+  bounded batches after the attestation change.
+- Windows x64 **0.1.80** was rebuilt. Installer SHA-256:
+  `29d9d0a81c9dc6cf0a9344e9208d28a8e232b8f71f218fb5ad3daefd312bdd14`.
+  Isolated packaged smoke, smoke-evidence verification, and the three-artifact
+  release pack passed (pack SHA-256
+  `a31926f41b36472b8a84c0641e9c16797d620013c067bbcc465309d30c2613d5`).
+- Release remains **HOLD** for real bridge/hardware certification, provider
+  credentials, live Hub deployment, macOS/Linux artifacts, signing, and UAT.
+- Retail Hub typecheck and regression suite are green at **26 files / 123
+  tests**; this remains a local, dependency-injected service boundary rather
+  than a deployed production Hub.
+### Native nonce replay guard and Build 0.1.81 (2026-08-08)
+
+- Signed native attestation nonces are now unique across completed device
+  evidence records; reusing a valid signed envelope on another command is
+  rejected as replay.
+- Focused native transport regression passed **9 tests** after this final
+  guard. The complete post-guard Electron suite was then reconciled across 11
+  bounded groups: **246 files / 1,057 tests passed**.
+- Windows x64 **0.1.81** was rebuilt after the final source checks. Manifest
+  verification, isolated packaged smoke, and smoke-evidence binding passed
+  for build revision `ci-local-60424a29ec6586ef0bc50b122476269d`.
+  Installer SHA-256:
+  `c14662788e7d1c9188c6d55772665afd96da41353069a5db1e46cfd4cfd6f318`.
+  Release pack SHA-256:
+  `f68cf4be49dabf4f0a76295bb1ac52cfb304127149d1b84c6aa96cc69ae1d0bc`.
+- Release remains **HOLD** for real bridge/hardware, providers, live Hub,
+  signing, native macOS/Linux artifacts, and independent UAT.
+
+### Retail Hub fail-closed production startup boundary (2026-08-08)
+
+- Added `startRetailHubProductionServer`, a dependency-injected launch seam
+  that runs the value-free deployment preflight before creating or binding an
+  HTTP listener. Any production blocker stops startup with a structured
+  preflight error; no socket is opened on a hold.
+- Binding now requires an explicit hostname/IP and port, rejects wildcard or
+  malformed values, and closes the server if the listener fails. The service,
+  trusted authorization context, PostgreSQL/Redis clients, credential vault,
+  TLS termination, and live Bakaloo connector remain host-owned dependencies.
+- Retail Hub verification passed **27 files / 126 tests** and typecheck. This
+  is a startup boundary and local evidence only; it is not live deployment or
+  provider certification.
+
+### Linux cross-build artifact boundary (2026-08-08)
+
+- Forge now supports an explicit `EPIC_BOS_ZIP_ONLY_CROSS_BUILD=true` mode for
+  a Windows host. It selects only the portable Linux ZIP maker; the default
+  native maker set remains unchanged, and RPM/DEB remain reserved for a native
+  Linux runner.
+- Epic BOS **0.1.81** Linux x64 ZIP was produced and manifest/checksum
+  verified at `out/linux-cross-0.1.81/make/zip/linux/x64/Epic BOS-linux-x64-0.1.81.zip`.
+  Artifact SHA-256:
+  `8fb027f3dd029e8ba344cdec135eb576ea5bca3b4ec765c045f7a8cb70b5ea16`;
+  manifest SHA-256:
+  `9c4ea6c29e0808961950ed656b2f0c0c3130b08791555dae0bc100664e781ee4`.
+- This is integrity evidence only. Linux native smoke, signing, device
+  testing, and macOS packaging remain open; the release matrix stays **HOLD**.
+- Corrected the native-release workflow to use one source
+  `EPIC_BOS_BUILD_REVISION` across all platforms. The prior platform-suffixed
+  value would make the matrix-integrity verifier reject otherwise compatible
+  artifacts; platform provenance remains recorded separately in each manifest.
+- A local Windows/Linux identity sanity build using shared revision
+  `ci-local-e964155a642ecd6f33d4ce2b06f031cd` produced the same release identity
+  `06a5c49c3fe9e30731994d7b7cad9261a4b578b44ec83ec5c1c90c89205ea209` on both
+  manifests. macOS and native smoke evidence are still required.
+
+## Allocation and shop-staff scope hardening (2026-08-08)
+
+The customer allocation recompute endpoint now uses the canonical
+`platform_role` authority: a legacy/base `role: ADMIN` claim alone cannot
+recompute allocations for another user, while a current platform `ADMIN`
+claim can. Self-recompute remains available to the authenticated user.
+
+Shop-staff routes now run the shared shop-scope middleware on every read and
+write path. The controller resolves `request.shopId` as authoritative and
+rejects a shop-scoped caller whose legacy body `shop_id` differs; HQ admins
+without an explicit scope retain backwards-compatible body targeting. Focused
+allocation coverage passed **66/66 tests**, shop-staff scope/controller
+coverage passed **4/4**, and the combined HTTP/middleware set passed **31/31**.
+Live multi-shop PostgreSQL/Redis evidence and migration application remain
+open.
+
+## Coverage-map shop truth hardening (2026-08-08)
+
+Coverage-map customer points are already derived from the selected shop's
+serviceability rules. Its active-order indicator now also filters `orders` by
+that same `shop_id`, preventing another shop's active order from changing the
+selected shop's operational map state. Focused repository coverage passed
+**1/1 test**; the route remains an HQ-only, read-only surface.
+
+## Settlement late-refund ownership hardening (2026-08-08)
+
+Late-refund settlement now treats the order's persisted shop as authoritative
+whenever an `orderId` is present. A caller-supplied shop mismatch or an order
+whose ownership cannot be resolved fails closed before any financial row is
+updated; an explicit reconciliation date remains supported. Focused
+settlement coverage passed **3/3 tests**, and the settlement worker regression
+set passed **24/24**. Live database/queue recovery evidence remains open.
+
+## Dashboard pending-action shop isolation (2026-08-08)
+
+Shop-scoped dashboard pending actions now restrict pending payouts to the
+selected shop and count pending riders only through delivery assignments tied
+to that shop. HQ-wide dashboard behavior remains unchanged. Focused dashboard
+scope coverage passed **8/8 tests**; migration 095 and live multi-shop
+dashboard evidence remain open.
+
+## Delivery mutation and proof ownership hardening (2026-08-08)
+
+Delivery repository mutations now require the assignment id, order id, and
+rider id together for reject, cancel, pickup, and completion writes. The
+idempotent pickup/completion reads use the same compound ownership predicate,
+preventing stale or malformed internal calls from mutating an assignment from
+another order or rider. Delivery OTP write/verify operations are likewise
+bound to the assigned rider, and proof uploads update the order only when the
+assignment ownership update returns a row in the same transaction. Focused
+repository coverage passed **4/4 tests**; delivery-service source tests remain
+outside the configured Vitest include path and should be migrated into the
+governed suite before release. Live multi-rider race/recovery evidence remains
+open.
+
+## Finance control-plane canonical authorization (2026-08-08)
+
+Admin finance global-view and payout/settlement guards now require the
+canonical `platform_role` authority; a legacy/base `role: ADMIN` claim alone
+cannot enter the cross-shop finance control plane. Route-level authorization
+coverage passed **2/2 tests**, and the existing flat-finance repository set
+passed **7/7**. Live role hydration and deployed finance UAT remain open.
+
+## Bulk-order and admin target authorization (2026-08-08)
+
+Bulk-order transition/list/detail authorization now recognizes only canonical
+platform admins for cross-shop authority; legacy base `role: ADMIN` claims are
+treated as non-HQ and must use shop-staff or customer ownership rules. Admin
+user blocking now reads `platform_role` and protects every canonical HQ role,
+not only the mutable base role. Bulk-order/unit/property coverage passed
+**103/103 tests**, and admin target-protection coverage passed **2/2**.
+
+## Audit-log canonical HQ scope (2026-08-08)
+
+Audit-log scope resolution now treats only canonical `platform_role` values as
+HQ. A shop-staff or legacy base `role: ADMIN` token cannot be promoted to a
+global audit-log reader by the controller's defensive scope resolver. Focused
+scope coverage passed **2/2 tests**; route permission and deployed UAT remain
+open.
+
+## Governed delivery-service regression and compound ownership verification (2026-08-08)
+
+The Vitest configuration now includes both `tests/**/*.{test,spec}.{js,mjs}`
+and `src/**/*.{test,spec}.{js,mjs}`. This prevents source-adjacent delivery
+service tests from being silently omitted from the release gate. The governed
+delivery service, repository ownership, and map-boundary set passed **3 files /
+18 tests**, with ESLint clean. The broader authorization and shop-isolation
+regression set passed **25 files / 272 tests**. The passing result is local
+dependency-injected evidence; the repeated Postgres/Redis connection-refused
+messages confirm that live database, queue, and multi-shop recovery evidence
+still requires running infrastructure.
+
+## Coupon admin shop-ownership hardening (2026-08-08)
+
+Coupon target-user, analytics, update, and delete paths now resolve the
+coupon before acting and fail closed when a shop-staff actor's active shop does
+not own the coupon. Category/product/delivery coupons created by shop staff
+are bound to that shop as well, preventing an unowned global record. HQ roles
+retain the deliberate global control plane. Coupon scope and canonical-auth
+coverage passed **9 files / 62 tests** with ESLint clean; live shop-staff role hydration and
+database evidence remain open.
+
+The reconciled authorization, delivery, allocation, coupon, worker, property,
+and cross-shop integration gate then passed **34 files / 334 tests**. The
+follow-on team/HQ, legacy-auth, target-protection, and data-audit rerun passed
+**40 files / 351 tests**. Redis and PostgreSQL connection-refused logs are expected in this
+local run and do not constitute live infrastructure evidence.
+
+The Electron retail workspace was rechecked after the boundary changes:
+TypeScript `tsc --noEmit` and cached ESLint both passed. No new packaged build
+was cut because the current release remains on hold for live infrastructure,
+provider/device certification, and native macOS/Linux evidence.
+
+The complete Bakaloo backend Vitest gate then passed **178 files / 1,773
+tests** with ESLint clean. The suite still logs expected connection-refused
+warnings from tests that intentionally exercise unavailable local PostgreSQL
+and Redis; this remains local dependency-injected evidence, not live
+infrastructure certification.
+
+## Dashboard rider scope correction (2026-08-08)
+
+Dashboard rider totals were previously platform-wide even when a scoped shop
+context was supplied. Scoped KPI, dashboard, and live-stat queries now derive
+riders and active deliveries through the authoritative
+`delivery_assignments -> orders.shop_id` relationship; unscoped HQ requests
+retain the platform view. Focused dashboard scope coverage passes **2 files /
+10 tests** with ESLint clean. Live shop-staff authorization, deployed data,
+and multi-shop integration evidence remain open.
+
+After this correction, the complete backend Vitest gate passes **179 files /
+1,776 tests** with ESLint clean. PostgreSQL/Redis connection-refused messages
+remain expected local evidence warnings, not live deployment proof.
+
+## Backend CI quality gate (2026-08-08)
+
+Added `audit/bakaloo-backend/.github/workflows/quality.yml`. Every push and
+pull request now runs the complete Vitest suite, ESLint, and the focused
+production-preflight contract tests on Node 20 with read-only repository
+permissions and cancellable branch concurrency. CI quality is now enforced;
+the environment preflight and external certification gates remain separate and
+cannot be marked complete by a green unit-test job.
+
+## Team administration canonical-HQ boundary (2026-08-08)
+
+Team role counts and member lifecycle queries now require a non-null canonical
+`users.platform_role` and exclude users with an active `shop_staff` assignment.
+This prevents legacy `role='ADMIN'` shop operators (and historical rows that
+were backfilled from that flag) from appearing in or being mutated through the
+HQ Team & Roles control plane. New team invites persist an explicit HQ platform
+role; older clients default to least-privilege `HQ_SUPPORT` instead of creating
+another legacy ADMIN-only account. Combined team/auth target coverage now
+passes **6 files / 17 tests**, with backend ESLint clean. A live data audit is still required to
+review any historical users whose platform role was backfilled before the
+shop-staff assignment model was introduced.
+
+Team mutation targets are now maker-checker safe at the service boundary:
+only `SUPER_ADMIN` may manage a `SUPER_ADMIN`, no caller may deactivate its
+own HQ account, and inviting a `SUPER_ADMIN` is explicitly restricted.
+
+The compatibility `findAdminByEmail` and `findAdminById` helpers now use the
+same canonical boundary, so an older auth caller cannot turn a shared legacy
+`role='ADMIN'` shop account into an HQ profile. Combined team/auth target
+coverage now passes **6 files / 17 tests** and remains local evidence until the
+deployed database is audited.
+
+Added the read-only `pnpm db:audit-platform-roles` operator check. It emits
+count-only JSON, returns exit code `2` for legacy ADMIN-without-platform-role,
+HQ-plus-active-shop-staff, or orphaned shop-staff conflicts, and never exposes
+identity data in logs. Its unit gate passed **2/2 tests**; the command cannot
+produce a production result until it is run against the approved PostgreSQL
+snapshot.
+
+## Production preflight boundary (2026-08-08)
+
+Added the read-only `pnpm ops:preflight` command and
+`src/operations/production-preflight.js`. It evaluates production mode, strict
+permission/session flags, disabled demo paths, JWT/cookie/MFA key configuration,
+PostgreSQL and Redis reachability, Razorpay webhook and SMS configuration,
+optional FCM configuration, production origins, migration-plan availability,
+and the external provider-certification evidence flag. The report is redacted,
+checksum-free of secrets, emits stable reason codes, and exits `2` on any
+required hold; it never writes to PostgreSQL, Redis, provider accounts, or
+release evidence. Focused coverage passes **4/4 tests** with backend ESLint
+clean. Running the CLI in this workspace correctly reports `hold` because local
+infrastructure, production secrets, and independent provider evidence are not
+available; that is expected and is not a certification result.
+
+## Shop authority snapshot rehydration (2026-08-08)
+
+Shop-scoped requests now read a versioned `bakaloo:staff-scope:v2` snapshot
+containing active assignment, shop role, and permissions. A cache hit
+rehydrates request authority instead of trusting stale JWT role/permission
+claims; a miss queries the active `shop_staff` + `shops` relationship and
+caches the snapshot. Staff lifecycle invalidation removes both the legacy
+boolean key and the v2 snapshot. Legacy boolean values remain accepted only as
+a short migration compatibility path, while v2 writes are authoritative.
+Focused shop-scope/auth/cross-shop coverage passes **43 tests**; the complete
+backend gate passes **1778 tests** with ESLint clean when run with the explicit
+30-second integration hook budget. Redis/PostgreSQL refusal messages remain
+local-environment warnings, not live multi-shop certification.
+
+## Canonical gateway refund contract (2026-08-08)
+
+The standalone payment-refund and shop-order paths now share the order-admin
+rule that refund amounts are derived from the captured payment, never typed by
+an operator. Arbitrary/partial amounts are rejected, malformed stored refund
+state fails closed, and a payment with an existing or in-progress refund
+cannot be sent to Razorpay again. Payment/order lookups are shop-scoped when a
+shop context exists. Order refunds that become wallet credit now carry
+`reference_id=orderId`, `sub_type=REFUND`, and `order_id`; migration 096 adds a
+partial unique index so retries return the existing balance instead of issuing
+duplicate credit. Refund/payment/shop-order/admin-order/wallet coverage passes
+**42 tests** with ESLint clean. The complete backend gate passes **1795 tests**;
+provider sandbox and finance reconciliation evidence remain external release
+gates.
+
+## Settlement pull promotion to workpapers (2026-08-09)
+
+Migration 114 adds per-item promotion linkage and status. The governed
+promotion route converts only exact `READY_FOR_WORKPAPER` matches into the
+existing prepared, maker/checker settlement workpaper flow, preserving the
+provider evidence checksum and making concurrent retries idempotent. It never
+posts payments, issues refunds, or updates accounting; unmatched/conflict
+items remain blocked from promotion.
+
+## Partial refund credit-note reconciliation (2026-08-09)
+
+**Status: PARTIAL / implementation complete, production certification open.**
+Migrations 115/116/117 and the scoped credit-note surface now govern partial
+provider refunds as Indian GST evidence. Taxable value plus CGST/SGST/IGST/
+Cess must equal the INR refund amount; IGST cannot be combined with CGST/SGST.
+Evidence is bound to the approved production provider certification revision,
+approved refunded workpaper, and a unique credit-note number. Maker/checker
+approval is versioned and same-actor approval is rejected.
+
+Applying an approved note atomically updates the canonical payment partial
+refund amount, appends an immutable `REFUND` shop transaction, adjusts the
+mutable delivery-day financial row, records the applied receipt, and audits
+the transition. Frozen or missing finance periods are blocked. Full refunds
+remain on the existing full-refund path, and any prior partial refund blocks
+that path to prevent double-refund. Real GSP/IRP filing, provider settlement
+credentials, and independent production evidence remain external gates.
+
+## Certified bank/UPI/card statement matching (2026-08-09)
+
+**Status: PARTIAL / evidence boundary implemented, live feed certification open.**
+Migrations 118/119 add a scoped statement import and line-level match register.
+Imports are bound to the approved provider certification revision and require
+INR, date-bounded, checksum-bound lines. Credit lines match only against a
+shop-owned canonical payment with an exact provider reference and paise amount;
+debits, missing references, amount drift, and multiple candidates become
+explicit `unmatched` or `conflict` outcomes.
+
+The transaction is idempotent and audited, but intentionally does not mutate
+payments, refunds, shop transactions, or accounting. Real bank/UPI/card feed
+credentials, statement pulls, settlement owner approval, and production
+reconciliation evidence remain external gates.
+
+## Governed bank reconciliation application (2026-08-09)
+
+**Status: PARTIAL / local control complete, live bank certification open.**
+Migrations 120–122 add maker/checker approval and reconciliation receipts for
+exactly matched bank/UPI/card lines. Approval requires every credit line to be
+matched; application rechecks provider certification and writes an immutable,
+idempotent receipt while preserving the payment/order identity and marking the
+line reconciled.
+
+No payment status, refund, shop transaction, or accounting journal is changed
+by this boundary. Live bank feeds, finance-owner approval, settlement posting,
+and production evidence remain external gates.
+
+The backend production preflight now rejects an unbound certification boolean.
+Each declared provider must supply a redacted certification record containing
+its provider code, positive credential revision, result status, independent
+assessor, timestamp, and evidence reference. This keeps secret rotation from
+leaving stale approval evidence green; live provider records are still an
+external release input.
+
+The Bakaloo backend now has its own full-history Gitleaks workflow under
+`.github/workflows/security.yml`, matching the Epic BOS release scan. The
+workflow is read-only, runs on pushes and pull requests, and does not expose
+scan findings or credential values in application output.
+
+## Unified channel-order identity foundation (2026-08-08)
+
+The Bakaloo backend now has migration 097 and a provider-neutral channel-order
+registry. Every shop-scoped `(channel, connection, external order)` identity
+is stored once; source events are append-only; same event/checksum retries are
+idempotent; reused event IDs with changed payloads and invalid status moves
+create durable conflicts instead of overwriting evidence. The registry is
+deliberately evidence-only: it does not create local sales orders, reserve
+stock, capture money, dispatch delivery, or write back to a provider. Contract,
+service, and repository coverage passes **9 tests** with ESLint clean. The
+complete backend gate passes **1804/1804 tests**. Live Hub transport, SKU
+mapping, handoff, reservation, and parallel-run certification remain the next
+commerce gates.
+
+## Authenticated Retail Hub channel-order transport (2026-08-08)
+
+The Retail Hub now exposes `/v1/channel-orders/events` and
+`/v1/channel-orders/receipts` behind the same trusted server context used by
+Store Edge. The transport validates an INR-only normalized event, derives a
+stable SHA-256 identity digest, requires a tenant/company/branch scope match,
+and accepts only actors with the explicit `channel-orders:ingest` or
+`channel-orders:read` permission. Replayed event IDs with the same digest are
+idempotent; checksum drift and invalid lifecycle moves remain conflict
+receipts. Shadow mode is observation-only; governed mode only promotes the
+local evidence state. Responses explicitly report `writeBackAllowed: false`,
+so this route cannot silently mutate Bakaloo, stock, payments, delivery, or a
+provider. The in-memory transport and Node HTTP seam pass **7 focused tests**;
+Retail Hub typecheck and the complete isolated Hub suite pass **28 files / 133
+tests**. A durable production transport, approved SKU mapping, local order and
+reservation handoff, provider credentials, and parallel-run evidence remain
+required.
+
+## Exact channel-order SKU mapping boundary (2026-08-08)
+
+Bakaloo migration 098 now defines `channel_order_sku_mappings` with one
+shop/channel/connection/external-SKU identity, an explicit proposed/approved/
+rejected/revoked state, a variant reference, checksum, and maker/checker
+approval evidence. The backend contract resolves only an exact approved
+channel and connection mapping; it never falls back to product names,
+barcodes, fuzzy SKU matches, or another provider connection. Missing,
+non-approved, or ambiguous mappings return `mapping-required` conflicts so a
+unified order cannot reserve the wrong item. Focused contract coverage passes
+**4 tests**. The scoped backend now exposes mapping list/proposal/approval
+routes under `/api/v1/channel-orders/mappings`, with explicit
+`channel_orders.view` and `channel_orders.map` permissions. Migration planning
+now contains **105 files** (098 mapping, 099 handoff, and 100 permission
+grants). A PostgreSQL/RLS-backed Hub transport is now implemented alongside
+the in-memory test store; applying its schema and wiring it into a live
+transaction pool remain deployment gates. Sales-order/reservation execution
+and real parallel-run evidence remain open.
+
+## Maker-checker channel-order handoff boundary (2026-08-08)
+
+Bakaloo migration 099 now defines a source-digest- and mapping-checksum-bound
+`channel_order_handoffs` record. Preparation requires every channel line to be
+exactly mapped to an approved variant; approval requires an independent
+checker and optimistic version; rejection remains explicit; execution requires
+an approved version plus a local order ID and execution evidence. The contract
+does not create an order, reserve stock, capture payment, or contact a
+provider—those effects must be performed by the existing governed order
+workflow after execution evidence is accepted. Focused mapping and handoff
+coverage passes **11 tests** including governance cases; the deterministic
+migration plan now contains **105 files**. The scoped
+`/api/v1/channel-orders` API covers order/evidence reads, exact mapping
+proposal/approval, and prepare/read/decide/execute handoff records. These
+mutations require the explicit `channel_orders.map` or
+`channel_orders.handoff` permission, a shop scope, and maker-checker/version
+checks. Audited API exposure and both in-memory and PostgreSQL/RLS transport
+implementations are complete locally. Applying the Hub schema and wiring its
+transaction pool, reservation execution, provider pull/push, settlement
+reconciliation, and real parallel-run evidence remain open.
+
+## Cross-surface retail verification (2026-08-08)
+
+The current Electron/HQ surface and the Bakaloo backend remain aligned after
+the refund hardening wave. Electron typecheck, capability-registry validation,
+537 permissioned IPC-handler policy checks, renderer-copy encoding validation,
+Retail Hub typecheck, and ESLint all pass. Focused retail certification,
+offline POS, device transport, shadow-import, unified-order, navigation, and
+protected-database tests pass **46 tests**. The full Electron suite remains a
+separate long-running gate; packaged visual review, real infrastructure,
+provider credentials, hardware, and independent role certification are still
+not implied by these local checks.
+
+## Channel-order execution preflight (2026-08-08)
+
+The backend now exposes a read-only `GET
+/api/v1/channel-orders/handoffs/:handoffId/readiness` preflight. It resolves
+each approved variant mapping to the exact in-scope `shop_products` row,
+checks active listing and current stock without locking or decrementing it,
+rejects stale source evidence and cancelled/returned/RTO orders, and returns
+plain-language blockers for missing shop listings or inventory. Even when
+inventory is ready, the result keeps local customer identity, verified
+delivery address, and payment reconciliation as explicit prerequisites because
+the existing `orders` schema requires them. The preflight cannot reserve stock,
+create an order, capture payment, or write to Bakaloo/providers. Focused
+channel-order coverage now passes **27 tests** (including route certification);
+live customer/address mapping, transactional reservation/order creation, and
+provider certification remain separate gates.
+
+## Governed channel-order local execution (2026-08-09)
+
+An approved channel-order handoff can now cross the local execution boundary
+through `POST
+/api/v1/channel-orders/handoffs/:handoffId/execute-local`. The endpoint
+requires an active local customer, an owned non-deleted address, payment
+evidence reference, execution reference, optimistic handoff version, and a
+third actor distinct from the maker and checker. Inside one PostgreSQL
+transaction it rechecks source digest/status, exact variant-to-shop-product
+mapping, source line quantities and INR total, per-order limits, and current
+stock; creates one shop-scoped local order; writes exact `order_items`; applies
+one centralized `ORDER_DEDUCTION` ledger movement per shop product; updates
+the handoff and channel registry; and commits or rolls back as one unit.
+Payment remains `PENDING` until finance reconciles real provider evidence, and
+no provider or Bakaloo write is attempted. Identical execution-reference
+retries return the committed local order; a different reference is a replay
+conflict. Focused channel-order coverage passes **34 tests**. Live database,
+customer/address import, payment reconciliation, provider certification, and
+parallel-run evidence remain required for production cutover.
+
+Migration `101_channel_order_payment_evidence.sql` adds an idempotent,
+shop-scoped `payment_evidence_reference` column and reconciliation index to
+`channel_order_handoffs`. The local execution transaction writes the same
+reference into both the checksum-bound handoff envelope and the queryable
+column. Applying the migration and validating it against live PostgreSQL are
+still production gates.
+
+## Authoritative channel-order payment evidence transport (2026-08-09)
+
+Channel-order events now carry an optional provider-neutral `paymentEvidence`
+object with an explicit status (`pending`, `authorized`, `captured`, `failed`,
+or `refunded`), provider/event/reference identifiers, INR amount, and a
+SHA-256 checksum of the exact provider payload. Backend and Retail Hub
+normalizers validate the same bounded shape, preserve it in the durable event
+JSON, and include it in the source digest. This means a payment reference or
+amount change is source drift rather than an implicit settlement.
+
+During governed local execution, stored source evidence is revalidated before
+the order transaction. A supplied execution reference must match the
+authoritative payment reference and amount; failed/refunded evidence blocks
+execution. Local payment status remains `PENDING` until a certified provider
+settlement/reconciliation workflow posts the result. No provider capture,
+bank match, refund, finance journal, or live settlement is inferred. Focused
+channel-order coverage is **38 backend tests** plus **12 Retail Hub transport
+tests**; real provider credentials, signed payloads, settlement pulls, and
+parallel-run evidence remain required.
+
+## Governed channel-order settlement workpaper (2026-08-09)
+
+The channel-order control plane now has an append-only settlement evidence
+boundary through `/api/v1/channel-orders/settlements`. A provider event can be
+prepared only after the channel order has an executed, shop-scoped local
+order. Preparation locks the source, binds its latest source digest and local
+order ID, validates captured/refunded amount rules, and deduplicates on the
+shop/provider/provider-event identity plus payload checksum. The workpaper
+stores provider reference, settlement status, INR amount, evidence reference,
+maker, and checksum-bound JSON evidence.
+
+Independent approval rechecks the source digest and local-order link, uses an
+optimistic version, and rejects same-actor approval. The new
+`channel_orders.settlement` permission is granted to finance/HQ roles through
+migration 102; migration 103 creates the evidence table and indexes. Approval
+does not mark a payment paid, issue a refund, post accounting, or call a
+provider. Signed provider payload verification, authenticated settlement
+pulls, bank matching, finance posting, and live parallel-run evidence remain
+external production gates. Focused backend settlement coverage passes **62
+tests**.
+
+## Credential-revision-bound provider certification (2026-08-09)
+
+Migrations 104/105 add a scoped, redacted certification registry for provider
+evidence. Each certification records the provider, environment, positive
+credential revision, evidence checksum, expiry, and (for production) an
+approval reference. Preparation is idempotent; decision is maker-checker and
+optimistic-version protected. Credential rotation therefore invalidates reuse
+of an older evidence record.
+
+Settlement posting readiness is now a read-only endpoint. It requires an
+approved settlement workpaper, matching provider and credential revision,
+unexpired production certification, a shop-scoped local order, and a canonical
+settled payment row with matching INR amount/currency. The projection always
+returns `writeBackAllowed: false`; no payment, journal, refund, or provider
+write is performed. Real provider credentials, signed payloads, settlement
+pulls, and independent production certification remain required.
+
+## Provider settlement pull evidence boundary (2026-08-09)
+
+Migrations 112/113 add durable provider pull pages and per-item match
+receipts, bound to the approved provider credential revision. Pulls are
+shop-scoped and idempotent by checksum/cursor, preserve only redacted
+checksums, and compare provider event, payment reference, status, INR amount,
+and currency with channel-order source evidence. `READY_FOR_WORKPAPER`,
+unmatched, and conflict outcomes are explicit. This is a read-only promotion
+queue; workpaper approval, payment/refund posting, finance roll-forward, live
+provider pulls, and independent production certification remain separate
+gates.
+
+## Governed channel-order refund reconciliation (2026-08-09)
+
+Migrations 108/109 add an immutable refund receipt and dedicated
+`channel_orders.refund` permission. A refund can be reconciled only when its
+provider workpaper is approved, marked `refunded`, linked to an approved
+unexpired production certification at the exact credential revision, and tied
+to a prior captured posting. Full refunds are supported; partial refunds stay
+inside the return/credit-note workflow.
+
+Payment and order state, order history, a new append-only `REFUND` ledger row,
+receipt, and audit event commit atomically. Duplicate events and mismatched
+references, amounts, providers, revisions, or already-refunded orders fail
+closed. Real provider refund credentials, signed evidence, and independent
+production certification remain open.
+
+## Channel-order finance roll-forward reconciliation (2026-08-09)
+
+Migrations 110/111 add a checksum-bound, immutable receipt and dedicated
+`channel_orders.finance_reconcile` permission. Captured receipts are recorded
+as deferred because delivered-order settlement is the canonical revenue
+boundary. Full refund receipts roll back the original delivery day's daily
+financial row exactly once while payout is PENDING or HELD; missing periods
+remain deferred and PROCESSING/PAID periods are blocked. The scoped GET/POST
+finance-reconciliation endpoints lock the workpaper/source/financial row and
+commit the delta, receipt, and audit event atomically. Provider pulls, bank
+matching, GST filing, and production evidence are intentionally not inferred.
+
+## Governed channel-order settlement posting (2026-08-09)
+
+Migrations 106/107 add an immutable posting receipt and dedicated
+`channel_orders.post` permission for HQ finance/admin roles. Posting is
+allowed only for an approved captured workpaper plus an approved, unexpired
+production certification at the exact credential revision. The transaction
+locks the evidence, certification, local order, and latest payment row; it
+creates or finalizes the canonical INR payment, updates order payment state,
+records status history, persists the receipt, and emits an audit event.
+
+Posting is idempotent by workpaper/provider event and rejects amount/currency,
+provider, revision, duplicate-event, cancelled/refunded-order, and
+already-settled-payment conflicts. It does not call a provider and does not
+recognize revenue in the shop transaction ledger; revenue remains governed by
+delivery settlement. Real provider credentials, signed webhook/pull evidence,
+and independent production approval remain open.
+
+Final post-wiring verification passes **225 files / 1,914 tests** with ESLint
+clean; Redis connection-refused logs only reflect the stopped local service.
+
+### P0-06 certification-to-vault binding (2026-08-09)
+
+Provider certification preparation and approval now query the active encrypted
+credential revision for the exact shop/provider/environment. Retired or missing
+revisions are rejected, preventing stale prepared evidence from becoming
+approved after rotation. Live provider credentials and external certification
+remain open.
+
+### P1-05 settlement close-readiness update (2026-08-09)
+
+PARTIAL remains truthful. A read-only, shop-scoped close-readiness projection
+now summarizes financial rows, frozen payout periods, approved bank statements,
+exact credit matches, applied reconciliation receipts, and provider pull or
+workpaper gaps. It fails closed for missing, unmatched, conflicting, or
+unapplied evidence and does not post accounting or close a period.
+
+### P1-05 settlement close-attestation update (2026-08-09)
+
+PARTIAL remains truthful. Migrations 123/124 add a checksum-bound,
+maker/checker close-attestation record. Preparation is allowed only for a
+currently `ready` projection; approval re-runs the projection and rejects
+stale or newly blocked evidence. The record is an audit artifact, not a
+financial-period close or accounting mutation.
+
+### P1-05 GST outward-supply workpaper update (2026-08-09)
+
+PARTIAL remains truthful. The shop-scoped GST workpaper now summarizes Indian
+registration, tax configuration, delivered/refunded supply totals, state
+classification, and open GST credit-note evidence. It fails closed on missing
+or inconsistent tax evidence and never claims filing success; HSN mapping,
+GSTR-1 payload certification, GSP/IRP credentials, and portal reconciliation
+remain open.
+
+### P0-07 — Store Edge bounded Hub replay (2026-08-09)
+
+Status: **IMPLEMENTED / LOCAL-VERIFIED**. Completed POS sales can now be
+replayed in a bounded batch from Electron to the deployed Retail Hub boundary.
+The main process derives and checks each sale event, reuses prior event IDs and
+sequences for retries, appends immutable attempt evidence, and continues after
+individual transport failures. The IPC channel is permissioned and active-scope
+bound; the POS UI exposes a labelled `Sync pending sales` action. Live Hub
+credentials, deployment, and external reconciliation evidence remain open.
+
+### P0-08 — Store Edge batch run summaries (2026-08-09)
+
+Status: **IMPLEMENTED / LOCAL-VERIFIED**. Every bounded Store Edge replay now
+persists an append-only, scope-bound run summary with redacted Hub origin,
+actor, timing, attempt totals, accepted/idempotent/conflicted/failed counts,
+and explicit completion state. The POS exposes the latest run status and
+counts in plain language. Invalid or credential-bearing URLs are rejected
+before transport. This improves local operational evidence only; authenticated
+Hub deployment, provider credentials, and real parallel-run reconciliation are
+still external gates.
+
+### P0-09 — Governed Store Edge retry policy (2026-08-10)
+
+Status: **IMPLEMENTED / LOCAL-VERIFIED**. Operators can explicitly enable
+restart-safe bounded replay from the POS. The policy is scope-bound and stores
+only a normalized HTTPS origin, interval, batch limit, actor, and version.
+Automatic ticks run only while the authenticated POS desk is open, never
+overlap, and never run during another busy POS mutation. Credentials, fake
+responses, and write-back claims are not introduced. Live Hub deployment,
+provider credentials, and real-store parallel-run evidence remain open.
+
+### P0-10 — Fenced Store Edge worker lease renewal (2026-08-10)
+
+Status: **IMPLEMENTED / LOCAL-VERIFIED**. The Retail Hub worker now renews
+active Store Edge leases while a processor is running. Renewal is scoped to
+tenant/company/branch, requires the current worker and fencing token, and
+preserves attempt ownership. In-memory and PostgreSQL repositories share the
+same guarded update boundary; stale workers cannot renew or acknowledge a
+reclaimed item. Runtime heartbeats default to half the bounded lease and
+processor completion is rejected if a heartbeat failed. Live worker deployment
+and provider/device certification remain external gates.
+
+### P0-11 — Governed Store Edge dead-letter recovery (2026-08-10)
+
+Status: **IMPLEMENTED / LOCAL-VERIFIED**. The Hub exposes a scope-bound
+dead-letter evidence list and a recovery-only requeue action. Requeue requires
+the explicit `store-edge:recover` permission, a reason, and an operator
+reference; it resets only the retry budget, records recovery metadata, and
+never writes to Bakaloo, orders, inventory, or payments. PostgreSQL recovery is
+row-locked and fails closed unless the item is currently dead-lettered. Live
+worker deployment and independent recovery certification remain external gates.
+
+### P0-12 — Provider webhook evidence-drift guard (2026-08-10)
+
+Status: **IMPLEMENTED / LOCAL-VERIFIED** in `audit/bakaloo-backend`. The
+Razorpay webhook receipt claim now binds provider event ID to both event type
+and the exact signed-body SHA-256. Reusing an event ID with different bytes or
+event type returns an explicit conflict and performs no payment, wallet, order,
+or notification side effect. Matching failed/stale processing claims remain
+recoverable; processed duplicates remain idempotent. Real Razorpay sandbox,
+secret rotation, and production webhook certification remain external gates.
+
+### P0-13 — Capability-gated realtime shop rooms (2026-08-10)
+
+Status: **IMPLEMENTED / LOCAL-VERIFIED** in `audit/bakaloo-backend`. A live
+shop assignment no longer grants automatic membership in the shop Socket.IO
+room. The handshake still requires a current active assignment, and room
+membership now additionally requires an explicit operational read permission
+(`shop_orders.view`, `shop_products.view`, `shop_reports.view`,
+`shop_financials.view`, or `shop_transactions.view`). Shop-scoped order tracking
+also requires `shop_orders.view`; customer ownership, active rider assignment,
+and canonical HQ access remain supported. Cross-shop room joins remain
+server-derived and client-supplied shop IDs are never trusted. Focused socket
+authorization coverage passes 11 tests; the complete backend suite passes
+226 files / 1,921 tests and ESLint is clean. Live multi-shop deployment and
+independent security certification remain external gates.
+
+### P0-14 — Guarded provider credential runtime boundary (2026-08-10)
+
+Status: **IMPLEMENTED / LOCAL-VERIFIED** in `audit/bakaloo-backend`. Provider
+adapters now have an internal-only `loadActiveForRuntime` boundary: it is
+shop-scoped, accepts only `sandbox` or `production`, selects an active
+revision, decrypts with the revision-bound AES-GCM context, and verifies the
+stored checksum before returning plaintext in-process. No HTTP route returns
+credentials; list responses remain redacted. Missing, retired, tampered, or
+checksum-drifted records fail closed with explicit conflict codes. Focused
+credential coverage passes 10 tests; the complete backend suite passes 227
+files / 1,926 tests and ESLint is clean. Provider deployment, key custody,
+and external certification remain open.
+
+### P0-15 — Scoped dynamic attachment IPC (2026-08-10)
+
+Status: **IMPLEMENTED / LOCAL-VERIFIED**. The three dynamic attachment IPC
+channels now require an active company and branch, authorize the client-chosen
+resource within that exact scope, and pass the same scope into the encrypted
+vault for list, add, and export. Merchandising image lookup also uses the
+active scope instead of an unscoped metadata read. Roles without the resource
+grant, other branches, and other companies are denied before vault access.
+Focused Electron coverage passes 29 tests; typecheck and ESLint are clean.
+The full Electron suite passes 246 files / 1,060 tests, and `pnpm build`
+produces the Windows x64 package. Independent role/UAT evidence and packaged
+cross-platform certification remain open.
+
+### P0-16 — Production native-runtime encryption gate (2026-08-10)
+
+Status: **IMPLEMENTED / LOCAL-VERIFIED (FAIL-CLOSED GATE)**. Electron now
+evaluates runtime database encryption evidence before opening the protected
+SQLite runtime. Setting `EPIC_BOS_REQUIRE_NATIVE_SQLITE=1` (or `true`/`yes`)
+aborts startup before any plaintext runtime is opened unless a certified native
+page-encrypted driver reports `native-encrypted`. Local development and
+migration tooling retain the truthful persisted AES-GCM envelope status, and
+the operational health surface receives the same evidence. No SQLCipher or
+native driver is claimed or fabricated by this change. Focused
+security/driver/protected-database coverage passes 15 tests; the full Electron
+suite passes 246 files / 1,064 tests; typecheck and ESLint are clean; `pnpm
+build` produces the Windows x64 package. Shipping and certifying the approved
+native driver, macOS/Linux packages, and release security review remain
+external gates.
+
+### P0-17 — Governed Bakaloo delivery-map evidence surface (2026-08-10)
+
+Status: **IMPLEMENTED / LOCAL-VERIFIED**. Epic BOS now exposes a provider-
+neutral delivery-map surface for the Bakaloo retail flow. The renderer plots
+only verified rider/location projections, labels live and stale evidence
+separately, and keeps blocked or consent-missing signals out of the map. The
+surface is a local SVG evidence view, so it does not require a Google Maps key,
+does not call a network tile service, and never draws a route or invents an
+ETA. Legacy revenue workspaces receive an empty `retailDeliveryMapSignals`
+register, preserving backward compatibility. Focused map/domain/UI coverage
+passes 6 tests; the full Electron suite passes 248 files / 1,069 tests;
+typecheck and ESLint are clean. Live Bakaloo map import still requires a
+Retail Hub feed with real consent, coordinate freshness, provider/device
+evidence, and production reconciliation.
+
+### P0-18 - Scope-bound delivery-map signal ingestion (2026-08-10)
+
+Status: **IMPLEMENTED / LOCAL-VERIFIED**. Delivery-map evidence now has a
+validated Hub-to-Electron ingestion boundary. Incoming signals are normalized
+to a renderer-safe contract, unknown fields are discarded, timestamps and
+coordinate ranges are validated, evidence references are required for pins,
+and company/branch scope is checked before persistence. Replays of the same
+signal are idempotent while changed observations advance the signal version.
+`RevenueOpsStore.ingestRetailDeliveryMapSignal` persists the projection through
+the existing serialized state queue; raw provider payloads, credentials, and
+write-back capabilities do not enter renderer state. Focused map/ingestion
+coverage passes 9 tests; the complete Electron suite passes 249 files / 1,072
+tests; TypeScript, ESLint, and Windows packaging are clean. A deployed Retail
+Hub pull, real consented rider/device or provider-webhook evidence, and live
+parallel-run reconciliation remain external gates.
+
+### P0-19 - Read-only Bakaloo coverage-map transport (2026-08-10)
+
+Status: **IMPLEMENTED / LOCAL-VERIFIED**. Epic BOS can now request the
+existing Bakaloo HQ coverage-map module through a credential-free HTTPS
+main-process client. The response validator accepts only the read-only
+`shop`, customer pins, serviceable/uncovered pincodes, and pincode boundaries;
+it rejects non-JSON, oversized, malformed, out-of-range, or `0,0` placeholder
+coordinates, binds the projection to the active company/branch, and exposes it
+through a `release.control/read`-authorized IPC method. No renderer-controlled
+headers, credentials, write-back action, route, or ETA is introduced. Focused
+transport, IPC, and renderer coverage passes 23 tests; the complete Electron
+suite passes 251 files / 1,077 tests. TypeScript, ESLint, capability registry,
+IPC-policy alignment, and Windows packaging are clean. The validated
+projection is rendered beside the delivery evidence surface with an explicit
+empty state and no write-back controls. Live Hub authentication and
+production reconciliation remain external gates.
+### P0-20 - Cross-platform artifact inspection pass (2026-08-10)
+
+Status: **PARTIAL / LOCAL-VERIFIED**. The same source revision now produces
+an unsigned Linux x64 ZIP inspection artifact at
+`out-cross-linux/make/zip/linux/x64/Epic BOS-linux-x64-0.1.81.zip`, with a
+release manifest and SHA-256 evidence. This is useful for packaging review,
+not Linux release certification. macOS packaging was not emitted by the
+Windows host; native macOS CI is still required for a truthful artifact,
+code-signing, notarisation, auto-update, and hardware validation. Windows
+packaging remains green.
+### P0-21 - Vault-backed Bakaloo coverage-map Hub route (2026-08-10)
+
+Status: **IMPLEMENTED / LOCAL-VERIFIED**. Retail Hub now owns the Bakaloo
+coverage-map source request. A server-only vault adapter resolves the
+credential reference, binds every request to the current credential revision,
+uses GET-only HTTPS transport, validates the shop/customer/pincode/boundary
+projection, rejects placeholder coordinates and oversized or malformed
+responses, and discards the projection if the credential rotates mid-request.
+The durable Hub exposes the result only at the authorized,
+scope-derived `/v1/admin/coverage-map/:shopId` route with the explicit
+`coverage-map:read` permission. Coverage reads are isolated from unrelated
+shadow-import repository queries and never enable write-back.
+
+Focused adapter/route coverage passes 18 tests; the full Retail Hub suite
+passes 30 files / 149 tests. Hub typecheck, Electron typecheck, ESLint, and
+Windows packaging are clean. Live vault configuration, authenticated Hub
+deployment, and Bakaloo production reconciliation remain external gates.
+### P0-22 - Checksum-bound Bakaloo coverage projection (2026-08-10)
+
+Status: **IMPLEMENTED / LOCAL-VERIFIED**. Retail Hub and Electron now share
+one canonical serialization for the shop, customer, pincode, boundary, and
+customer-count projection. The server computes a SHA-256 checksum only after
+server-side validation; the Electron client recomputes it after local
+validation and fails closed when the checksum is missing, malformed, or
+drifts from the payload. Scope, observation time, and credentials remain
+receiver/server-bound; no write-back path is introduced.
+
+Focused checksum coverage passes 23 assertions; the full Retail Hub suite
+passes 30 files / 149 tests and the full Electron suite passes 251 files /
+1,077 tests. Electron typecheck, ESLint, and Windows packaging are clean.
+The resulting executable is out/Epic BOS-win32-x64/epic-bos.exe.
+Live vault configuration, deployment, production reconciliation, and native
+macOS/Linux release certification remain external gates.
+### P0-23 - Freshness-bound Bakaloo coverage evidence (2026-08-11)
+
+Status: **IMPLEMENTED / LOCAL-VERIFIED**. The Electron Hub client now
+requires the server-owned observation timestamp, preserves that timestamp in
+the rendered evidence, and applies a bounded freshness policy: 30 minutes by
+default, configurable only within one minute to 24 hours. Observations more
+than two minutes in the future are rejected to catch clock or replay errors.
+Checksum validation still runs against the normalized projection, and no
+stale snapshot is rendered as a live map.
+
+Focused freshness/checksum coverage passes 3 tests and the Electron
+typecheck is clean. This is a receiver-side safety gate; source freshness,
+vault authentication, live deployment, and production reconciliation remain
+external operational gates.
+### P0-24 - Native release provenance and truthful matrix gates (2026-08-11)
+
+Status: **IMPLEMENTED / LOCAL-VERIFIED**. Release sidecars now use manifest
+schema 2 and record buildEnvironment as native, cross, or unknown. Native CI
+explicitly sets EPIC_BOS_NATIVE_BUILD=true; local ZIP inspection builds remain
+marked cross or unknown. The release-matrix verifier now rejects missing,
+mixed, cross, or unknown platform artifacts instead of treating a cross-build
+as a certified native release. Certification packs carry the same field and
+expose a native-build hold when it is absent.
+
+The regenerated Windows Squirrel artifacts verify with native provenance.
+The local matrix report is correctly HOLD: Windows is verified, while native
+Linux and macOS artifacts are still missing. Signing, notarisation,
+provider/device certification, human UAT, and production approval remain
+separate gates.
+
+### P0-25 - Retail visual clarity pass (2026-08-11)
+
+Status: **IMPLEMENTED / PACKAGE-VERIFIED**. The Electron renderer now uses a
+single visual language for the retail cockpit: the left rail keeps top-level
+store tasks stacked with their submodules, route descriptions collapse to
+short labels in the sidebar, and recognition-first Lucide icons are larger
+and kept beside every action. Page headings, quick-task rails, metric cards,
+and workbench sheets now share the blue/white surface, focus ring, spacing,
+and card-shadow contract. The page-level `.main-content` remains the only
+vertical scroll owner; no nested dashboard scroll area was introduced.
+
+The command centre keeps actions explicit while presenting governed local
+data through sales trend, tender donut, and online-channel bar charts. Charts
+show honest empty states when no records exist and never manufacture values or
+foreign-currency labels. The Windows production package completed with the
+renderer pass as version 0.1.82 at `out/Epic BOS-win32-x64`.
+
+Electron typecheck, targeted ESLint, diff hygiene, and Vite/Electron packaging
+pass. The local Vitest launcher is currently blocked by its pnpm/esbuild link
+resolving through an inaccessible parent directory; this is recorded as an
+environment limitation, not as passing test evidence. Full click-by-click UAT
+and native macOS/Linux packaging remain release gates.

@@ -16,6 +16,7 @@ import type {
   PrepareRetailUnifiedOrderDispatchInput,
   ReconcileRetailUnifiedOrderReturnInput,
   ReconcileRetailUnifiedOrderRtoInput,
+  ReconcileRetailUnifiedOrderCancellationInput,
   RecordRetailOrderHubHandoffResultInput,
   RecordRetailUnifiedOrderCarrierCallbackInput,
   ReserveRetailUnifiedOrderStockInput,
@@ -46,6 +47,7 @@ export interface RetailUnifiedOrderInboxPanelProps {
   /** Retained for a future signed delivery-evidence adapter. The renderer intentionally never calls it. */
   onConfirmDelivery?: (input: ConfirmRetailUnifiedOrderDeliveryInput) => Promise<void>;
   onReconcileRto?: (input: ReconcileRetailUnifiedOrderRtoInput) => Promise<void>;
+  onReconcileCancellation?: (input: ReconcileRetailUnifiedOrderCancellationInput) => Promise<void>;
   onReconcileReturn?: (input: ReconcileRetailUnifiedOrderReturnInput) => Promise<void>;
   /** Retained for the carrier callback adapter boundary. The renderer intentionally never calls it. */
   onRecordCarrierCallback?: (input: RecordRetailUnifiedOrderCarrierCallbackInput) => Promise<void>;
@@ -57,6 +59,8 @@ type LocalDraft = {
   salesOrderId: string;
   decision: DecideRetailOrderFulfilmentHandoffInput['decision'];
   decisionRemarks: string;
+  cancellationStockEvidence: string;
+  cancellationPaymentEvidence: string;
 };
 
 const emptyLocalDraft = (): LocalDraft => ({
@@ -65,6 +69,8 @@ const emptyLocalDraft = (): LocalDraft => ({
   salesOrderId: '',
   decision: 'approved',
   decisionRemarks: '',
+  cancellationStockEvidence: '',
+  cancellationPaymentEvidence: '',
 });
 
 /**
@@ -80,6 +86,7 @@ export function RetailUnifiedOrderInboxPanel({
   onPrepareHubHandoff,
   onPrepareFulfilmentHandoff,
   onDecideFulfilmentHandoff,
+  onReconcileCancellation,
 }: RetailUnifiedOrderInboxPanelProps): ReactNode {
   const [drafts, setDrafts] = useState<Record<string, LocalDraft>>({});
   const state = revenue.retailUnifiedOrderIngestion ?? {
@@ -97,6 +104,7 @@ export function RetailUnifiedOrderInboxPanel({
     deliveryExecutions: [],
     rtoReconciliationExecutions: [],
     returnReconciliationExecutions: [],
+    cancellationReconciliationExecutions: [],
     carrierCallbackEvidence: [],
   };
   const activeSalesOrders = useMemo(
@@ -154,6 +162,7 @@ export function RetailUnifiedOrderInboxPanel({
         const deliveryExecution = state.deliveryExecutions.find((candidate) => candidate.orderId === order.id && candidate.sourceDigest === order.sourceDigest);
         const rtoExecution = state.rtoReconciliationExecutions.find((candidate) => candidate.orderId === order.id && candidate.sourceDigest === order.sourceDigest);
         const returnExecution = state.returnReconciliationExecutions.find((candidate) => candidate.orderId === order.id && candidate.sourceDigest === order.sourceDigest);
+        const cancellationExecution = state.cancellationReconciliationExecutions.find((candidate) => candidate.orderId === order.id && candidate.sourceDigest === order.sourceDigest);
         const latestSourceEvent = [...order.sourceEvents].sort((left, right) => right.receivedAt.localeCompare(left.receivedAt))[0];
         const latestCarrierCallback = (state.carrierCallbackEvidence ?? [])
           .filter((candidate) => candidate.orderId === order.id && candidate.sourceDigest === order.sourceDigest)
@@ -167,6 +176,7 @@ export function RetailUnifiedOrderInboxPanel({
           deliveryExecution ? 'local delivery closure recorded' : undefined,
           rtoExecution ? 'RTO reconciliation recorded' : undefined,
           returnExecution ? 'return reconciliation recorded' : undefined,
+          cancellationExecution ? 'cancellation reconciliation recorded' : undefined,
         ].filter((item): item is string => Boolean(item));
 
         return <article key={order.id} className="retail-unified-order-inbox__order">
@@ -191,6 +201,24 @@ export function RetailUnifiedOrderInboxPanel({
           <div className="retail-unified-order-inbox__source-lines" aria-label={`Verified items for ${order.externalOrderId}`}>
             {order.lines.map((line) => <span key={line.externalLineId}>{line.sku} x {line.quantity} / {inr.format(line.unitAmountPaise / 100)}</span>)}
           </div>
+
+          {order.observedStatus === 'cancelled' && !cancellationExecution && onReconcileCancellation ? <form className="retail-unified-order-inbox__handoff retail-unified-order-inbox__hub" onSubmit={async (event: FormEvent<HTMLFormElement>) => {
+            event.preventDefault();
+            if (!draft.cancellationStockEvidence.trim() || !draft.cancellationPaymentEvidence.trim()) return;
+            await onReconcileCancellation({
+              orderId: order.id,
+              expectedSourceDigest: order.sourceDigest,
+              stockEvidenceReference: draft.cancellationStockEvidence.trim(),
+              paymentEvidenceReference: draft.cancellationPaymentEvidence.trim(),
+            });
+            updateDraft(order.id, { cancellationStockEvidence: '', cancellationPaymentEvidence: '' });
+          }}>
+            <div><strong>Reconcile cancelled order</strong><small>Link proof that stock was released or never reserved and that payment/wallet reversal was handled. This local evidence does not cancel the provider order again.</small></div>
+            <label htmlFor={`cancellation-stock-${order.id}`}>Stock release / no-reservation evidence<input id={`cancellation-stock-${order.id}`} value={draft.cancellationStockEvidence} onChange={(event) => updateDraft(order.id, { cancellationStockEvidence: event.target.value })} placeholder="Stock evidence reference" required /></label>
+            <label htmlFor={`cancellation-payment-${order.id}`}>Payment / wallet reversal evidence<input id={`cancellation-payment-${order.id}`} value={draft.cancellationPaymentEvidence} onChange={(event) => updateDraft(order.id, { cancellationPaymentEvidence: event.target.value })} placeholder="Payment evidence reference" required /></label>
+            <button className="button button--quiet" type="submit" disabled={busy}><CheckCircle2 size={14} aria-hidden="true" /> Record cancellation reconciliation</button>
+          </form> : null}
+          {cancellationExecution ? <div className="retail-unified-order-inbox__approved"><CheckCircle2 size={13} aria-hidden="true" /> Cancellation reconciled by {cancellationExecution.reconciledBy} / stock {cancellationExecution.stockEvidenceReference} / payment {cancellationExecution.paymentEvidenceReference}</div> : null}
 
           {hubHandoff ? <div className={hubHandoff.status === 'acknowledged' ? 'retail-unified-order-inbox__approved' : 'retail-unified-order-inbox__pending'}>
             <Link2 size={13} aria-hidden="true" /> Hub envelope: {hubHandoff.status} / attempt {hubHandoff.attempt}

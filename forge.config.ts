@@ -12,6 +12,29 @@ import { getCurrentSchemaRevision } from './src/main/database';
 import { resolveBuildRevisionSync } from './src/main/build-revision';
 import { createBuildProvenance } from './src/main/build-provenance';
 import { createArtifactSha256, createReleaseArtifactManifest } from './src/main/release-artifact-manifest';
+import type { ReleaseArtifactBuildEnvironment } from './src/shared/release-artifact-manifest-contracts';
+
+const buildEnvironment: ReleaseArtifactBuildEnvironment = process.env.EPIC_BOS_NATIVE_BUILD === 'true'
+  ? 'native'
+  : process.env.EPIC_BOS_ZIP_ONLY_CROSS_BUILD === 'true'
+    ? 'cross'
+    : 'unknown';
+
+const defaultMakers = [
+  new MakerSquirrel({}),
+  new MakerZIP({}, ['darwin', 'linux']),
+  new MakerRpm({}),
+  new MakerDeb({}),
+];
+
+/**
+ * A Windows host cannot run the native Linux RPM/DEB makers. CI/native Linux
+ * release jobs keep the full maker set; an operator may explicitly request a
+ * ZIP-only cross-build for artifact inspection, never as platform certification.
+ */
+const makers = process.env.EPIC_BOS_ZIP_ONLY_CROSS_BUILD === 'true'
+  ? [new MakerZIP({}, ['darwin', 'linux'])]
+  : defaultMakers;
 
 const config: ForgeConfig = {
   // Allows a fresh package to be produced while a prior desktop build is still open.
@@ -24,12 +47,7 @@ const config: ForgeConfig = {
     appCategoryType: 'public.app-category.business',
   },
   rebuildConfig: {},
-  makers: [
-    new MakerSquirrel({}),
-    new MakerZIP({}, ['darwin']),
-    new MakerRpm({}),
-    new MakerDeb({}),
-  ],
+  makers,
   hooks: {
     postMake: async (_forgeConfig, makeResults) => {
       const buildRevision = resolveBuildRevisionSync();
@@ -54,6 +72,7 @@ const config: ForgeConfig = {
             platform: result.platform as 'win32' | 'darwin' | 'linux',
             arch: String(result.arch),
             buildRevision,
+            buildEnvironment,
             schemaRevision,
             releaseIdentitySha256,
             artifactReference,

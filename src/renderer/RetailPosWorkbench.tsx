@@ -19,6 +19,8 @@ import type {
 import type { CreateRetailLoyaltyAccountInput } from '../shared/retail-loyalty-contracts';
 import type { CreateRetailCustomerVisitInput, LinkRetailCustomerVisitInput } from '../shared/retail-customer-ops-contracts';
 import type { ResolveRetailOfflineSaleInput, SyncRetailOfflineQueueInput, SyncRetailOfflineSaleInput } from '../shared/retail-offline-sync-contracts';
+import type { RetailHubStoreEdgeSyncIntervalMinutes, SaveRetailHubStoreEdgeSyncPolicyInput, SendRetailHubStoreEdgeSyncInput, SyncRetailHubStoreEdgeQueueInput } from '../shared/retail-hub-store-edge-sync-contracts';
+import { buildRetailHubStoreEdgeSalePayload } from '../shared/retail-hub-store-edge-sync-projection';
 import { buildRetailProviderReadiness } from '../domain/retail-provider-readiness';
 import { computeCreditLimitUtilisation } from '../domain/credit-control-report';
 import './RetailPosWorkbench.css';
@@ -60,6 +62,9 @@ export interface RetailPosWorkbenchProps {
   onSyncOfflineSale?: (input: SyncRetailOfflineSaleInput) => Promise<void>;
   onSyncOfflineQueue?: (input: SyncRetailOfflineQueueInput) => Promise<void>;
   onResolveOfflineSale?: (input: ResolveRetailOfflineSaleInput) => Promise<void>;
+  onSendRetailHubStoreEdgeSync?: (input: SendRetailHubStoreEdgeSyncInput) => Promise<void>;
+  onSyncRetailHubStoreEdgeQueue?: (input: SyncRetailHubStoreEdgeQueueInput) => Promise<void>;
+  onSaveRetailHubStoreEdgeSyncPolicy?: (input: SaveRetailHubStoreEdgeSyncPolicyInput) => Promise<void>;
   onCreateLoyaltyAccount?: (input: CreateRetailLoyaltyAccountInput) => Promise<void>;
   onCreateCustomerVisit?: (input: CreateRetailCustomerVisitInput) => Promise<void>;
   onLinkCustomerVisitToSale?: (input: LinkRetailCustomerVisitInput) => Promise<void>;
@@ -109,6 +114,9 @@ export function RetailPosWorkbench({
   onSyncOfflineSale,
   onSyncOfflineQueue,
   onResolveOfflineSale,
+  onSendRetailHubStoreEdgeSync,
+  onSyncRetailHubStoreEdgeQueue,
+  onSaveRetailHubStoreEdgeSyncPolicy,
   onCreateLoyaltyAccount,
   onCreateCustomerVisit,
   onLinkCustomerVisitToSale,
@@ -139,6 +147,15 @@ export function RetailPosWorkbench({
   const [notice, setNotice] = useState('');
   const [recoveryEvidence, setRecoveryEvidence] = useState('');
   const [conflictRecoveryEvidence, setConflictRecoveryEvidence] = useState<Record<string, string>>({});
+  const [hubBaseUrl, setHubBaseUrl] = useState(revenue.retailHubStoreEdgeSyncPolicy?.baseUrl ?? '');
+  const [hubAutoSync, setHubAutoSync] = useState(revenue.retailHubStoreEdgeSyncPolicy?.enabled ?? false);
+  const [hubSyncInterval, setHubSyncInterval] = useState<RetailHubStoreEdgeSyncIntervalMinutes>(revenue.retailHubStoreEdgeSyncPolicy?.intervalMinutes ?? 15);
+  const [hubSyncLimit, setHubSyncLimit] = useState(revenue.retailHubStoreEdgeSyncPolicy?.batchLimit ?? 20);
+  const hubAutoSyncInFlight = useRef(false);
+  const busyRef = useRef(busy);
+  busyRef.current = busy;
+  const hubSyncHandlerRef = useRef(onSyncRetailHubStoreEdgeQueue);
+  hubSyncHandlerRef.current = onSyncRetailHubStoreEdgeQueue;
   const transactionKey = useRef(currentTransactionKey());
   const [tenders, setTenders] = useState<TenderDraft[]>([
     { method: 'cash', amount: '', reference: `CASH-${transactionKey.current.slice(-12)}` },
@@ -148,6 +165,63 @@ export function RetailPosWorkbench({
     { method: 'customer-credit', amount: '', reference: '' },
   ]);
   const [reprintSale, setReprintSale] = useState<RevenueOpsSnapshot['retailSales'][number] | null>(null);
+
+  useEffect(() => {
+    const policy = revenue.retailHubStoreEdgeSyncPolicy;
+    if (!policy) return;
+    setHubBaseUrl(policy.baseUrl);
+    setHubAutoSync(policy.enabled);
+    setHubSyncInterval(policy.intervalMinutes);
+    setHubSyncLimit(policy.batchLimit);
+  }, [revenue.retailHubStoreEdgeSyncPolicy?.version]);
+
+  useEffect(() => {
+    if (!hubAutoSync || !hubBaseUrl.trim() || !hubSyncHandlerRef.current) return undefined;
+    let cancelled = false;
+    const tick = (): void => {
+      if (cancelled || busyRef.current || hubAutoSyncInFlight.current) return;
+      const handler = hubSyncHandlerRef.current;
+      if (!handler) return;
+      hubAutoSyncInFlight.current = true;
+      void handler({ baseUrl: hubBaseUrl.trim(), limit: hubSyncLimit }).finally(() => {
+        hubAutoSyncInFlight.current = false;
+      });
+    };
+    tick();
+    const timer = window.setInterval(tick, hubSyncInterval * 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [hubAutoSync, hubBaseUrl, hubSyncInterval, hubSyncLimit]);
+
+  async function saveHubSyncPolicy(enabled: boolean): Promise<void> {
+    if (!onSaveRetailHubStoreEdgeSyncPolicy || !hubBaseUrl.trim()) return;
+    await onSaveRetailHubStoreEdgeSyncPolicy({ enabled, baseUrl: hubBaseUrl.trim(), intervalMinutes: hubSyncInterval, batchLimit: hubSyncLimit });
+    setHubAutoSync(enabled);
+  }
+
+  async function sendCompletedSaleToHub(sale: RevenueOpsSnapshot['retailSales'][number]): Promise<void> {
+    if (!onSendRetailHubStoreEdgeSync || !hubBaseUrl.trim()) return;
+    // Reuse the first event identity/sequence for retries. A network failure
+    // must not mint a second event for the same sale; the Hub can then answer
+    // idempotently if the original request actually arrived.
+    const previous = (revenue.retailHubStoreEdgeSyncReceipts ?? []).find((receipt) => receipt.aggregateId === sale.id);
+    const sequence = previous?.sequence ?? revenue.retailHubStoreEdgeSyncCursor?.nextSequence ?? 1;
+    const payload = buildRetailHubStoreEdgeSalePayload(sale);
+    const payloadChecksum = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(payload)))), (value) => value.toString(16).padStart(2, '0')).join('');
+    const event = {
+      eventId: previous?.eventId ?? `retail-sale:${sale.id}:v${sale.version}`,
+      eventType: 'retail.sale.completed' as const,
+      aggregateId: sale.id,
+      transactionKey: sale.transactionKey,
+      sequence,
+      producedAt: sale.completedAt ?? sale.saleAt,
+      payloadChecksum,
+      payload,
+    };
+    await onSendRetailHubStoreEdgeSync({ baseUrl: hubBaseUrl.trim(), event });
+  }
 
   const selectedCounter = activeCounters.find(({ id }) => id === counterId) ?? activeCounters[0];
 
@@ -487,7 +561,7 @@ export function RetailPosWorkbench({
     <div className="retail-pos-workbench__grid">
       <article className="retail-pos-workbench__station">
         <header><div><span>01 / Cashier custody</span><h4>Open the assigned shift</h4></div><WalletCards size={19} aria-hidden="true" /></header>
-        {selectedCounter && !selectedShift ? <form onSubmit={(event) => void openShift(event)}><label>Opening cash <b>₹</b><input name="openingCash" type="number" min="0" step="0.01" defaultValue="0" required /></label><button className="button button--primary" disabled={busy || !counterReady}>Open shift at {selectedCounter.code}</button></form> : null}
+        {selectedCounter && !selectedShift ? <form onSubmit={(event) => void openShift(event)}><label>Opening cash <b>₹</b><input aria-label="Opening cash" name="openingCash" type="number" min="0" step="0.01" defaultValue="0" required /></label><button className="button button--primary" disabled={busy || !counterReady}>Open shift at {selectedCounter.code}</button></form> : null}
         {selectedShift ? <div className="retail-pos-workbench__shift-card" data-status={selectedShift.status}><span>{selectedShift.number}</span><strong>{selectedShift.cashierId === activeActorId ? 'Your cashier shift' : 'Counter is assigned'}</strong><small>{selectedShift.cashierId === activeActorId ? 'You can checkout while this shift is open.' : `Assigned to ${selectedShift.cashierId}; do not share cashier custody.`}</small><dl><div><dt>Opened</dt><dd>{indiaDate(selectedShift.openedAt)}</dd></div><div><dt>Float</dt><dd>{inr.format(selectedShift.openingCash)}</dd></div><div><dt>Status</dt><dd>{selectedShift.status.replaceAll('-', ' ')}</dd></div></dl></div> : null}
         {!selectedCounter ? <p className="retail-pos-workbench__empty">Create and activate a governed retail counter before opening a cashier shift.</p> : null}
       </article>
@@ -757,10 +831,10 @@ export function RetailPosWorkbench({
           </div>
         ) : <p className="retail-pos-workbench__empty">No retail receipt evidence for this counter yet.</p>}
       </article>
-      <article><header><div><span>Drawer closure</span><h4>Close with review evidence</h4></div><ShieldCheck size={18} aria-hidden="true" /></header>{actorShift ? <form className="retail-pos-workbench__close-form" onSubmit={(event) => void requestShiftClose(event)}><label>Declared drawer cash <b>₹</b><input name="declaredCash" type="number" min="0" step="0.01" required /></label><label>Count-sheet / close evidence<input name="evidenceReference" minLength={3} placeholder="COUNT-… / safe-drop reference" required /></label><button disabled={busy}>Request independent close</button></form> : <p className="retail-pos-workbench__empty">Only the assigned cashier can request closure for an open shift.</p>}{reviewingShifts.length ? <div className="retail-pos-workbench__review-list">{reviewingShifts.map((shift) => <ShiftCloseReview key={shift.id} shift={shift} activeActorId={activeActorId} busy={busy} onDecide={decideShiftClose} onRequestVarianceResolution={onRequestVarianceResolution} onDecideVarianceResolution={onDecideVarianceResolution} />)}</div> : <small className="retail-pos-workbench__muted">No independent close review is waiting for you.</small>}</article>
+      <article><header><div><span>Drawer closure</span><h4>Close with review evidence</h4></div><ShieldCheck size={18} aria-hidden="true" /></header>{actorShift ? <form className="retail-pos-workbench__close-form" onSubmit={(event) => void requestShiftClose(event)}><label>Declared drawer cash <b>₹</b><input aria-label="Declared drawer cash" name="declaredCash" type="number" min="0" step="0.01" required /></label><label>Count-sheet / close evidence<input aria-label="Count-sheet / close evidence" name="evidenceReference" minLength={3} placeholder="COUNT-… / safe-drop reference" required /></label><button disabled={busy}>Request independent close</button></form> : <p className="retail-pos-workbench__empty">Only the assigned cashier can request closure for an open shift.</p>}{reviewingShifts.length ? <div className="retail-pos-workbench__review-list">{reviewingShifts.map((shift) => <ShiftCloseReview key={shift.id} shift={shift} activeActorId={activeActorId} busy={busy} onDecide={decideShiftClose} onRequestVarianceResolution={onRequestVarianceResolution} onDecideVarianceResolution={onDecideVarianceResolution} />)}</div> : <small className="retail-pos-workbench__muted">No independent close review is waiting for you.</small>}</article>
     </div>
 
-    {actorShift ? <article className="retail-pos-workbench__tender-close"><header><div><span>Drawer + tender closure</span><h4>Reconcile every payment rail</h4></div><ShieldCheck size={18} aria-hidden="true" /></header><form className="retail-pos-workbench__close-form" onSubmit={(event) => void requestShiftClose(event)}><label>Declared drawer cash <b>₹</b><input name="declaredCash" type="number" min="0" step="0.01" defaultValue={shiftTenderExpected.cash.toFixed(2)} required /></label><div className="retail-pos-workbench__tender-close-grid">{shiftTenderMethods.map(([method, label]) => <label key={method}>{label}<small>expected {inr.format(shiftTenderExpected[method])}</small><input name={`declaredTender-${method}`} type="number" min="0" step="0.01" defaultValue={shiftTenderExpected[method].toFixed(2)} required /></label>)}</div><label>Count-sheet / close evidence<input name="evidenceReference" minLength={3} placeholder="COUNT-… / safe-drop reference" required /></label><button disabled={busy}>Request independent close</button></form></article> : null}
+    {actorShift ? <article className="retail-pos-workbench__tender-close"><header><div><span>Drawer + tender closure</span><h4>Reconcile every payment rail</h4></div><ShieldCheck size={18} aria-hidden="true" /></header><form className="retail-pos-workbench__close-form" onSubmit={(event) => void requestShiftClose(event)}><label>Declared drawer cash <b>₹</b><input aria-label="Declared drawer cash" name="declaredCash" type="number" min="0" step="0.01" defaultValue={shiftTenderExpected.cash.toFixed(2)} required /></label><div className="retail-pos-workbench__tender-close-grid">{shiftTenderMethods.map(([method, label]) => <label key={method}>{label}<small>expected {inr.format(shiftTenderExpected[method])}</small><input aria-label={label} name={`declaredTender-${method}`} type="number" min="0" step="0.01" defaultValue={shiftTenderExpected[method].toFixed(2)} required /></label>)}</div><label>Count-sheet / close evidence<input aria-label="Count-sheet / close evidence" name="evidenceReference" minLength={3} placeholder="COUNT-… / safe-drop reference" required /></label><button disabled={busy}>Request independent close</button></form></article> : null}
 
     {revenue.retailOfflineSaleQueue.length ? (
       <article className="retail-pos-workbench__tender-close">
@@ -878,6 +952,39 @@ export function RetailPosWorkbench({
     ) : null}
 
     {revenue.retailOfflineSaleQueue.some((item) => item.status === 'queued' && item.queuedBy !== activeActorId) && onSyncOfflineQueue ? <article className="retail-pos-workbench__tender-close retail-pos-workbench__recovery-card"><header><div><span>Supervisor recovery</span><h4>Resume another cashier’s saved sales</h4></div><ShieldCheck size={18} aria-hidden="true" /></header><p className="retail-pos-workbench__checkout-note">Use this after a power or network failure. A recovery reference is stored with every attempt; it does not bypass stock, GST, payment, or approval checks.</p><form className="retail-pos-workbench__close-form" onSubmit={(event) => { event.preventDefault(); const reference = recoveryEvidence.trim(); if (!reference) return; void onSyncOfflineQueue({ limit: 20, recoveryEvidenceReference: reference }); setRecoveryEvidence(''); }}><label>Recovery evidence reference<input value={recoveryEvidence} onChange={(event) => setRecoveryEvidence(event.target.value)} minLength={8} maxLength={240} placeholder="POWER-FAIL-STORE-001" required /></label><button className="button button--primary" disabled={busy}>Recover and sync queued sales</button></form></article> : null}
+
+    <article className="retail-pos-workbench__tender-close retail-pos-workbench__hub-sync-card">
+      <header>
+        <div><span>Retail Hub coordination</span><h4>Send completed sales with proof</h4></div>
+        <Landmark size={18} aria-hidden="true" />
+      </header>
+      <p className="retail-pos-workbench__checkout-note">This is a real network action, never a demo. Enter the deployed HTTPS Hub base URL; each attempt stores only checksums, sequence, actor, and the Hub receipt.</p>
+      <label>Retail Hub HTTPS base URL<input value={hubBaseUrl} onChange={(event) => setHubBaseUrl(event.target.value)} placeholder="https://hub.example.in" inputMode="url" /></label>
+      {onSyncRetailHubStoreEdgeQueue ? <button type="button" className="button button--primary" disabled={busy || !hubBaseUrl.trim()} onClick={() => void onSyncRetailHubStoreEdgeQueue({ baseUrl: hubBaseUrl.trim(), limit: 20 })}>Sync pending sales</button> : null}
+      {onSaveRetailHubStoreEdgeSyncPolicy ? <div className="retail-pos-workbench__hub-sync-policy">
+        <label className="retail-pos-workbench__hub-sync-policy-toggle"><input type="checkbox" checked={hubAutoSync} onChange={(event) => void saveHubSyncPolicy(event.target.checked)} disabled={busy || !hubBaseUrl.trim()} /><span><strong>Resume retry after restart</strong><small>Opt-in only. The app records each attempt; the Hub remains authoritative.</small></span></label>
+        <div className="retail-pos-workbench__hub-sync-policy-fields">
+          <label>Retry interval<select value={hubSyncInterval} onChange={(event) => setHubSyncInterval(Number(event.target.value) as RetailHubStoreEdgeSyncIntervalMinutes)}><option value={5}>Every 5 minutes</option><option value={15}>Every 15 minutes</option><option value={30}>Every 30 minutes</option><option value={60}>Every hour</option></select></label>
+          <label>Batch size<select value={hubSyncLimit} onChange={(event) => setHubSyncLimit(Number(event.target.value))}><option value={10}>10 sales</option><option value={20}>20 sales</option><option value={50}>50 sales</option></select></label>
+        </div>
+        <button type="button" className="button button--quiet" disabled={busy || !hubBaseUrl.trim()} onClick={() => void saveHubSyncPolicy(hubAutoSync)}>Save retry policy</button>
+        {hubAutoSync ? <small className="retail-pos-workbench__checkout-note">Automatic retry is active while this POS workspace is open and will resume when you return after a restart.</small> : null}
+      </div> : null}
+      {revenue.retailHubStoreEdgeSyncRuns?.[0] ? <div className="retail-pos-workbench__hub-sync-run" role="status" aria-label="Latest Retail Hub sync run"><strong>Latest batch: {revenue.retailHubStoreEdgeSyncRuns[0].status.replaceAll('-', ' ')}</strong><span>{revenue.retailHubStoreEdgeSyncRuns[0].sent + revenue.retailHubStoreEdgeSyncRuns[0].idempotent} accepted · {revenue.retailHubStoreEdgeSyncRuns[0].failed} failed · {revenue.retailHubStoreEdgeSyncRuns[0].conflicted} conflicts</span><small>{indiaDate(revenue.retailHubStoreEdgeSyncRuns[0].completedAt)} · {revenue.retailHubStoreEdgeSyncRuns[0].baseUrlOrigin}</small></div> : null}
+      <div className="retail-pos-workbench__hub-sync-meta">
+        <span>Next branch sequence <strong>{revenue.retailHubStoreEdgeSyncCursor?.nextSequence ?? 1}</strong></span>
+        <span>Attempts <strong>{revenue.retailHubStoreEdgeSyncReceipts?.length ?? 0}</strong></span>
+      </div>
+      {revenue.retailSales.filter(({ status }) => status === 'completed').slice(0, 8).map((sale) => {
+        const receipt = (revenue.retailHubStoreEdgeSyncReceipts ?? []).find((candidate) => candidate.aggregateId === sale.id);
+        return <div key={sale.id} className="retail-pos-workbench__hub-sync-row">
+          <div><strong>{sale.number}</strong><small>{sale.transactionKey} - {inr.format(sale.taxPreview.grandTotal)}</small>{receipt ? <small data-status={receipt.status}>{receipt.status} - sequence {receipt.sequence}</small> : <small>Not sent to Hub</small>}</div>
+          {onSendRetailHubStoreEdgeSync ? <button type="button" className="button button--quiet" disabled={busy || !hubBaseUrl.trim()} onClick={() => void sendCompletedSaleToHub(sale)}>{receipt?.status === 'sent' || receipt?.status === 'idempotent' ? 'Verify again' : 'Send to Hub'}</button> : <small className="retail-pos-workbench__guard">Hub transport unavailable</small>}
+        </div>;
+      })}
+      {!revenue.retailSales.some(({ status }) => status === 'completed') ? <p className="retail-pos-workbench__empty">Complete a local sale first; no Hub payload is fabricated.</p> : null}
+      {(revenue.retailHubStoreEdgeSyncReceipts ?? []).length ? <small className="retail-pos-workbench__checkout-note">Latest evidence: {(revenue.retailHubStoreEdgeSyncReceipts ?? [])[0]?.status} - {(revenue.retailHubStoreEdgeSyncReceipts ?? [])[0]?.attemptedAt ? indiaDate((revenue.retailHubStoreEdgeSyncReceipts ?? [])[0]!.attemptedAt) : 'pending'}</small> : null}
+    </article>
 
     {reprintSale ? (
       <div className="retail-pos-workbench__modal-overlay" role="dialog" aria-modal="true">

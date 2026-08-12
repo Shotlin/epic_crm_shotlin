@@ -1,5 +1,6 @@
 import type { OperatingRecordScope } from './revenue-ops-contracts';
 import type {
+  RetailDeviceAcknowledgementSource,
   RetailDeviceConnection,
   RetailDeviceTransportCommand,
   RetailPhysicalDeviceKind,
@@ -37,8 +38,10 @@ export interface RetailDeviceDriverDescriptor {
    * The precise integration boundary. USB and Bluetooth remain driver-gated;
    * Web Serial and Web Bluetooth paths are bounded diagnostics, not native
    * drivers or production activation.
-   */
+  */
   boundary: RetailDeviceDriverBoundary;
+  /** SHA-256-verifiable Ed25519 public key used by a future native bridge. */
+  attestationPublicKeyPem?: string;
 }
 
 export type RetailDeviceProfileConfiguration =
@@ -140,7 +143,7 @@ export interface RetailDeviceAdapterReadiness {
     | 'suspended';
   operational: boolean;
   driverBoundary: RetailDeviceDriverBoundary;
-  acknowledgementSource?: 'operator-evidence' | 'network-tcp-execution';
+  acknowledgementSource?: RetailDeviceAcknowledgementSource;
   nextAction: string;
 }
 

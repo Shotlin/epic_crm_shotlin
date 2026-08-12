@@ -1,5 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { RevenueOpsState, StatutoryExchange } from '../shared/revenue-ops-contracts';
+import {
+  statutoryCredentialRevision,
+  statutoryEvidenceMatchesCredentialRevision,
+} from '../shared/statutory-contracts';
 import type {
   CanonicalPortalStatus,
   ConfigureStatutoryAdapterInput,
@@ -61,15 +65,16 @@ export function configureStatutoryAdapter(state: RevenueOpsState, input: Configu
   const capabilities = [...new Set(input.capabilities)];
   if (!capabilities.length) throw new Error('Adapter requires at least one capability.');
   const next = mutate(state);
-  next.statutoryAdapters.push({ id, code, name: clean(input.name, 'Adapter name'), provider: clean(input.provider, 'Provider', 2, 120), environment: input.environment, baseUrl: base.toString().replace(/\/$/, ''), statusPathTemplate: input.statusPathTemplate.trim(), healthPath: input.healthPath.trim(), capabilities, credentialStatus: 'missing', health: 'unknown', active: true, createdBy: actorId, createdAt: now, version: 1 });
+  next.statutoryAdapters.push({ id, code, name: clean(input.name, 'Adapter name'), provider: clean(input.provider, 'Provider', 2, 120), environment: input.environment, baseUrl: base.toString().replace(/\/$/, ''), statusPathTemplate: input.statusPathTemplate.trim(), healthPath: input.healthPath.trim(), capabilities, credentialStatus: 'missing', credentialRevision: 0, health: 'unknown', active: true, createdBy: actorId, createdAt: now, version: 1 });
   return next;
 }
 
 export function markStatutoryCredentials(state: RevenueOpsState, adapterId: string, fingerprint: string): RevenueOpsState {
   const adapter = state.statutoryAdapters.find(({ id }) => id === adapterId);
   if (!adapter) throw new Error('Statutory adapter not found.');
+  const unchanged = adapter.credentialStatus === 'configured' && adapter.credentialFingerprint === fingerprint;
   const next = mutate(state);
-  next.statutoryAdapters = next.statutoryAdapters.map((candidate) => candidate.id === adapterId ? { ...candidate, credentialStatus: 'configured', credentialFingerprint: fingerprint, health: 'unknown', version: candidate.version + 1 } : candidate);
+  next.statutoryAdapters = next.statutoryAdapters.map((candidate) => candidate.id === adapterId ? { ...candidate, credentialStatus: 'configured', credentialFingerprint: fingerprint, credentialRevision: unchanged ? Math.max(1, statutoryCredentialRevision(candidate)) : statutoryCredentialRevision(candidate) + 1, health: 'unknown', version: candidate.version + 1 } : candidate);
   return next;
 }
 
@@ -113,7 +118,8 @@ export function prepareStatutoryOperation(state: RevenueOpsState, input: Prepare
   }
   const remarks = clean(input.remarks, 'Operation remarks', 4, 50);
   const payload = { kind: input.kind, externalNumber: exchange.externalNumber, reasonCode: input.reasonCode, remarks, effectiveDate: input.effectiveDate, vehicleNumber: input.vehicleNumber, transportDocumentNumber: input.transportDocumentNumber, transportMode: input.transportMode, consignmentStatus: input.consignmentStatus, transitType: input.transitType, fromPlace: input.fromPlace, fromStateCode: input.fromStateCode, fromPincode: input.fromPincode, remainingDistanceKm: input.remainingDistanceKm, requestedValidUntil: input.requestedValidUntil };
-  const operation: StatutoryOperation = { id, number: fiscalNumber('STO', state.statutoryOperations.length + 1, now), kind: input.kind, exchangeId: exchange.id, adapterId: input.adapterId, reasonCode: input.reasonCode, remarks, effectiveDate: input.effectiveDate, vehicleNumber: input.vehicleNumber?.trim().toUpperCase(), transportDocumentNumber: input.transportDocumentNumber?.trim(), transportMode: input.transportMode, consignmentStatus: input.consignmentStatus, transitType: input.transitType, fromPlace: input.fromPlace?.trim(), fromStateCode: input.fromStateCode, fromPincode: input.fromPincode, remainingDistanceKm: input.remainingDistanceKm, requestedValidUntil: input.requestedValidUntil, status: 'prepared', payloadChecksum: digest(payload), preparedBy: actorId, preparedAt: now, version: 1 };
+  const adapter = operationAdapter(state, input.adapterId, OPERATION_CAPABILITY[input.kind]);
+  const operation: StatutoryOperation = { id, number: fiscalNumber('STO', state.statutoryOperations.length + 1, now), kind: input.kind, exchangeId: exchange.id, adapterId: input.adapterId, credentialRevision: statutoryCredentialRevision(adapter), reasonCode: input.reasonCode, remarks, effectiveDate: input.effectiveDate, vehicleNumber: input.vehicleNumber?.trim().toUpperCase(), transportDocumentNumber: input.transportDocumentNumber?.trim(), transportMode: input.transportMode, consignmentStatus: input.consignmentStatus, transitType: input.transitType, fromPlace: input.fromPlace?.trim(), fromStateCode: input.fromStateCode, fromPincode: input.fromPincode, remainingDistanceKm: input.remainingDistanceKm, requestedValidUntil: input.requestedValidUntil, status: 'prepared', payloadChecksum: digest(payload), preparedBy: actorId, preparedAt: now, version: 1 };
   const next = mutate(state); next.statutoryOperations.unshift(operation); return next;
 }
 
@@ -121,7 +127,8 @@ export function submitStatutoryOperation(state: RevenueOpsState, input: SubmitSt
   const operation = state.statutoryOperations.find(({ id }) => id === input.id);
   if (!operation || operation.version !== input.expectedVersion || !['prepared', 'failed'].includes(operation.status)) throw new Error('Statutory operation is stale or cannot be submitted.');
   if (operation.preparedBy === actorId) throw new Error('Statutory operation requires an independent submitter.');
-  operationAdapter(state, operation.adapterId, OPERATION_CAPABILITY[operation.kind]);
+  const adapter = operationAdapter(state, operation.adapterId, OPERATION_CAPABILITY[operation.kind]);
+  if (!statutoryEvidenceMatchesCredentialRevision(adapter, operation)) throw new Error('Statutory credentials changed after this operation was prepared. Prepare a new operation.');
   const next = mutate(state);
   next.statutoryOperations = next.statutoryOperations.map((candidate) => candidate.id === operation.id ? { ...candidate, status: 'submitted', requestReference: clean(input.requestReference, 'Request reference', 3, 160), submittedBy: actorId, submittedAt: now, errorCode: undefined, errorMessage: undefined, version: candidate.version + 1 } : candidate);
   return next;
@@ -145,7 +152,7 @@ export function recordStatutoryOperationResponse(state: RevenueOpsState, input: 
 }
 
 export function prepareConsolidatedEwayBill(state: RevenueOpsState, input: PrepareConsolidatedEwayBillInput, actorId: string, id: string = randomUUID(), now = new Date().toISOString()): RevenueOpsState {
-  operationAdapter(state, input.adapterId, 'consolidated-ewb');
+  const adapter = operationAdapter(state, input.adapterId, 'consolidated-ewb');
   const exchangeIds = [...new Set(input.exchangeIds)];
   if (exchangeIds.length < 2 || exchangeIds.length !== input.exchangeIds.length) throw new Error('Consolidated EWB requires at least two unique e-way bills.');
   const exchanges = exchangeIds.map((exchangeId) => state.statutoryExchanges.find(({ id }) => id === exchangeId));
@@ -155,7 +162,7 @@ export function prepareConsolidatedEwayBill(state: RevenueOpsState, input: Prepa
   if (input.transportMode === 'road' && !input.vehicleNumber?.trim()) throw new Error('Road consolidation requires vehicle number.');
   if (input.transportMode !== 'road' && !input.transportDocumentNumber?.trim()) throw new Error('Rail, air, or ship consolidation requires transport document number.');
   const payload = { ewbNumbers: exchanges.map((exchange) => exchange!.externalNumber), mode: input.transportMode, vehicleNumber: input.vehicleNumber, transportDocumentNumber: input.transportDocumentNumber, fromPlace: input.fromPlace, fromStateCode: input.fromStateCode };
-  const record: ConsolidatedEwayBill = { id, number: fiscalNumber('CEWB', state.consolidatedEwayBills.length + 1, now), adapterId: input.adapterId, gstRegistrationId: input.gstRegistrationId, exchangeIds, transportMode: input.transportMode, vehicleNumber: input.vehicleNumber?.trim().toUpperCase(), transportDocumentNumber: input.transportDocumentNumber?.trim(), fromPlace: clean(input.fromPlace, 'Origin place', 2, 120), fromStateCode: input.fromStateCode, status: 'prepared', payloadChecksum: digest(payload), preparedBy: actorId, preparedAt: now, version: 1 };
+  const record: ConsolidatedEwayBill = { id, number: fiscalNumber('CEWB', state.consolidatedEwayBills.length + 1, now), adapterId: input.adapterId, credentialRevision: statutoryCredentialRevision(adapter), gstRegistrationId: input.gstRegistrationId, exchangeIds, transportMode: input.transportMode, vehicleNumber: input.vehicleNumber?.trim().toUpperCase(), transportDocumentNumber: input.transportDocumentNumber?.trim(), fromPlace: clean(input.fromPlace, 'Origin place', 2, 120), fromStateCode: input.fromStateCode, status: 'prepared', payloadChecksum: digest(payload), preparedBy: actorId, preparedAt: now, version: 1 };
   const next = mutate(state); next.consolidatedEwayBills.unshift(record); return next;
 }
 
@@ -163,7 +170,8 @@ export function submitConsolidatedEwayBill(state: RevenueOpsState, input: Submit
   const record = state.consolidatedEwayBills.find(({ id }) => id === input.id);
   if (!record || record.version !== input.expectedVersion || !['prepared', 'failed'].includes(record.status)) throw new Error('Consolidated EWB is stale or cannot be submitted.');
   if (record.preparedBy === actorId) throw new Error('Consolidated EWB requires an independent submitter.');
-  operationAdapter(state, record.adapterId, 'consolidated-ewb');
+  const adapter = operationAdapter(state, record.adapterId, 'consolidated-ewb');
+  if (!statutoryEvidenceMatchesCredentialRevision(adapter, record)) throw new Error('Statutory credentials changed after this consolidated bill was prepared. Prepare a new bill.');
   const next = mutate(state); next.consolidatedEwayBills = next.consolidatedEwayBills.map((candidate) => candidate.id === record.id ? { ...candidate, status: 'submitted', requestReference: clean(input.requestReference, 'Request reference', 3, 160), submittedBy: actorId, errorCode: undefined, errorMessage: undefined, version: candidate.version + 1 } : candidate); return next;
 }
 

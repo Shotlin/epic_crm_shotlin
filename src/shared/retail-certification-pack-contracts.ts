@@ -7,6 +7,8 @@ import type { ProviderCapability, ProviderConformanceStatus, ProviderDomain, Pro
 export interface RetailCertificationConnectorRow {
   id: string;
   code: string;
+  /** Current credential generation; this is safe evidence metadata, never a secret or fingerprint. */
+  credentialRevision: number;
   channel: RetailCommerceChannel;
   environment: 'sandbox' | 'production';
   status: RetailCommerceConnectorStatus;
@@ -42,6 +44,8 @@ export interface RetailCertificationOcrRow {
 export interface RetailCertificationProviderRow {
   id: string;
   code: string;
+  /** Current credential generation; certification is valid only for this generation. */
+  credentialRevision: number;
   domain: ProviderDomain;
   environment: 'sandbox' | 'production';
   conformanceStatus: ProviderConformanceStatus;
@@ -59,6 +63,8 @@ export interface RetailCertificationProviderRow {
 
 export interface RetailCertificationPreflightRow {
   connectorId: string;
+  /** Current connector credential generation used to judge the evidence list. */
+  credentialRevision: number;
   successCount: number;
   failureCount: number;
   latestStatus: ProviderPreflightEvidence['status'] | 'not-run';
@@ -102,6 +108,22 @@ export interface RetailCertificationPackReceipt {
   readyForProduction: boolean;
   externalGateCount: number;
   exportedAt: string;
+}
+
+/** Safe result returned when an exported certification pack is checked offline. */
+export interface RetailCertificationPackVerification {
+  valid: boolean;
+  declaredChecksum: string;
+  computedChecksum?: string;
+  generatedAt?: string;
+  readyForProduction?: boolean;
+  externalGateCount?: number;
+  errors: string[];
+}
+
+export interface RetailCertificationPackVerificationReceipt extends RetailCertificationPackVerification {
+  filePath: string;
+  verifiedAt: string;
 }
 
 export type RetailCertificationPackSource = Pick<RevenueOpsSnapshot, 'scope' | 'retailCommerceConnectors' | 'retailCommerceConformanceCases' | 'retailDeviceTransportEvidence' | 'retailOcrProviderProfiles' | 'providerConnectors' | 'providerConformanceCases' | 'providerSubmissions'> & { retailDeviceAdapterProfiles?: RetailDeviceAdapterProfile[]; providerPreflightEvidence?: RevenueOpsSnapshot['providerPreflightEvidence'] };

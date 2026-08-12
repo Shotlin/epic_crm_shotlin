@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { buildShadowImportPlan, checksumShadowImportEvidence } from './shadow-import';
-import { createPostgresShadowImportRepository, createPostgresShadowImportReviewStore, shadowImportPostgresSchema, type ShadowImportSqlClient } from './shadow-import-postgres-repository';
+import { createPostgresShadowImportRepository, createPostgresShadowImportReviewStore, createRlsScopedSqlClient, shadowImportPostgresSchema, type ShadowImportSqlClient, type ShadowImportTransactionPool } from './shadow-import-postgres-repository';
 import { createShadowImportReviewDecision } from './shadow-import-review';
 import type { ShadowImportPullReceipt } from './shadow-import-pull-receipt';
 
@@ -15,6 +15,70 @@ const plan = buildShadowImportPlan((() => {
 })());
 
 describe('PostgreSQL shadow-import repository boundary', () => {
+  it('sets transaction-local RLS scope and rejects direct unscoped SQL', async () => {
+    const transactionQuery = vi.fn();
+    transactionQuery.mockImplementation(async (sql: string) => sql.includes('current_setting')
+      ? { rows: [{ tenant_id: scope.tenantId, company_id: scope.companyId, branch_id: scope.branchId }] }
+      : { rows: [] });
+    const withTransactionMock = vi.fn(async (operation: (client: ShadowImportSqlClient) => Promise<unknown>) => operation({ query: transactionQuery as unknown as ShadowImportSqlClient['query'] }));
+    const withTransaction = withTransactionMock as unknown as ShadowImportTransactionPool['withTransaction'];
+    const scopedClient = createRlsScopedSqlClient({ withTransaction });
+
+    await expect(scopedClient.query('SELECT 1')).rejects.toThrow(/authenticated transaction scope/i);
+    await scopedClient.withScope?.(scope, async (transaction) => {
+      await transaction.query('SELECT plan_json FROM retail_shadow_import_batches');
+      return 'ok';
+    });
+
+    expect(withTransactionMock).toHaveBeenCalledTimes(1);
+    expect(transactionQuery.mock.calls[0]?.[0]).toMatch(/set_config\('epic_bos\.tenant_id', \$1, true\)/);
+    expect(transactionQuery.mock.calls[0]?.[1]).toEqual([scope.tenantId, scope.companyId, scope.branchId]);
+    expect(transactionQuery.mock.calls[1]?.[0]).toMatch(/current_setting\('epic_bos\.tenant_id', true\)/);
+    expect(transactionQuery.mock.calls[2]?.[0]).toContain('SELECT plan_json');
+  });
+
+  it('fails closed when the connection reports a different active RLS scope', async () => {
+    const transactionQuery = vi.fn();
+    transactionQuery.mockImplementation(async (sql: string) => sql.includes('current_setting')
+      ? { rows: [{ tenant_id: scope.tenantId, company_id: 'other-company', branch_id: scope.branchId }] }
+      : { rows: [] });
+    const operation = vi.fn(async () => 'must-not-run');
+    const scopedClient = createRlsScopedSqlClient({
+      withTransaction: async (callback) => callback({ query: transactionQuery as unknown as ShadowImportSqlClient['query'] }),
+    });
+    await expect(scopedClient.withScope?.(scope, operation)).rejects.toThrow(/scope verification/i);
+    expect(operation).not.toHaveBeenCalled();
+  });
+
+  it('propagates operation failures so the transaction pool can roll back', async () => {
+    const transactionQuery = vi.fn();
+    transactionQuery.mockImplementation(async (sql: string) => sql.includes('current_setting')
+      ? { rows: [{ tenant_id: scope.tenantId, company_id: scope.companyId, branch_id: scope.branchId }] }
+      : { rows: [] });
+    const rollbackError = new Error('operation failed');
+    let poolObservedFailure = false;
+    const scopedClient = createRlsScopedSqlClient({
+      withTransaction: async (callback) => {
+        try {
+        return await callback({ query: transactionQuery as unknown as ShadowImportSqlClient['query'] });
+        } catch (error) {
+          poolObservedFailure = error === rollbackError;
+          throw error;
+        }
+      },
+    });
+    await expect(scopedClient.withScope?.(scope, async () => { throw rollbackError; })).rejects.toBe(rollbackError);
+    expect(poolObservedFailure).toBe(true);
+  });
+
+  it('does not open a transaction for an invalid scope', async () => {
+    const withTransactionMock = vi.fn();
+    const withTransaction = withTransactionMock as unknown as ShadowImportTransactionPool['withTransaction'];
+    const scopedClient = createRlsScopedSqlClient({ withTransaction });
+    await expect(scopedClient.withScope?.({ ...scope, companyId: ' ' }, async () => 'never')).rejects.toThrow(/company/i);
+    expect(withTransactionMock).not.toHaveBeenCalled();
+  });
+
   it('writes plans with explicit tenant/company/branch scope and upsert semantics', async () => {
     const query = vi.fn().mockResolvedValue({ rows: [] });
     const repository = createPostgresShadowImportRepository({ query } satisfies ShadowImportSqlClient);
@@ -79,6 +143,19 @@ describe('PostgreSQL shadow-import repository boundary', () => {
     expect(fetched?.batch.status).toBe('ready-for-review');
   });
 
+  it('uses the trusted transaction scope wrapper when a deployment supplies one', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [{ plan_json: JSON.stringify(plan) }] });
+    const scopes: Array<typeof scope> = [];
+    const withScope: NonNullable<ShadowImportSqlClient['withScope']> = async (receivedScope, operation) => {
+      scopes.push(receivedScope);
+      return operation({ query });
+    };
+    const repository = createPostgresShadowImportRepository({ query, withScope } satisfies ShadowImportSqlClient);
+    await repository.listPlans(scope);
+    expect(scopes).toEqual([scope]);
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+
   it('fails before SQL when scope or batch identity is blank', async () => {
     const query = vi.fn();
     const repository = createPostgresShadowImportRepository({ query } satisfies ShadowImportSqlClient);
@@ -114,5 +191,10 @@ describe('shadow-import PostgreSQL schema', () => {
     expect(shadowImportPostgresSchema).toMatch(/retail_shadow_import_pull_receipts/i);
     expect(shadowImportPostgresSchema).toMatch(/WHERE decision = 'accepted'/i);
     expect(shadowImportPostgresSchema).toMatch(/ENABLE ROW LEVEL SECURITY/);
+    expect(shadowImportPostgresSchema.match(/FORCE ROW LEVEL SECURITY/g)).toHaveLength(7);
+    expect(shadowImportPostgresSchema.match(/CREATE POLICY/g)).toHaveLength(7);
+    expect(shadowImportPostgresSchema.match(/current_setting\('epic_bos\.tenant_id', true\)/g)).toHaveLength(14);
+    expect(shadowImportPostgresSchema.match(/current_setting\('epic_bos\.company_id', true\)/g)).toHaveLength(14);
+    expect(shadowImportPostgresSchema.match(/current_setting\('epic_bos\.branch_id', true\)/g)).toHaveLength(14);
   });
 });

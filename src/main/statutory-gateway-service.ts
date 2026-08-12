@@ -1,22 +1,26 @@
-import { createCipheriv, createDecipheriv, createHash, createHmac, createVerify, randomBytes, X509Certificate } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, createVerify, randomBytes, X509Certificate } from 'node:crypto';
 import type { StatutoryExchange } from '../shared/revenue-ops-contracts';
 import type { CanonicalPortalStatus, ConfigureStatutoryCredentialsInput, StatutoryAdapter, VerifyStatutorySignatureInput } from '../shared/statutory-contracts';
 import type { VerifiedSignatureResult } from '../domain/statutory-control';
 import type { BusinessDatabase, StoredAdapterSecret } from './database';
+import { ACTIVE_ARTIFACT_KEY_VERSION, assertSupportedArtifactKeyVersion, deriveArtifactKey } from './artifact-key';
 
 interface AdapterCredentials {
   clientId?: string; clientSecret?: string; username?: string; password?: string; apiKey?: string; bearerToken?: string;
 }
 
+/** See the provider vault: unknown envelope versions are never downgraded. */
+export const ACTIVE_CREDENTIAL_KEY_VERSION = ACTIVE_ARTIFACT_KEY_VERSION;
+
 function digest(value: Buffer | string): string { return createHash('sha256').update(value).digest('hex'); }
 function aad(adapterId: string): Buffer { return Buffer.from(`epic-bos\0statutory-adapter\0${adapterId}`, 'utf8'); }
 
 export class StatutoryGatewayService {
-  private readonly key: Buffer;
+  private readonly masterKey: Buffer;
 
   public constructor(private readonly database: BusinessDatabase, masterKey: Buffer, private readonly fetcher: typeof fetch = fetch) {
     if (masterKey.length !== 32) throw new Error('Statutory vault requires a 256-bit master key.');
-    this.key = createHmac('sha256', masterKey).update('epic-bos/statutory-adapter-secrets/v1').digest();
+    this.masterKey = Buffer.from(masterKey);
   }
 
   public configureCredentials(input: ConfigureStatutoryCredentialsInput, actorId: string, now = new Date().toISOString()): string {
@@ -24,14 +28,41 @@ export class StatutoryGatewayService {
     if (!Object.keys(credentials).length) throw new Error('Provide at least one adapter credential.');
     for (const value of Object.values(credentials)) if (value.length > 4096) throw new Error('A credential value exceeds the 4096-character limit.');
     const plaintext = Buffer.from(JSON.stringify(credentials), 'utf8');
-    const iv = randomBytes(12); const cipher = createCipheriv('aes-256-gcm', this.key, iv); cipher.setAAD(aad(input.adapterId));
+    const iv = randomBytes(12); const cipher = createCipheriv('aes-256-gcm', this.keyForVersion(ACTIVE_CREDENTIAL_KEY_VERSION), iv); cipher.setAAD(aad(input.adapterId));
     const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);
-    const record: StoredAdapterSecret = { adapterId: input.adapterId, encryptedPayload: encrypted.toString('base64'), iv: iv.toString('base64'), authTag: cipher.getAuthTag().toString('base64'), keyVersion: 1, checksum: digest(plaintext), updatedBy: actorId, updatedAt: now };
+    const record: StoredAdapterSecret = { adapterId: input.adapterId, encryptedPayload: encrypted.toString('base64'), iv: iv.toString('base64'), authTag: cipher.getAuthTag().toString('base64'), keyVersion: ACTIVE_CREDENTIAL_KEY_VERSION, checksum: digest(plaintext), updatedBy: actorId, updatedAt: now };
     this.database.upsertStatutoryAdapterSecret(record);
     return record.checksum.slice(0, 16);
   }
 
   public hasCredentials(adapterId: string): boolean { return this.database.getStatutoryAdapterSecret(adapterId) !== null; }
+
+  /** Re-encrypts every statutory adapter secret with the active envelope key version. */
+  public rewrapCredentialEnvelopes(actorId = 'system-key-rotation', targetVersion = ACTIVE_CREDENTIAL_KEY_VERSION, now = new Date().toISOString()): number {
+    assertSupportedArtifactKeyVersion(targetVersion);
+    let migrated = 0;
+    for (const record of this.database.listStatutoryAdapterSecrets()) {
+      if (record.keyVersion === targetVersion) continue;
+      const credentials = this.decryptRecord(record);
+      const plaintext = Buffer.from(JSON.stringify(credentials), 'utf8');
+      const iv = randomBytes(12);
+      const cipher = createCipheriv('aes-256-gcm', this.keyForVersion(targetVersion), iv);
+      cipher.setAAD(aad(record.adapterId));
+      const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+      this.database.upsertStatutoryAdapterSecret({
+        ...record,
+        encryptedPayload: encrypted.toString('base64'),
+        iv: iv.toString('base64'),
+        authTag: cipher.getAuthTag().toString('base64'),
+        keyVersion: targetVersion,
+        checksum: digest(plaintext),
+        updatedBy: actorId,
+        updatedAt: now,
+      });
+      migrated += 1;
+    }
+    return migrated;
+  }
 
   public async pullStatuses(adapter: StatutoryAdapter, exchanges: StatutoryExchange[]): Promise<CanonicalPortalStatus[]> {
     if (!adapter.capabilities.includes('status-pull')) throw new Error('Adapter does not support status pull.');
@@ -73,10 +104,23 @@ export class StatutoryGatewayService {
   private decrypt(adapterId: string): AdapterCredentials {
     const record = this.database.getStatutoryAdapterSecret(adapterId);
     if (!record) throw new Error('Encrypted adapter credentials are missing.');
-    const decipher = createDecipheriv('aes-256-gcm', this.key, Buffer.from(record.iv, 'base64')); decipher.setAAD(aad(adapterId)); decipher.setAuthTag(Buffer.from(record.authTag, 'base64'));
+    return this.decryptRecord(record);
+  }
+
+  private decryptRecord(record: StoredAdapterSecret): AdapterCredentials {
+    try {
+      assertSupportedArtifactKeyVersion(record.keyVersion);
+    } catch {
+      throw new Error(`Encrypted adapter credentials use unsupported key version ${record.keyVersion}; rotate them before use.`);
+    }
+    const decipher = createDecipheriv('aes-256-gcm', this.keyForVersion(record.keyVersion), Buffer.from(record.iv, 'base64')); decipher.setAAD(aad(record.adapterId)); decipher.setAuthTag(Buffer.from(record.authTag, 'base64'));
     const plaintext = Buffer.concat([decipher.update(Buffer.from(record.encryptedPayload, 'base64')), decipher.final()]);
     if (digest(plaintext) !== record.checksum) throw new Error('Adapter credential integrity verification failed.');
     return JSON.parse(plaintext.toString('utf8')) as AdapterCredentials;
+  }
+
+  private keyForVersion(version: number): Buffer {
+    return deriveArtifactKey(this.masterKey, 'epic-bos/statutory-adapter-secrets', version);
   }
 
   private headers(credentials: AdapterCredentials): Headers {

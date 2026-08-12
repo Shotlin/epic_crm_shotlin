@@ -245,6 +245,35 @@ export async function clickButtonByName(
   await clickAt(app, point);
 }
 
+/** Click a visible native form control selected from the rendered DOM. */
+export async function clickFormControlBySelector(
+  app: PackagedElectronApp,
+  selector: string,
+): Promise<void> {
+  const point = await app.cdp.evaluate<CdpPoint | null>(withVisibilityHelper(`(() => {
+    const control = document.querySelector(${JSON.stringify(selector)});
+    if (!(control instanceof HTMLElement) ||
+        (control instanceof HTMLInputElement && control.disabled)) return null;
+    // Checkbox/radio inputs are intentionally visually hidden by the retail
+    // control styling; click their visible semantic label, exactly as a user
+    // does, while retaining the native input as the selected control.
+    const target = control instanceof HTMLInputElement && control.type !== 'text'
+      ? control.closest('label') ?? control
+      : control;
+    if (!isVisible(target)) return null;
+    target.scrollIntoView({ block: 'center', inline: 'nearest' });
+    const rect = target.getBoundingClientRect();
+    const candidate = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    const hit = document.elementFromPoint(candidate.x, candidate.y);
+    return hit === target || Boolean(hit && target.contains(hit)) ? candidate : null;
+  })()`));
+  if (!point) {
+    const diagnostics = await app.cdp.evaluate<string>(`JSON.stringify([...document.querySelectorAll(${JSON.stringify(selector)})].map((element) => { const rect = element.getBoundingClientRect(); const style = getComputedStyle(element); return { tag: element.tagName, display: style.display, visibility: style.visibility, opacity: style.opacity, rect: [rect.left, rect.top, rect.width, rect.height], text: element.textContent?.trim().slice(0, 160) }; }))`);
+    throw new Error(`Could not find a visible, hit-testable form control matching ${selector}. Candidates: ${diagnostics}`);
+  }
+  await clickAt(app, point);
+}
+
 /**
  * Click a real renderer button by its accessible label. This is intentionally
  * limited to ordinary DOM semantics; it does not create a renderer-only test
@@ -257,6 +286,17 @@ export async function clickButtonByAriaLabel(
   const point = await app.cdp.evaluate<CdpPoint | null>(buttonPointByAriaLabelExpression(label));
   if (!point) throw new Error(`Could not find an enabled visible button labelled ${label}.`);
   await clickAt(app, point);
+}
+
+export async function waitForButtonByAriaLabel(
+  app: PackagedElectronApp,
+  label: string,
+): Promise<void> {
+  await waitForPredicate(
+    app,
+    `button labelled ${label}`,
+    `Boolean(${buttonPointByAriaLabelExpression(label)})`,
+  );
 }
 
 export async function getBridgeSurface(app: PackagedElectronApp): Promise<{
@@ -331,16 +371,32 @@ export async function captureScreenshot(
 }
 
 export async function closePackagedElectronApp(app: PackagedElectronApp): Promise<void> {
+  let closeRequestError: Error | null = null;
   try {
     // Close the real BrowserWindow through its ordinary renderer-owned close
     // path. Electron's window-all-closed handler then calls app.quit(), which
     // lets the main process close SQLite before a restart.
-    await app.cdp.evaluate('window.close()');
+    await Promise.race([
+      app.cdp.evaluate('window.close()'),
+      delay(5_000).then(() => { throw new Error('Timed out requesting the packaged Electron window to close.'); }),
+    ]);
   } catch (error) {
-    if (app.child.exitCode === null && app.child.signalCode === null) throw error;
+    closeRequestError = error instanceof Error ? error : new Error(String(error));
   }
-  const exit = await waitForChildExit(app.child, 15_000);
+  let exit: number;
+  try {
+    exit = await waitForChildExit(app.child, 15_000);
+  } catch (error) {
+    // A renderer CDP close request can outlive the BrowserWindow on Windows.
+    // Do not leave a packaged process (or its database lock) behind when the
+    // ordinary close path did not complete; this fallback is test cleanup,
+    // never an application shutdown path.
+    await forceCloseChild(app.child);
+    await app.cdp.close();
+    throw error instanceof Error ? error : new Error(String(error));
+  }
   await app.cdp.close();
+  if (closeRequestError && exit !== 0) throw closeRequestError;
   if (exit !== 0) {
     throw new Error(`Packaged Electron app did not close cleanly (exit ${exit}).${outputTail(app.output)}`);
   }
@@ -623,10 +679,22 @@ function withVisibilityHelper(expression: string): string {
     const labelledFormControls = (label, scope) => {
       const root = scopeRoot(scope);
       if (!root) return [];
-      return [...root.querySelectorAll('label')]
-        .filter((element) => element.textContent?.trim() === label)
+      const labelCaption = (element) => [...element.childNodes]
+        .filter((node) => node.nodeType === Node.TEXT_NODE)
+        .map((node) => node.textContent ?? '')
+        .join('')
+        .trim();
+      const nested = [...root.querySelectorAll('label')]
+        // Read only the label's own caption. A textarea's current value is
+        // exposed through textContent, so matching the whole label would
+        // stop working immediately after a user enters a value.
+        .filter((element) => labelCaption(element) === label || element.textContent?.trim() === label)
         .map((element) => element.querySelector('input, textarea, select'))
         .filter((element) => isEditableControl(element) && isVisible(element) && !element.disabled && !element.readOnly);
+      const explicitlyNamed = [...root.querySelectorAll('input, textarea, select')]
+        .filter((element) => element.getAttribute('aria-label')?.trim() === label)
+        .filter((element) => isEditableControl(element) && isVisible(element) && !element.disabled && !element.readOnly);
+      return [...new Set([...nested, ...explicitlyNamed])];
     };
     const pointForInteraction = (element, offsetX, offsetY) => {
       // CDP mouse coordinates are viewport-relative. A long retail workspace

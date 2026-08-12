@@ -142,10 +142,13 @@ import type {
   AuthStatus,
   BootstrapOwnerInput,
   LoginInput,
+  MfaEnrollment,
+  MfaStatus,
   SessionInfo,
 } from '../shared/auth-contracts';
 import type { ApiKeyRecord, PublicApiScope } from '../shared/integration-contracts';
 import type { BuildProvenance, ReleaseGateId } from '../shared/release-control-contracts';
+import type { CertificationProviderDomain, ProviderCertificationHandoff } from '../shared/provider-certification-contract';
 import type {
   BindLedgerCompanyInput,
   CancelLedgerJournalInput,
@@ -201,7 +204,7 @@ import type { CreateRetailExchangeInput, DecideRetailExchangeInput } from '../sh
 import type { CreateRetailLoyaltyAccountInput } from '../shared/retail-loyalty-contracts';
 import type { CreateRetailCustomerVisitInput, LinkRetailCustomerVisitInput } from '../shared/retail-customer-ops-contracts';
 import type { ResolveRetailOfflineSaleInput, SyncRetailOfflineQueueInput, SyncRetailOfflineSaleInput } from '../shared/retail-offline-sync-contracts';
-import type { CompleteRetailUnifiedOrderPickTasksInput, CompleteRetailUnifiedOrderShipmentPackageInput, ConfirmRetailUnifiedOrderDeliveryInput, CreateRetailUnifiedOrderPickTasksInput, CreateRetailUnifiedOrderShipmentPackageInput, DecideRetailOrderFulfilmentHandoffInput, DispatchRetailUnifiedOrderInput, IngestRetailOrderSourceEventInput, PrepareRetailOrderFulfilmentHandoffInput, PrepareRetailOrderGovernedHandoffInput, PrepareRetailOrderHubHandoffInput, PrepareRetailUnifiedOrderDispatchInput, RecordRetailUnifiedOrderCarrierCallbackInput, ReconcileRetailUnifiedOrderReturnInput, ReconcileRetailUnifiedOrderRtoInput, RecordRetailOrderHubHandoffResultInput, ReserveRetailUnifiedOrderStockInput } from '../shared/retail-unified-order-contracts';
+import type { CompleteRetailUnifiedOrderPickTasksInput, CompleteRetailUnifiedOrderShipmentPackageInput, ConfirmRetailUnifiedOrderDeliveryInput, CreateRetailUnifiedOrderPickTasksInput, CreateRetailUnifiedOrderShipmentPackageInput, DecideRetailOrderFulfilmentHandoffInput, DispatchRetailUnifiedOrderInput, IngestRetailOrderSourceEventInput, PrepareRetailOrderFulfilmentHandoffInput, PrepareRetailOrderGovernedHandoffInput, PrepareRetailOrderHubHandoffInput, PrepareRetailUnifiedOrderDispatchInput, RecordRetailUnifiedOrderCarrierCallbackInput, ReconcileRetailUnifiedOrderCancellationInput, ReconcileRetailUnifiedOrderReturnInput, ReconcileRetailUnifiedOrderRtoInput, RecordRetailOrderHubHandoffResultInput, ReserveRetailUnifiedOrderStockInput } from '../shared/retail-unified-order-contracts';
 import type { PrepareRetailCreditNoteReconciliationInput, RecordRetailCreditNotePortalResponseInput } from '../shared/retail-credit-note-contracts';
 import type { CreateRetailInterBranchTransferInput, DecideRetailInterBranchTransferInput, DispatchRetailInterBranchTransferInput, ReceiveRetailInterBranchTransferInput } from '../shared/retail-interbranch-contracts';
 import type { ApplyRetailCatalogBulkEditInput, CreateRetailLabelPrintDispatchInput, CreateRetailPrinterAdapterInput, CreateRetailScaleProfileInput, DecideRetailLabelPrintDispatchInput, PrepareRetailCatalogBulkEditInput, TestRetailPrinterAdapterInput } from '../shared/retail-catalog-operations-contracts';
@@ -697,6 +700,7 @@ function AuthGate({
   const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
+  const [mfaCode, setMfaCode] = useState('');
   // A live retail operator always starts in a clean, owned workspace. The
   // sample provisioner remains an internal test/demo seam, never a normal
   // production enrollment choice.
@@ -711,7 +715,7 @@ function AuthGate({
       return;
     }
     if (configured) {
-      await onLogin({ email, password });
+      await onLogin({ email, password, mfaCode: mfaCode.trim() || undefined });
     } else {
       await onBootstrap({ email, displayName, password, starterMode });
     }
@@ -790,6 +794,21 @@ function AuthGate({
               onChange={(event) => setPassword(event.target.value)}
             />
           </label>
+          {configured && (mfaCode.length > 0 || /multi-factor|MFA/iu.test(error)) ? (
+            <label>
+              <span>Authenticator or recovery code</span>
+              <input
+                required
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                value={mfaCode}
+                onChange={(event) => setMfaCode(event.target.value)}
+                placeholder="123456 or recovery code"
+                maxLength={64}
+              />
+              <small className="auth-form__hint">Use the six-digit code from your authenticator app, or one unused recovery code.</small>
+            </label>
+          ) : null}
           {!configured ? (
             <>
               <label>
@@ -814,7 +833,7 @@ function AuthGate({
             <ArrowRight size={17} />
           </button>
         </form>
-        <p className="auth-form__footnote">Protected by account lockout and an eight-hour session window.</p>
+        <p className="auth-form__footnote">Protected by salted password hashing, optional authenticator MFA, account lockout, and an eight-hour session window.</p>
       </section>
     </main>
   );
@@ -2013,6 +2032,9 @@ type RetailPosActions = {
   onSyncOfflineSale: (input: SyncRetailOfflineSaleInput) => Promise<void>;
   onSyncOfflineQueue: (input: SyncRetailOfflineQueueInput) => Promise<void>;
   onResolveOfflineSale: (input: ResolveRetailOfflineSaleInput) => Promise<void>;
+  onSendRetailHubStoreEdgeSync?: (input: import('../shared/retail-hub-store-edge-sync-contracts').SendRetailHubStoreEdgeSyncInput) => Promise<void>;
+  onSyncRetailHubStoreEdgeQueue?: (input: import('../shared/retail-hub-store-edge-sync-contracts').SyncRetailHubStoreEdgeQueueInput) => Promise<void>;
+  onSaveRetailHubStoreEdgeSyncPolicy?: (input: import('../shared/retail-hub-store-edge-sync-contracts').SaveRetailHubStoreEdgeSyncPolicyInput) => Promise<void>;
   onIngestRetailUnifiedOrder?: (input: IngestRetailOrderSourceEventInput) => Promise<void>;
   onPrepareRetailUnifiedOrderHandoff?: (input: PrepareRetailOrderGovernedHandoffInput) => Promise<void>;
   onPrepareRetailOrderHubHandoff?: (input: PrepareRetailOrderHubHandoffInput) => Promise<void>;
@@ -2028,6 +2050,7 @@ type RetailPosActions = {
   onDispatchRetailUnifiedOrder?: (input: DispatchRetailUnifiedOrderInput) => Promise<void>;
   onConfirmRetailUnifiedOrderDelivery?: (input: ConfirmRetailUnifiedOrderDeliveryInput) => Promise<void>;
   onReconcileRetailUnifiedOrderRto?: (input: ReconcileRetailUnifiedOrderRtoInput) => Promise<void>;
+  onReconcileRetailUnifiedOrderCancellation?: (input: ReconcileRetailUnifiedOrderCancellationInput) => Promise<void>;
   onReconcileRetailUnifiedOrderReturn?: (input: ReconcileRetailUnifiedOrderReturnInput) => Promise<void>;
   onRecordRetailUnifiedOrderCarrierCallback?: (input: RecordRetailUnifiedOrderCarrierCallbackInput) => Promise<void>;
   onCreateDeviceAdapterProfile: (input: import('../shared/retail-device-profile-contracts').CreateRetailDeviceAdapterProfileInput) => Promise<void>;
@@ -2037,7 +2060,6 @@ type RetailPosActions = {
   onSuspendDeviceAdapterProfile: (input: import('../shared/retail-device-profile-contracts').SuspendRetailDeviceAdapterProfileInput) => Promise<void>;
   onPrepareDeviceTransport: (input: import('../shared/retail-device-transport-contracts').PrepareRetailDeviceTransportInput) => Promise<void>;
   onRecordDeviceTransport: (input: import('../shared/retail-device-transport-contracts').RecordRetailDeviceTransportInput) => Promise<void>;
-  onRecordNativeDeviceDriverResult: (input: import('../shared/retail-device-transport-contracts').RecordRetailNativeDeviceDriverResultInput) => Promise<void>;
   onExecuteDeviceTransport: (input: import('../shared/retail-device-transport-contracts').ExecuteRetailDeviceTransportInput) => Promise<void>;
   onRetryDeviceTransport: (input: import('../shared/retail-device-transport-contracts').RetryRetailDeviceTransportInput) => Promise<void>;
   onPreflightDeviceTransport: (input: import('../shared/retail-device-transport-contracts').PreflightRetailDeviceTransportInput) => Promise<import('../shared/retail-device-transport-contracts').RetailDeviceTransportPreflightResult>;
@@ -4850,6 +4872,9 @@ function CommercialFoundry({ revenue, party, kernel, actorId, busy, operationalH
       onSyncOfflineSale={retailActions.onSyncOfflineSale}
       onSyncOfflineQueue={retailActions.onSyncOfflineQueue}
       onResolveOfflineSale={retailActions.onResolveOfflineSale}
+      onSendRetailHubStoreEdgeSync={retailActions.onSendRetailHubStoreEdgeSync}
+      onSyncRetailHubStoreEdgeQueue={retailActions.onSyncRetailHubStoreEdgeQueue}
+      onSaveRetailHubStoreEdgeSyncPolicy={retailActions.onSaveRetailHubStoreEdgeSyncPolicy}
       onCreateLoyaltyAccount={retailActions.onCreateLoyaltyAccount}
       onCreateCustomerVisit={retailActions.onCreateCustomerVisit}
       onLinkCustomerVisitToSale={retailActions.onLinkCustomerVisitToSale}
@@ -4909,7 +4934,6 @@ function CommercialFoundry({ revenue, party, kernel, actorId, busy, operationalH
       activeActorId={actorId}
       onPrepare={retailActions.onPrepareDeviceTransport}
       onRecord={retailActions.onRecordDeviceTransport}
-      onRecordNativeDriverResult={retailActions.onRecordNativeDeviceDriverResult}
       onExecute={retailActions.onExecuteDeviceTransport}
       onRetry={retailActions.onRetryDeviceTransport}
       onPreflight={retailActions.onPreflightDeviceTransport}
@@ -4956,6 +4980,7 @@ function CommercialFoundry({ revenue, party, kernel, actorId, busy, operationalH
       onDispatch={retailActions.onDispatchRetailUnifiedOrder}
       onConfirmDelivery={retailActions.onConfirmRetailUnifiedOrderDelivery}
       onReconcileRto={retailActions.onReconcileRetailUnifiedOrderRto}
+      onReconcileCancellation={retailActions.onReconcileRetailUnifiedOrderCancellation}
       onReconcileReturn={retailActions.onReconcileRetailUnifiedOrderReturn}
       onRecordCarrierCallback={retailActions.onRecordRetailUnifiedOrderCarrierCallback}
     />
@@ -5220,6 +5245,83 @@ function RevenueLedger({ revenue, party, kernel, actorId, busy, onCreatePaymentT
   </div>;
 }
 
+function MfaSecurityPanel(): ReactNode {
+  const [status, setStatus] = useState<MfaStatus | null>(null);
+  const [enrollment, setEnrollment] = useState<MfaEnrollment | null>(null);
+  const [confirmationCode, setConfirmationCode] = useState('');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    void window.epicBos.auth.getMfaStatus()
+      .then(setStatus)
+      .catch((error: unknown) => setMessage(error instanceof Error ? error.message : 'MFA status is unavailable.'));
+  }, []);
+
+  async function beginEnrollment(): Promise<void> {
+    setBusy(true);
+    setMessage('');
+    try {
+      const next = await window.epicBos.auth.beginMfaEnrollment();
+      setEnrollment(next);
+      setStatus({ enabled: false, pending: true });
+      setMessage('Enrollment prepared. Save the recovery codes before confirming MFA.');
+    } catch (error: unknown) {
+      setMessage(error instanceof Error ? error.message : 'MFA enrollment could not start.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmEnrollment(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    setBusy(true);
+    setMessage('');
+    try {
+      setStatus(await window.epicBos.auth.confirmMfaEnrollment(confirmationCode));
+      setEnrollment(null);
+      setConfirmationCode('');
+      setMessage('MFA is enabled. Future sign-ins require an authenticator or unused recovery code.');
+    } catch (error: unknown) {
+      setMessage(error instanceof Error ? error.message : 'MFA enrollment could not be confirmed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function disableMfa(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    setBusy(true);
+    setMessage('');
+    try {
+      await window.epicBos.auth.disableMfa({ currentPassword });
+      setStatus({ enabled: false, pending: false });
+      setCurrentPassword('');
+      setMessage('MFA disabled and all sessions revoked. Sign in again to continue.');
+    } catch (error: unknown) {
+      setMessage(error instanceof Error ? error.message : 'MFA could not be disabled.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return <article className="panel admin-card admin-card--wide" aria-label="Multi-factor authentication">
+    <div className="panel__header"><div><span className="eyebrow">Account protection</span><h3>Authenticator MFA</h3><p>Protect every operator login with a real time-based code. Secrets are encrypted in the local vault; recovery codes are stored only as hashes.</p></div><ShieldCheck size={19} /></div>
+    <div className="metric-strip"><div><span>Current state</span><strong>{status?.enabled ? 'Enabled' : status?.pending ? 'Pending' : 'Disabled'}</strong></div><div><span>Recovery codes</span><strong>{enrollment?.recoveryCodes.length ?? (status?.enabled ? 'Stored' : '—')}</strong></div><div><span>Session policy</span><strong>8 hours</strong></div></div>
+    {!status?.enabled && !enrollment ? <button type="button" className="button button--primary" disabled={busy} onClick={() => void beginEnrollment()}><KeyRound size={16} />Set up authenticator MFA</button> : null}
+    {enrollment ? <div className="mfa-enrollment">
+      <p className="panel__note"><strong>Step 1.</strong> Add this secret to any TOTP authenticator app. Manual entry is supported so no QR or external service is required.</p>
+      <label>Manual secret<input readOnly value={enrollment.secret} aria-label="MFA manual secret" /></label>
+      <label>Authenticator URI<input readOnly value={enrollment.otpauthUri} aria-label="MFA authenticator URI" /></label>
+      <div className="mfa-recovery"><strong>Save these recovery codes now</strong><div>{enrollment.recoveryCodes.map((code) => <code key={code}>{code}</code>)}</div></div>
+      <form className="compact-form" onSubmit={(event) => void confirmEnrollment(event)}><label>Step 2 · Current authenticator code<input required inputMode="numeric" autoComplete="one-time-code" value={confirmationCode} onChange={(event) => setConfirmationCode(event.target.value)} placeholder="123456" maxLength={6} /></label><button type="submit" className="button button--primary" disabled={busy}>Confirm and enable MFA</button></form>
+    </div> : null}
+    {status?.enabled ? <form className="compact-form" onSubmit={(event) => void disableMfa(event)}><label>Disable MFA with current password<input required type="password" autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} /></label><button type="submit" className="button button--quiet" disabled={busy}>Disable MFA and revoke sessions</button></form> : null}
+    {message ? <p role="status" className="panel__note">{message}</p> : null}
+  </article>;
+}
+
 function ControlRoom({
   snapshot,
   health,
@@ -5263,6 +5365,31 @@ function ControlRoom({
   const [buildProvenance, setBuildProvenance] = useState<BuildProvenance | null>(null);
   const [releaseReadiness, setReleaseReadiness] = useState<{ status: 'ready' | 'blocked'; passed: number; failed: number; deferred: number; missingGateIds: ReleaseGateId[]; invalidGateIds: ReleaseGateId[] }>({ status: 'blocked', passed: 0, failed: 0, deferred: 0, missingGateIds: [], invalidGateIds: [] });
   const [releaseMessage, setReleaseMessage] = useState('');
+  const [providerHandoffFormOpen, setProviderHandoffFormOpen] = useState(false);
+  async function exportProviderHandoff(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    const references = String(form.get('testCaseReferences') ?? '').split(/[\n,]+/).map((reference) => reference.trim()).filter(Boolean);
+    const input: ProviderCertificationHandoff = {
+      domain: String(form.get('domain') ?? 'gsp-irp') as CertificationProviderDomain,
+      providerName: String(form.get('providerName') ?? '').trim(),
+      contractReference: String(form.get('contractReference') ?? '').trim(),
+      sandboxEvidenceReference: String(form.get('sandboxEvidenceReference') ?? '').trim(),
+      credentialRevision: Number(form.get('credentialRevision') ?? 0),
+      productionApprovalReference: String(form.get('productionApprovalReference') ?? '').trim() || undefined,
+      credentialOwner: String(form.get('credentialOwner') ?? '').trim(),
+      independentApprover: String(form.get('independentApprover') ?? '').trim() || undefined,
+      testCaseReferences: references,
+    };
+    try {
+      const receipt = await window.epicBos.integration.exportProviderCertificationPackage(input);
+      setReleaseMessage(receipt ? `Provider handoff exported · ${receipt.readyForProduction ? 'production-ready' : 'evidence required'} · SHA ${receipt.checksum.slice(0, 16)}…` : 'Provider certification package export cancelled.');
+      if (receipt) formElement.reset();
+    } catch (error: unknown) {
+      setReleaseMessage(error instanceof Error ? error.message : 'Provider certification package export failed.');
+    }
+  }
   const artifactReadiness = useMemo<ReleaseArtifactReadinessReport>(() => computeCrossPlatformArtifactReadiness({
     buildProvenance,
     packageGate: releaseGates.find(({ id }) => id === 'package') ?? null,
@@ -5272,7 +5399,7 @@ function ControlRoom({
     }, {}),
   }), [artifactEvidence, buildProvenance, releaseGates]);
   const updateReadiness = useMemo<ReleaseUpdateReadinessReport>(() => computeReleaseUpdateReadiness({ buildProvenance, artifactReadiness, evidence: updateEvidence }), [artifactReadiness, buildProvenance, updateEvidence]);
-  const deploymentReadiness = useMemo<ReleaseDeploymentReadinessReport>(() => computeReleaseDeploymentReadiness({ releaseReadiness, artifactReadiness, updateReadiness, uiAcceptanceReadiness, operationalHealth: health }), [artifactReadiness, health, releaseReadiness, uiAcceptanceReadiness, updateReadiness]);
+  const deploymentReadiness = useMemo<ReleaseDeploymentReadinessReport>(() => computeReleaseDeploymentReadiness({ releaseReadiness, artifactReadiness, updateReadiness, uiAcceptanceReadiness, operationalHealth: health, runtimeDatabaseEncryption: health?.runtimeDatabaseEncryption ?? null }), [artifactReadiness, health, releaseReadiness, uiAcceptanceReadiness, updateReadiness]);
   useEffect(() => { if (tab === 'release') void Promise.all([window.epicBos.release.listGates(), window.epicBos.release.listArtifactEvidence(), window.epicBos.release.listUpdateEvidence(), window.epicBos.release.getAutoUpdateStatus(), window.epicBos.release.listUiAcceptanceEvidence(), window.epicBos.release.getReadiness(), window.epicBos.release.getUiAcceptanceReadiness(), window.epicBos.system.getBuildProvenance()]).then(([gates, artifacts, updates, updater, acceptanceEvidence, readiness, acceptanceReadiness, provenance]) => { setReleaseGates(gates); setArtifactEvidence(artifacts); setUpdateEvidence(updates); setAutoUpdateStatus(updater); setUiAcceptanceEvidence(acceptanceEvidence); setReleaseReadiness({ status: readiness.status, passed: readiness.passed, failed: readiness.failed, deferred: readiness.deferred, missingGateIds: readiness.missingGateIds, invalidGateIds: readiness.invalidGateIds }); setUiAcceptanceReadiness(acceptanceReadiness); setBuildProvenance(provenance); }).catch((error: unknown) => setReleaseMessage(error instanceof Error ? error.message : 'Release evidence is unavailable.')); }, [tab]);
   useEffect(() => { if (tab === 'integration') void window.epicBos.integration.listApiKeys({ companyId: snapshot.context.companyId, branchId: snapshot.context.branchId }).then(setApiKeys).catch((error: unknown) => setApiKeyMessage(error instanceof Error ? error.message : 'API-key administration is unavailable.')); }, [tab, snapshot.context.companyId, snapshot.context.branchId]);
   const editableRoles = snapshot.roles.filter(
@@ -5372,6 +5499,24 @@ function ControlRoom({
       );
     } catch (drillError) {
       setStorageMessage(drillError instanceof Error ? drillError.message : 'Restore drill failed.');
+    } finally {
+      setStorageBusy(false);
+    }
+  }
+
+  async function rewrapLocalBackups(): Promise<void> {
+    if (!window.epicBos.storage.rewrapLocalBackups) return;
+    setStorageBusy(true);
+    setStorageMessage('Checking local backup files…');
+    try {
+      const receipt = await window.epicBos.storage.rewrapLocalBackups();
+      setStorageMessage(
+        receipt.verified
+          ? `Backup security verified · ${receipt.migrated} file(s) migrated to the active envelope.`
+          : `Backup review held · ${receipt.remainingLegacy} legacy file(s), ${receipt.invalid} invalid file(s).`,
+      );
+    } catch (backupError) {
+      setStorageMessage(backupError instanceof Error ? backupError.message : 'Backup security review failed.');
     } finally {
       setStorageBusy(false);
     }
@@ -5527,7 +5672,8 @@ function ControlRoom({
       </article> : null}
 
       {tab === 'release' ? <article className="panel admin-card" aria-label="Release readiness evidence">
-        <div className="panel__header"><div><span className="eyebrow">Phase 4 / Launch control</span><h3>Release evidence ledger</h3><p>Every gate is explicit. Deferred provider certification stays blocked.</p></div><div><ShieldCheck size={19} /><button type="button" className="button button--quiet" onClick={() => void window.epicBos.integration.exportRetailCertificationPack().then((receipt) => setReleaseMessage(receipt ? `Retail certification pack exported · ${receipt.readyForProduction ? 'production-ready' : `${receipt.externalGateCount} external gate(s) remain`} · SHA ${receipt.checksum.slice(0, 16)}…` : 'Retail certification pack export cancelled.')).catch((error: unknown) => setReleaseMessage(error instanceof Error ? error.message : 'Retail certification pack export failed.'))}>Export retail pack</button><button type="button" className="button button--quiet" onClick={() => void window.epicBos.integration.exportProviderCertificationPackage({ domain: 'gsp-irp', providerName: '', contractReference: '', sandboxEvidenceReference: '', credentialOwner: '', testCaseReferences: [] }).then((receipt) => setReleaseMessage(receipt ? `Provider template exported · ${receipt.readyForProduction ? 'production-ready' : 'evidence required'} · SHA ${receipt.checksum.slice(0, 16)}…` : 'Provider template export cancelled.')).catch((error: unknown) => setReleaseMessage(error instanceof Error ? error.message : 'Provider certification package export failed.'))}>Export provider template</button></div></div>
+        <div className="panel__header"><div><span className="eyebrow">Phase 4 / Launch control</span><h3>Release evidence ledger</h3><p>Every gate is explicit. Deferred provider certification stays blocked.</p></div><div><ShieldCheck size={19} /><button type="button" className="button button--quiet" onClick={() => void window.epicBos.integration.exportRetailCertificationPack().then((receipt) => setReleaseMessage(receipt ? `Retail certification pack exported · ${receipt.readyForProduction ? 'production-ready' : `${receipt.externalGateCount} external gate(s) remain`} · SHA ${receipt.checksum.slice(0, 16)}…` : 'Retail certification pack export cancelled.')).catch((error: unknown) => setReleaseMessage(error instanceof Error ? error.message : 'Retail certification pack export failed.'))}>Export retail pack</button><button type="button" className="button button--quiet" onClick={() => void window.epicBos.integration.verifyRetailCertificationPack().then((receipt) => setReleaseMessage(receipt ? (receipt.valid ? `Retail pack verified · ${receipt.externalGateCount ?? 0} external gate(s) remain · SHA ${receipt.declaredChecksum.slice(0, 16)}…` : `Retail pack rejected · ${receipt.errors.join(' ')}`) : 'Retail certification pack verification cancelled.')).catch((error: unknown) => setReleaseMessage(error instanceof Error ? error.message : 'Retail certification pack verification failed.'))}>Verify retail pack</button><button type="button" className="button button--quiet" onClick={() => void window.epicBos.integration.verifyProviderCertificationPackage().then((receipt) => setReleaseMessage(receipt ? (receipt.valid ? `Provider package verified · ${receipt.readyForProduction ? 'production-ready' : 'evidence required'} · SHA ${receipt.declaredChecksum.slice(0, 16)}…` : `Provider package rejected · ${receipt.errors.join(' ')}`) : 'Provider package verification cancelled.')).catch((error: unknown) => setReleaseMessage(error instanceof Error ? error.message : 'Provider package verification failed.'))}>Verify provider package</button><button type="button" className="button button--quiet" onClick={() => setProviderHandoffFormOpen((current) => !current)}>{providerHandoffFormOpen ? 'Hide provider form' : 'Export provider template'}</button>{window.epicBos.security ? <button type="button" className="button button--quiet" onClick={() => { if (!window.confirm('Re-encrypt legacy provider, statutory, MFA, and attachment records now?')) return; void window.epicBos.security?.rotateArtifactKeyEnvelopes().then((report) => setReleaseMessage(report.verified ? `Encrypted artifacts migrated · ${Object.values(report.migrated).reduce((total, count) => total + count, 0)} record(s) rewrapped · v${report.targetVersion}` : `Artifact migration incomplete · ${report.remainingLegacy} legacy record(s) remain.`)).catch((error: unknown) => setReleaseMessage(error instanceof Error ? error.message : 'Encrypted artifact migration failed.')); }}>Migrate encrypted artifacts</button> : null}</div></div>
+        {providerHandoffFormOpen ? <form className="compact-form" onSubmit={(event) => void exportProviderHandoff(event)} aria-label="Provider certification handoff form"><p className="panel__note">Capture contract, credential generation, and evidence references only. Never enter API keys, passwords, tokens, or signed payloads here.</p><div className="compact-form__row"><label>Provider domain<select name="domain" defaultValue="gsp-irp"><option value="gsp-irp">GST / GSP / IRP</option><option value="banking">Banking / settlement</option><option value="payroll">Payroll</option><option value="messaging">Messaging</option><option value="logistics">Logistics</option></select></label><label>Provider name<input name="providerName" placeholder="Provider legal name" required /></label></div><div className="compact-form__row"><label>Contract reference<input name="contractReference" placeholder="CONTRACT-REF-001" required /></label><label>Credential owner<input name="credentialOwner" placeholder="Team or accountable owner" required /></label></div><div className="compact-form__row"><label>Credential revision<input name="credentialRevision" type="number" min="1" step="1" placeholder="Current vault revision" required /></label><label>Sandbox evidence reference<input name="sandboxEvidenceReference" placeholder="SANDBOX-REPORT-001" required /></label></div><label>Test-case references<textarea name="testCaseReferences" placeholder="AUTH-001, HAPPY-001, RETRY-001" required /></label><div className="compact-form__row"><label>Independent approver<input name="independentApprover" placeholder="Required for production approval" /></label><label>Production approval reference<input name="productionApprovalReference" placeholder="PROD-APPROVAL-001" /></label></div><button type="submit" className="button button--primary">Export handoff package</button></form> : null}
         <div className="metric-strip"><div><span>Passed</span><strong>{releaseGates.filter(({ status }) => status === 'passed').length}</strong></div><div><span>Failed</span><strong>{releaseGates.filter(({ status }) => status === 'failed').length}</strong></div><div><span>Deferred</span><strong>{releaseGates.filter(({ status }) => status === 'deferred').length + releaseReadiness.missingGateIds.length}</strong></div><div><span>Production</span><strong>{releaseReadiness.status.toUpperCase()}</strong></div></div>
         <section className="ledger-sheet ledger-sheet--wide" aria-label="Deployment promotion checklist">
           <header><span>DEPLOYMENT PROMOTION</span><h4>One go/hold decision for the next store rollout</h4><em data-status={deploymentReadiness.status}>{deploymentReadiness.goNoGo === 'go' ? 'go' : 'hold'}</em></header>
@@ -5645,6 +5791,7 @@ function ControlRoom({
 
       {tab === 'access' && selectedRole ? (
         <div className="control-room__grid control-room__grid--access">
+          <MfaSecurityPanel />
           <article className="panel admin-card">
             <div className="panel__header"><div><span className="eyebrow">Role policy editor</span><h3>Explicit grants</h3></div><KeyRound size={19} /></div>
             <label className="control-select">Role<select value={selectedRole.id} onChange={(event) => setSelectedRoleId(event.target.value)}>{editableRoles.map((role) => <option value={role.id} key={role.id}>{role.name}</option>)}</select></label>
@@ -5709,6 +5856,7 @@ function ControlRoom({
             <button type="button" className="button button--primary" disabled={busy || storageBusy} onClick={() => void onCreateBackup()}><DatabaseBackup size={16} />Create verified database backup</button>
             <button type="button" className="button button--quiet" disabled={busy || storageBusy} onClick={() => void restoreDatabase()}><Upload size={16} />Restore from backup</button>
             <button type="button" className="button button--quiet" disabled={busy || storageBusy} onClick={() => void runRestoreDrill()}><ShieldCheck size={16} />Run isolated restore drill</button>
+            {window.epicBos.storage.rewrapLocalBackups ? <button type="button" className="button button--quiet" disabled={busy || storageBusy} onClick={() => void rewrapLocalBackups()}><ShieldCheck size={16} />Secure local backup files</button> : null}
             <p className="restore-warning">Restore creates a pre-restore safety copy and only swaps the database after a verified restart. The drill uses temporary copies and never changes this workspace.</p>
             <div className="ledger-register" aria-label="Restore drill history">
               {restoreDrills.length ? restoreDrills.slice(0, 5).map((drill) => <div key={drill.id}><div><span>{drill.status} · {drill.startedAt}</span><strong>{drill.message}</strong><small>Actor {drill.actorId} · backup SHA {drill.sourceBackup?.sha256.slice(0, 12) ?? 'n/a'}… · restored SHA {drill.restoredCopy?.sha256.slice(0, 12) ?? 'n/a'}…</small></div><em data-status={drill.status}>{drill.status}</em></div>) : <p className="people-empty">No isolated restore-drill evidence recorded yet.</p>}
@@ -6043,6 +6191,15 @@ function AppShell({
   onCreateRetailCutoverPlan,
   onCreateRetailCutoverPlanFromHubAssessment,
   onFetchRetailHubCutoverAssessment,
+  onFetchRetailHubDeploymentPreflight,
+  onFetchRetailHubShadowImportPreflight,
+  onFetchRetailHubShadowImportSourceStatus,
+  onFetchRetailHubShadowImportPullReceipts,
+  onFetchRetailHubStoreEdgeWorkerMetrics,
+  retailCoverageMap,
+  retailCoverageMapBusy,
+  retailCoverageMapError,
+  onFetchRetailHubCoverageMap,
   onAdvanceRetailCutover,
   systemInfo,
   retailDemoResetPreview,
@@ -6167,6 +6324,15 @@ function AppShell({
   onCreateRetailCutoverPlan: (input: import('../shared/retail-cutover-contracts').CreateRetailCutoverPlanInput) => Promise<void>;
   onCreateRetailCutoverPlanFromHubAssessment: (input: import('../shared/retail-cutover-contracts').CreateRetailCutoverPlanFromAssessmentInput) => Promise<void>;
   onFetchRetailHubCutoverAssessment: (input: import('../shared/retail-cutover-contracts').FetchRetailHubCutoverAssessmentInput) => Promise<import('../shared/retail-cutover-contracts').RetailHubCutoverAssessment>;
+  onFetchRetailHubDeploymentPreflight: (input: import('../shared/retail-hub-deployment-contracts').FetchRetailHubDeploymentPreflightInput) => Promise<import('../shared/retail-hub-deployment-contracts').RetailHubDeploymentPreflight>;
+  onFetchRetailHubShadowImportPreflight: (input: import('../shared/retail-hub-shadow-import-contracts').FetchRetailHubShadowImportPreflightInput) => Promise<import('../shared/retail-hub-shadow-import-contracts').RetailHubShadowImportPreflight>;
+  onFetchRetailHubShadowImportSourceStatus: (input: import('../shared/retail-hub-shadow-import-contracts').FetchRetailHubShadowImportSourceStatusInput) => Promise<import('../shared/retail-hub-shadow-import-contracts').RetailHubShadowImportSourceStatusReport>;
+  onFetchRetailHubShadowImportPullReceipts: (input: import('../shared/retail-hub-shadow-import-contracts').FetchRetailHubShadowImportPullReceiptsInput) => Promise<import('../shared/retail-hub-shadow-import-contracts').RetailHubShadowImportPullReceiptsReport>;
+  onFetchRetailHubStoreEdgeWorkerMetrics: (input: import('../shared/retail-hub-store-edge-metrics-contracts').FetchRetailHubStoreEdgeWorkerMetricsInput) => Promise<import('../shared/retail-hub-store-edge-metrics-contracts').RetailHubStoreEdgeWorkerMetricsReport>;
+  retailCoverageMap?: import('../shared/retail-hub-coverage-map-contracts').RetailHubCoverageMap;
+  retailCoverageMapBusy: boolean;
+  retailCoverageMapError: string;
+  onFetchRetailHubCoverageMap: (input: { baseUrl: string; shopId: string }) => Promise<void>;
   onAdvanceRetailCutover: (input: import('../shared/retail-cutover-contracts').AdvanceRetailCutoverInput & { id: string }) => Promise<void>;
   systemInfo: SystemInfo | null;
   retailDemoResetPreview: BakalooRetailDemoResetPreview | null;
@@ -6804,6 +6970,7 @@ function AppShell({
             onCreate={onCreateRetailCutoverPlan}
             onCreateFromHubAssessment={onCreateRetailCutoverPlanFromHubAssessment}
             onFetchHubAssessment={onFetchRetailHubCutoverAssessment}
+            onFetchHubDeploymentPreflight={onFetchRetailHubDeploymentPreflight}
             onAdvance={onAdvanceRetailCutover}
           />
           <BakalooRetailDemoResetPanel
@@ -6812,7 +6979,7 @@ function AppShell({
             message={retailDemoResetMessage}
             onApply={onApplyRetailDemoReset}
           />
-          <RetailShadowImportReviewPanel />
+          <RetailShadowImportReviewPanel busy={retailCutoverBusy} onFetchHubPreflight={onFetchRetailHubShadowImportPreflight} onFetchHubSourceStatus={onFetchRetailHubShadowImportSourceStatus} onFetchHubPullReceipts={onFetchRetailHubShadowImportPullReceipts} onFetchHubWorkerMetrics={onFetchRetailHubStoreEdgeWorkerMetrics} />
           <details className="bakaloo-command__advanced">
             <summary>
               <span>Advanced controls and evidence</span>
@@ -6910,6 +7077,10 @@ function AppShell({
           {retailOverviewOpen && activeRetailRoute === 'deliver' ? <>
             <RetailDeliveryOverviewPanel
               revenue={revenueOpsSnapshot}
+              coverageMap={retailCoverageMap}
+              coverageMapBusy={retailCoverageMapBusy}
+              coverageMapError={retailCoverageMapError}
+              onFetchCoverageMap={onFetchRetailHubCoverageMap}
               onOpenAdvanced={() => openAdvancedRetailWorkbench({ kind: 'bharat', tab: 'fulfilment', workspace: 'operations', handoff: 'Fulfilment controls are open. Review delivery evidence before writing.' })}
             />
             <RetailChannelHealthOverviewPanel
@@ -7072,6 +7243,9 @@ export function App(): ReactNode {
   const [retailWorkspaceStatus, setRetailWorkspaceStatus] = useState<RetailWorkspaceStatus | null>(null);
   const [retailCutoverPlans, setRetailCutoverPlans] = useState<import('../shared/retail-cutover-contracts').RetailCutoverPlan[]>([]);
   const [retailCutoverBusy, setRetailCutoverBusy] = useState(false);
+  const [retailCoverageMap, setRetailCoverageMap] = useState<import('../shared/retail-hub-coverage-map-contracts').RetailHubCoverageMap | undefined>();
+  const [retailCoverageMapBusy, setRetailCoverageMapBusy] = useState(false);
+  const [retailCoverageMapError, setRetailCoverageMapError] = useState('');
   const [snapshot, setSnapshot] = useState<DashboardSnapshot | null>(null);
   const [kernelSnapshot, setKernelSnapshot] = useState<KernelSnapshot | null>(
     null,
@@ -7199,6 +7373,88 @@ export function App(): ReactNode {
       return assessment;
     } finally {
       setRetailCutoverBusy(false);
+    }
+  }
+
+  async function fetchRetailHubDeploymentPreflight(input: import('../shared/retail-hub-deployment-contracts').FetchRetailHubDeploymentPreflightInput): Promise<import('../shared/retail-hub-deployment-contracts').RetailHubDeploymentPreflight> {
+    setRetailCutoverBusy(true);
+    try {
+      const fetchPreflight = window.epicBos.revenueOps.fetchRetailHubDeploymentPreflight;
+      if (!fetchPreflight) throw new Error('This packaged build does not expose the Retail Hub deployment check. Rebuild from the current source.');
+      const report = await fetchPreflight(input);
+      setNotice(`Retail Hub deployment preflight: ${report.status}.`);
+      return report;
+    } finally {
+      setRetailCutoverBusy(false);
+    }
+  }
+
+  async function fetchRetailHubShadowImportPreflight(input: import('../shared/retail-hub-shadow-import-contracts').FetchRetailHubShadowImportPreflightInput): Promise<import('../shared/retail-hub-shadow-import-contracts').RetailHubShadowImportPreflight> {
+    setRetailCutoverBusy(true);
+    try {
+      const fetchPreflight = window.epicBos.revenueOps.fetchRetailHubShadowImportPreflight;
+      if (!fetchPreflight) throw new Error('This packaged build does not expose the Retail Hub shadow-import check. Rebuild from the current source.');
+      const report = await fetchPreflight(input);
+      setNotice(`Retail Hub shadow-import preflight: ${report.status}.`);
+      return report;
+    } finally {
+      setRetailCutoverBusy(false);
+    }
+  }
+
+  async function fetchRetailHubShadowImportSourceStatus(input: import('../shared/retail-hub-shadow-import-contracts').FetchRetailHubShadowImportSourceStatusInput): Promise<import('../shared/retail-hub-shadow-import-contracts').RetailHubShadowImportSourceStatusReport> {
+    setRetailCutoverBusy(true);
+    try {
+      const fetchStatus = window.epicBos.revenueOps.fetchRetailHubShadowImportSourceStatus;
+      if (!fetchStatus) throw new Error('This packaged build does not expose the Retail Hub source-health check. Rebuild from the current source.');
+      const report = await fetchStatus(input);
+      setNotice(`Retail Hub source status: ${report.sourceStatus.status}.`);
+      return report;
+    } finally {
+      setRetailCutoverBusy(false);
+    }
+  }
+
+  async function fetchRetailHubShadowImportPullReceipts(input: import('../shared/retail-hub-shadow-import-contracts').FetchRetailHubShadowImportPullReceiptsInput): Promise<import('../shared/retail-hub-shadow-import-contracts').RetailHubShadowImportPullReceiptsReport> {
+    setRetailCutoverBusy(true);
+    try {
+      const fetchReceipts = window.epicBos.revenueOps.fetchRetailHubShadowImportPullReceipts;
+      if (!fetchReceipts) throw new Error('This packaged build does not expose the Retail Hub pull-receipt check. Rebuild from the current source.');
+      const report = await fetchReceipts(input);
+      setNotice(`Retail Hub pull receipts loaded: ${report.receipts.length}.`);
+      return report;
+    } finally {
+      setRetailCutoverBusy(false);
+    }
+  }
+
+  async function fetchRetailHubStoreEdgeWorkerMetrics(input: import('../shared/retail-hub-store-edge-metrics-contracts').FetchRetailHubStoreEdgeWorkerMetricsInput): Promise<import('../shared/retail-hub-store-edge-metrics-contracts').RetailHubStoreEdgeWorkerMetricsReport> {
+    setRetailCutoverBusy(true);
+    try {
+      const fetchMetrics = window.epicBos.revenueOps.fetchRetailHubStoreEdgeWorkerMetrics;
+      if (!fetchMetrics) throw new Error('This packaged build does not expose the Retail Hub worker health check. Rebuild from the current source.');
+      const report = await fetchMetrics(input);
+      setNotice(`Retail Hub Store Edge worker: ${report.metrics.deadLetter ? 'review required' : 'healthy'}.`);
+      return report;
+    } finally {
+      setRetailCutoverBusy(false);
+    }
+  }
+
+  async function fetchRetailHubCoverageMap(input: { baseUrl: string; shopId: string }): Promise<void> {
+    setRetailCoverageMapBusy(true);
+    setRetailCoverageMapError('');
+    try {
+      const fetchMap = window.epicBos.revenueOps.fetchRetailHubCoverageMap;
+      if (!fetchMap) throw new Error('This packaged build does not expose Bakaloo coverage-map transport. Rebuild from the current source.');
+      if (!revenueOpsSnapshot?.scope) throw new Error('The active company and branch scope is unavailable.');
+      setRetailCoverageMap(await fetchMap({ ...input, scope: revenueOpsSnapshot.scope }));
+      setNotice('Read-only Bakaloo coverage map loaded for the active branch.');
+    } catch (errorValue: unknown) {
+      setRetailCoverageMap(undefined);
+      setRetailCoverageMapError(errorValue instanceof Error ? errorValue.message : 'Bakaloo coverage map could not be loaded.');
+    } finally {
+      setRetailCoverageMapBusy(false);
     }
   }
 
@@ -7905,7 +8161,16 @@ export function App(): ReactNode {
         onRefreshRetailCutoverPlans={refreshRetailCutoverPlans}
         onCreateRetailCutoverPlan={createRetailCutoverPlan}
         onCreateRetailCutoverPlanFromHubAssessment={createRetailCutoverPlanFromHubAssessment}
-        onFetchRetailHubCutoverAssessment={fetchRetailHubCutoverAssessment}
+            onFetchRetailHubCutoverAssessment={fetchRetailHubCutoverAssessment}
+            onFetchRetailHubDeploymentPreflight={fetchRetailHubDeploymentPreflight}
+            onFetchRetailHubShadowImportPreflight={fetchRetailHubShadowImportPreflight}
+            onFetchRetailHubShadowImportSourceStatus={fetchRetailHubShadowImportSourceStatus}
+            onFetchRetailHubShadowImportPullReceipts={fetchRetailHubShadowImportPullReceipts}
+            onFetchRetailHubStoreEdgeWorkerMetrics={fetchRetailHubStoreEdgeWorkerMetrics}
+        retailCoverageMap={retailCoverageMap}
+        retailCoverageMapBusy={retailCoverageMapBusy}
+        retailCoverageMapError={retailCoverageMapError}
+        onFetchRetailHubCoverageMap={fetchRetailHubCoverageMap}
         onAdvanceRetailCutover={advanceRetailCutover}
         systemInfo={systemInfo}
         retailDemoResetPreview={retailDemoResetPreview}
@@ -8239,6 +8504,9 @@ export function App(): ReactNode {
           onSyncOfflineSale: (input) => mutateRevenueOps(() => window.epicBos.revenueOps.syncRetailOfflineSale(input), 'Offline sale synchronized through the governed checkout boundary.'),
           onSyncOfflineQueue: (input) => mutateRevenueOps(() => window.epicBos.revenueOps.syncRetailOfflineQueue(input), 'Background sync attempted for this cashier’s saved sales; conflicts remain visible for review.'),
           onResolveOfflineSale: (input) => mutateRevenueOps(() => window.epicBos.revenueOps.resolveRetailOfflineSale(input), input.resolution === 'requeue' ? 'Offline conflict requeued with supervisor evidence.' : 'Offline sale discarded with supervisor evidence.'),
+          onSendRetailHubStoreEdgeSync: (input) => mutateRevenueOps(() => window.epicBos.revenueOps.sendRetailHubStoreEdgeSync(input), 'Store Edge → Retail Hub transport receipt recorded; Hub response remains authoritative.'),
+          onSyncRetailHubStoreEdgeQueue: (input) => mutateRevenueOps(() => window.epicBos.revenueOps.syncRetailHubStoreEdgeQueue(input), 'Store Edge batch attempts recorded; the Retail Hub remains authoritative.'),
+          onSaveRetailHubStoreEdgeSyncPolicy: (input) => mutateRevenueOps(() => window.epicBos.revenueOps.saveRetailHubStoreEdgeSyncPolicy(input), input.enabled ? 'Background Store Edge retry policy enabled with explicit operator scope.' : 'Background Store Edge retry policy disabled; no automatic network calls will run.'),
           onIngestRetailUnifiedOrder: (input) => mutateRevenueOps(() => window.epicBos.revenueOps.ingestRetailUnifiedOrder(input), 'Omnichannel order evidence stored locally; no provider or stock write was performed.'),
           onPrepareRetailUnifiedOrderHandoff: (input) => mutateRevenueOps(() => window.epicBos.revenueOps.prepareRetailUnifiedOrderHandoff(input), 'Unified order handoff approved with maker-checker evidence; downstream stock and payment workflows remain separate.'),
           onPrepareRetailOrderHubHandoff: (input) => mutateRevenueOps(() => window.epicBos.revenueOps.prepareRetailOrderHubHandoff(input), 'Retail Hub handoff queued locally with source checksum; no network or Bakaloo write was performed.'),
@@ -8254,6 +8522,7 @@ export function App(): ReactNode {
           onDispatchRetailUnifiedOrder: (input) => mutateRevenueOps(() => window.epicBos.revenueOps.dispatchRetailUnifiedOrder(input), 'Carrier handoff recorded after dispatch readiness, statutory, and packed-stock gates passed.'),
           onConfirmRetailUnifiedOrderDelivery: (input) => mutateRevenueOps(() => window.epicBos.revenueOps.confirmRetailUnifiedOrderDelivery(input), 'Proof of delivery recorded and the canonical shipment/customer evidence is now closed.'),
           onReconcileRetailUnifiedOrderRto: (input) => mutateRevenueOps(() => window.epicBos.revenueOps.reconcileRetailUnifiedOrderRto(input), 'RTO evidence reconciled locally; no stock, refund, GST, or provider write was performed.'),
+          onReconcileRetailUnifiedOrderCancellation: (input) => mutateRevenueOps(() => window.epicBos.revenueOps.reconcileRetailUnifiedOrderCancellation(input), 'Cancellation stock and payment evidence linked locally; no source-order, stock, or provider write was performed.'),
           onReconcileRetailUnifiedOrderReturn: (input) => mutateRevenueOps(() => window.epicBos.revenueOps.reconcileRetailUnifiedOrderReturn(input), 'Return, settlement, and matched GST credit-note evidence linked locally; no source-order write was performed.'),
           onRecordRetailUnifiedOrderCarrierCallback: (input) => mutateRevenueOps(() => window.epicBos.revenueOps.recordRetailUnifiedOrderCarrierCallback(input), 'Carrier callback evidence recorded with its payload checksum; local delivery, RTO, refund, and stock state were not changed.'),
           onCreateDeviceAdapterProfile: (input) => mutateRevenueOps(() => window.epicBos.revenueOps.createRetailDeviceAdapterProfile(input), 'Device setup saved. It stays non-operational until independent approval and actual response evidence exist.'),
@@ -8263,7 +8532,6 @@ export function App(): ReactNode {
           onSuspendDeviceAdapterProfile: (input) => mutateRevenueOps(() => window.epicBos.revenueOps.suspendRetailDeviceAdapterProfile(input), 'Device setup placed on hold for recovery review.'),
           onPrepareDeviceTransport: (input) => mutateRevenueOps(() => window.epicBos.revenueOps.prepareRetailDeviceTransport(input), 'Physical device command prepared; hardware success remains pending acknowledgement.'),
           onRecordDeviceTransport: (input) => mutateRevenueOps(() => window.epicBos.revenueOps.recordRetailDeviceTransport(input), input.result === 'acknowledged' ? 'Device response acknowledged by an independent operator.' : 'Device failure recorded for recovery review.'),
-          onRecordNativeDeviceDriverResult: (input) => mutateRevenueOps(() => window.epicBos.revenueOps.recordRetailNativeDeviceDriverResult(input), input.result === 'acknowledged' ? 'Native bridge response recorded; independent profile certification remains required.' : `Native bridge result recorded as ${input.result}; recovery review remains required.`),
           onExecuteDeviceTransport: (input) => mutateRevenueOps(() => window.epicBos.revenueOps.executeRetailDeviceTransport(input), 'Network device response executed and recorded against the prepared checksum.'),
           onRetryDeviceTransport: (input) => mutateRevenueOps(() => window.epicBos.revenueOps.retryRetailDeviceTransport(input), 'Controlled device retry prepared; independent hardware acknowledgement remains required.'),
           onPreflightDeviceTransport: (input) => window.epicBos.revenueOps.preflightRetailDeviceTransport(input),

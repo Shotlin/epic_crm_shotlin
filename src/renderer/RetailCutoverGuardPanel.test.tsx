@@ -2,6 +2,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { RetailCutoverPlan, RetailHubCutoverAssessment } from '../shared/retail-cutover-contracts';
+import type { RetailHubDeploymentPreflight } from '../shared/retail-hub-deployment-contracts';
 import { RetailCutoverGuardPanel } from './RetailCutoverGuardPanel';
 
 afterEach(() => cleanup());
@@ -54,11 +55,13 @@ function renderPanel(options: {
   onCreate?: ReturnType<typeof vi.fn>;
   onCreateFromHubAssessment?: ReturnType<typeof vi.fn>;
   onFetchHubAssessment?: ReturnType<typeof vi.fn>;
+  onFetchHubDeploymentPreflight?: ReturnType<typeof vi.fn>;
   onAdvance?: ReturnType<typeof vi.fn>;
 } = {}) {
   const onCreate = options.onCreate ?? vi.fn(async () => undefined);
   const onCreateFromHubAssessment = options.onCreateFromHubAssessment ?? vi.fn(async () => undefined);
   const onFetchHubAssessment = options.onFetchHubAssessment ?? vi.fn(async () => { throw new Error('not used'); });
+  const onFetchHubDeploymentPreflight = options.onFetchHubDeploymentPreflight;
   const onAdvance = options.onAdvance ?? vi.fn(async () => undefined);
   render(
     <RetailCutoverGuardPanel
@@ -68,10 +71,11 @@ function renderPanel(options: {
       onCreate={onCreate}
       onCreateFromHubAssessment={onCreateFromHubAssessment}
       onFetchHubAssessment={onFetchHubAssessment}
+      onFetchHubDeploymentPreflight={onFetchHubDeploymentPreflight}
       onAdvance={onAdvance}
     />,
   );
-  return { onCreate, onCreateFromHubAssessment, onFetchHubAssessment, onAdvance };
+  return { onCreate, onCreateFromHubAssessment, onFetchHubAssessment, onAdvance, onFetchHubDeploymentPreflight };
 }
 
 async function fetchReadyAssessment(user: ReturnType<typeof userEvent.setup>): Promise<void> {
@@ -82,6 +86,29 @@ async function fetchReadyAssessment(user: ReturnType<typeof userEvent.setup>): P
 }
 
 describe('RetailCutoverGuardPanel', () => {
+  it('shows server-owned Hub deployment readiness without enabling write-back', async () => {
+    const user = userEvent.setup();
+    const readiness: RetailHubDeploymentPreflight = {
+      schema: 'epic-bos-retail-hub-deployment-preflight',
+      generatedAt: '2026-08-06T12:00:00.000Z',
+      status: 'hold',
+      environment: 'production',
+      writeBackAllowed: false,
+      invalidKeys: [],
+      checks: [{ id: 'authentication', status: 'hold', summary: 'Auth is required.' }],
+      blockers: ['authentication'],
+    };
+    const onFetchHubDeploymentPreflight = vi.fn(async () => readiness);
+    renderPanel({ onFetchHubDeploymentPreflight });
+    await user.click(screen.getByRole('button', { name: /open verified hub assessment/i }));
+    await user.type(screen.getByLabelText('Approved Hub HTTPS URL'), 'https://hub.example.in');
+    await user.click(screen.getByRole('button', { name: /check hub readiness/i }));
+    await waitFor(() => expect(onFetchHubDeploymentPreflight).toHaveBeenCalledWith({ baseUrl: 'https://hub.example.in' }));
+    expect((await screen.findByRole('status', { name: 'Retail Hub deployment readiness' })).textContent).toMatch(/hold · production/i);
+    expect(screen.getByText(/blockers: authentication/i)).toBeTruthy();
+    expect(screen.getByText(/write-back disabled/i)).toBeTruthy();
+  });
+
   it('does not expose a manual cutover-plan form to an operator', async () => {
     const user = userEvent.setup();
     const { onCreate } = renderPanel();

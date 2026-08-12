@@ -5,6 +5,8 @@ export interface ProviderCertificationHandoff {
   providerName: string;
   contractReference: string;
   sandboxEvidenceReference: string;
+  /** Monotonic vault credential generation used to produce this evidence. */
+  credentialRevision: number;
   productionApprovalReference?: string;
   credentialOwner: string;
   independentApprover?: string;
@@ -32,4 +34,21 @@ export interface ProviderCertificationExportReceipt {
   readyForSandbox: boolean;
   readyForProduction: boolean;
   exportedAt: string;
+}
+
+/** Safe result returned when a handoff package is checked without importing it. */
+export interface ProviderCertificationPackageVerification {
+  valid: boolean;
+  declaredChecksum: string;
+  computedChecksum?: string;
+  credentialRevision?: number;
+  readyForSandbox?: boolean;
+  readyForProduction?: boolean;
+  missing: string[];
+  errors: string[];
+}
+
+export interface ProviderCertificationPackageVerificationReceipt extends ProviderCertificationPackageVerification {
+  filePath: string;
+  verifiedAt: string;
 }

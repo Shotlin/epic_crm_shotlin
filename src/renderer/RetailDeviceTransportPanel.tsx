@@ -7,7 +7,6 @@ import type {
   PrepareRetailDeviceTransportInput,
   PreflightRetailDeviceTransportInput,
   RecordRetailDevicePreflightEvidenceInput,
-  RecordRetailNativeDeviceDriverResultInput,
   RecordRetailDeviceTransportInput,
   RetailDeviceResponseProtocol,
   RetailDeviceTransportEvidence,
@@ -25,7 +24,6 @@ export interface RetailDeviceTransportPanelProps {
   activeActorId: string;
   onPrepare: (input: PrepareRetailDeviceTransportInput) => Promise<void>;
   onRecord: (input: RecordRetailDeviceTransportInput) => Promise<void>;
-  onRecordNativeDriverResult: (input: RecordRetailNativeDeviceDriverResultInput) => Promise<void>;
   onExecute: (input: ExecuteRetailDeviceTransportInput) => Promise<void>;
   onRetry: (input: RetryRetailDeviceTransportInput) => Promise<void>;
   onPreflight: (input: PreflightRetailDeviceTransportInput) => Promise<RetailDeviceTransportPreflightResult>;
@@ -144,7 +142,6 @@ export function RetailDeviceTransportPanel({
   activeActorId,
   onPrepare,
   onRecord,
-  onRecordNativeDriverResult,
   onExecute,
   onRetry,
   onPreflight,
@@ -350,37 +347,6 @@ export function RetailDeviceTransportPanel({
     }
   }
 
-  async function recordNativeDriverResult(
-    event: FormEvent<HTMLFormElement>,
-    id: string,
-    expectedVersion: number,
-    profile: RetailDeviceAdapterProfile,
-  ): Promise<void> {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    try {
-      const result = String(data.get('result')) as RecordRetailNativeDeviceDriverResultInput['result'];
-      await onRecordNativeDriverResult({
-        id,
-        result,
-        driverCode: profile.driver.code,
-        driverVersion: profile.driver.version,
-        responseReference: String(data.get('responseReference')),
-        responseProtocol: responseProtocols[profile.kind],
-        responseChecksum: String(data.get('responseChecksum') || '').trim().toLowerCase() || undefined,
-        responseByteLength: Number(data.get('responseByteLength')) || undefined,
-        errorMessage: String(data.get('errorMessage') || '').trim() || undefined,
-        expectedVersion,
-      });
-      setNotice(result === 'acknowledged'
-        ? 'Native driver response recorded against the approved profile. A separate reviewer must still certify the profile.'
-        : `Native driver result recorded as ${result}; recovery evidence remains visible.`);
-      event.currentTarget.reset();
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Native driver result could not be recorded.');
-    }
-  }
-
   async function runPreflight(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -561,21 +527,11 @@ export function RetailDeviceTransportPanel({
           return <article key={`waiting-native-${record.id}`} className="retail-exchange-form" data-status="waiting"><strong>Native driver command is waiting for an independent operator</strong><small>{record.deviceCode} · {profile.name} · the bridge operator must be different from the command maker</small></article>;
         }
         return (
-          <form key={`native-${record.id}`} className="retail-exchange-form" onSubmit={(event) => void recordNativeDriverResult(event, record.id, record.version, profile)}>
-            <strong>Record native {names[record.kind]} bridge result</strong>
+          <article key={`native-${record.id}`} className="retail-exchange-form" data-status="blocked">
+            <strong>Native bridge result required</strong>
             <small>{record.deviceCode} · {profile.name} · {profile.driver.code} {profile.driver.version} · checksum {record.payloadChecksum.slice(0, 12)}</small>
-            <div className="retail-exchange-form__row">
-              <label>Result<select name="result" defaultValue="acknowledged"><option value="acknowledged">Acknowledged</option><option value="failed">Failed</option><option value="unsupported">Unsupported</option></select></label>
-              <label>Response reference<input name="responseReference" placeholder="NATIVE-DEVICE-ACK-001" minLength={4} required /></label>
-            </div>
-            <div className="retail-exchange-form__row">
-              <label>Response bytes<input name="responseByteLength" type="number" min={1} max={65536} placeholder="Required for success" /></label>
-              <label>Response SHA-256<input name="responseChecksum" pattern="[a-fA-F0-9]{64}" maxLength={64} placeholder="Required for success" /></label>
-            </div>
-            <label>Driver note (required for failed/unsupported)<input name="errorMessage" placeholder="Device identity, timeout, or driver failure note" /></label>
-            <button className="button button--primary" type="submit" disabled={busy}>Record native bridge result</button>
-            <small>This form records evidence returned by an external native bridge; it does not install drivers, pair hardware, or enable a profile.</small>
-          </form>
+            <p className="retail-returns-workbench__settlement-intro">This prepared USB/Bluetooth command cannot be acknowledged from the renderer. A store-approved, signed native bridge must submit the bounded response through the main-process service seam; no operator-entered result can activate this device.</p>
+          </article>
         );
       })}
 
@@ -587,7 +543,7 @@ export function RetailDeviceTransportPanel({
             <article key={`blocked-usb-${record.id}`} className="retail-exchange-form" data-status="blocked">
               <strong>USB command needs a current approved profile</strong>
               <p className="retail-returns-workbench__settlement-intro">This command is not bound to a current approved or operational USB setup. Do not choose a port for it. Re-prepare the command from Device setup after the profile is reviewed.</p>
-              <small>{record.deviceCode} Â· checksum {record.payloadChecksum.slice(0, 12)}</small>
+              <small>{record.deviceCode} · checksum {record.payloadChecksum.slice(0, 12)}</small>
             </article>
           );
         }
@@ -596,7 +552,7 @@ export function RetailDeviceTransportPanel({
           return (
             <article key={`waiting-usb-${record.id}`} className="retail-exchange-form" data-status="waiting">
               <strong>USB command is waiting for an independent operator</strong>
-              <small>{record.deviceCode} Â· {profile.name} Â· choose the physical port from the other operator account</small>
+              <small>{record.deviceCode} · {profile.name} · choose the physical port from the other operator account</small>
             </article>
           );
         }
@@ -604,7 +560,7 @@ export function RetailDeviceTransportPanel({
         return (
           <form key={`execute-usb-${record.id}`} className="retail-exchange-form" onSubmit={(event) => void executeUsb(event, record.id, record.version, profile)}>
             <strong>Send prepared {names[record.kind]} command over USB</strong>
-            <small>{record.deviceCode} Â· {profile.name} Â· checksum {record.payloadChecksum.slice(0, 12)} Â· exact payload required</small>
+            <small>{record.deviceCode} · {profile.name} · checksum {record.payloadChecksum.slice(0, 12)} · exact payload required</small>
             <div className="retail-exchange-form__row">
               <label>Baud rate<input name="baudRate" type="number" min="300" max="4000000" step="1" defaultValue={profile.configuration.connection === 'usb' ? profile.configuration.baudRate ?? 9600 : 9600} required /></label>
               <label>Read timeout<input name="serialTimeoutMs" type="number" min="250" max="15000" defaultValue="2000" required /></label>
@@ -686,6 +642,8 @@ export function RetailDeviceTransportPanel({
             <div><strong>{names[record.kind]} · {record.status}</strong><small>{record.deviceCode} · {record.command} · {record.payloadChecksum.slice(0, 10)}{record.responseProtocol ? ` · ${record.responseProtocol}` : ''}{record.responseByteLength ? ` · ${record.responseByteLength} response bytes` : ''}</small></div>
             {record.status === 'prepared' && record.connection === 'network' ? (
               <small>Network responses are captured only through the reviewed device command above. Manual acknowledgement cannot activate a network device.</small>
+            ) : record.status === 'prepared' && getNativeCommandProfile(record, adapterProfiles) ? (
+              <small>Native bridge required. Renderer acknowledgement is disabled; use the signed main-process bridge seam after hardware certification.</small>
             ) : record.status === 'prepared' && record.requestedBy !== activeActorId ? (
               <form onSubmit={(event) => void recordEvidence(event, record.id, record.version)}>
                 <select name="result" aria-label={`Device result for ${record.deviceCode}`}><option value="acknowledged">Acknowledged</option><option value="failed">Failed</option></select>

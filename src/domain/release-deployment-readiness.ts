@@ -1,13 +1,13 @@
 import type { ReleaseArtifactReadinessReport } from './cross-platform-artifact-readiness';
 import type { ReleaseUpdateReadinessReport } from './release-update-readiness';
 import type { UiAcceptanceReadinessReport } from './ui-acceptance-readiness';
-import type { OperationalHealthSnapshot } from '../shared/kernel-contracts';
+import type { OperationalHealthSnapshot, RuntimeDatabaseEncryptionEvidence } from '../shared/kernel-contracts';
 import type { ReleaseReadiness } from '../shared/release-control-contracts';
 
 export type ReleaseDeploymentReadinessStatus = 'ready' | 'blocked' | 'external-certification';
 
 export interface ReleaseDeploymentReadinessCheck {
-  id: 'release-gates' | 'artifact-matrix' | 'update-channels' | 'ui-acceptance' | 'runtime-health' | 'recovery-drain';
+  id: 'release-gates' | 'artifact-matrix' | 'update-channels' | 'ui-acceptance' | 'runtime-health' | 'runtime-encryption' | 'recovery-drain';
   label: string;
   status: ReleaseDeploymentReadinessStatus;
   summary: string;
@@ -31,9 +31,10 @@ export interface ReleaseDeploymentReadinessInput {
   updateReadiness: Pick<ReleaseUpdateReadinessReport, 'status' | 'readyCount' | 'blockedCount' | 'externalCertificationCount' | 'nextActions'>;
   uiAcceptanceReadiness: Pick<UiAcceptanceReadinessReport, 'status' | 'requiredCount' | 'verifiedPassedCount' | 'pendingReviewCount' | 'failedOrRejectedCount' | 'staleCount' | 'nextActions'> | null;
   operationalHealth: OperationalHealthSnapshot | null;
+  runtimeDatabaseEncryption: RuntimeDatabaseEncryptionEvidence | null;
 }
 
-export function computeReleaseDeploymentReadiness({ releaseReadiness, artifactReadiness, updateReadiness, uiAcceptanceReadiness, operationalHealth }: ReleaseDeploymentReadinessInput): ReleaseDeploymentReadinessReport {
+export function computeReleaseDeploymentReadiness({ releaseReadiness, artifactReadiness, updateReadiness, uiAcceptanceReadiness, operationalHealth, runtimeDatabaseEncryption }: ReleaseDeploymentReadinessInput): ReleaseDeploymentReadinessReport {
   const healthUnavailable = !operationalHealth;
   const checks: ReleaseDeploymentReadinessCheck[] = [
     {
@@ -70,6 +71,13 @@ export function computeReleaseDeploymentReadiness({ releaseReadiness, artifactRe
       status: healthUnavailable ? 'blocked' : operationalHealth.status === 'healthy' ? 'ready' : 'blocked',
       summary: healthUnavailable ? 'No main-process health snapshot is available.' : `Main process is ${operationalHealth.status}; database ${operationalHealth.databaseIntegrity ? 'integrity OK' : 'integrity failed'}, audit ${operationalHealth.auditChainValid ? 'valid' : 'invalid'}, migrations ${operationalHealth.migrationsValid ? 'valid' : 'invalid'}.`,
       nextAction: healthUnavailable ? 'Run the health check before promotion.' : operationalHealth.status === 'healthy' && operationalHealth.databaseIntegrity && operationalHealth.auditChainValid && operationalHealth.migrationsValid ? 'Runtime health is clear.' : 'Resolve runtime health, database, audit, or migration issues.',
+    },
+    {
+      id: 'runtime-encryption',
+      label: 'Native runtime database encryption',
+      status: runtimeDatabaseEncryption?.status === 'native-encrypted' ? 'ready' : 'blocked',
+      summary: runtimeDatabaseEncryption?.statement ?? 'No runtime database encryption evidence is available.',
+      nextAction: runtimeDatabaseEncryption?.status === 'native-encrypted' ? 'Native encrypted SQLite runtime is certified.' : 'Certify SQLCipher or an equivalent native encrypted SQLite runtime before production promotion.',
     },
     {
       id: 'recovery-drain',

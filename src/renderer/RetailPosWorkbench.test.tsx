@@ -207,7 +207,7 @@ function checkoutReadyRevenue(): RevenueOpsSnapshot {
   };
 }
 
-function renderCheckoutReady(onCheckout: RetailPosWorkbenchProps['onCheckout'], revenue = checkoutReadyRevenue()) {
+function renderCheckoutReady(onCheckout: RetailPosWorkbenchProps['onCheckout'], revenue = checkoutReadyRevenue(), onSaveRetailHubStoreEdgeSyncPolicy?: RetailPosWorkbenchProps['onSaveRetailHubStoreEdgeSyncPolicy']) {
   return render(
     <RetailPosWorkbench
       revenue={revenue}
@@ -217,6 +217,7 @@ function renderCheckoutReady(onCheckout: RetailPosWorkbenchProps['onCheckout'], 
       onCreateCounter={async () => undefined}
       onOpenShift={async () => undefined}
       onCheckout={onCheckout}
+      onSaveRetailHubStoreEdgeSyncPolicy={onSaveRetailHubStoreEdgeSyncPolicy}
       onRequestClose={async () => undefined}
       onDecideClose={async () => undefined}
       onRequestVarianceResolution={async () => undefined}
@@ -291,6 +292,22 @@ describe('RetailPosWorkbench offline conflict recovery', () => {
 });
 
 describe('RetailPosWorkbench checkout reset', () => {
+  it('shows the explicit restart-safe retry policy and keeps it operator-controlled', async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn<NonNullable<RetailPosWorkbenchProps['onSaveRetailHubStoreEdgeSyncPolicy']>>().mockResolvedValue(undefined);
+    const base = checkoutReadyRevenue();
+    const revenue: RevenueOpsSnapshot = {
+      ...base,
+      retailHubStoreEdgeSyncPolicy: { enabled: true, baseUrl: 'https://hub.example', intervalMinutes: 30, batchLimit: 10, updatedAt: generatedAt, updatedBy: 'manager-1', scope: structuredClone(base.scope), version: 1 },
+    };
+    renderCheckoutReady(async () => undefined, revenue, onSave);
+
+    const toggle = screen.getByRole('checkbox', { name: /resume retry after restart/i }) as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
+    await user.click(screen.getByRole('button', { name: 'Save retry policy' }));
+    expect(onSave).toHaveBeenCalledWith({ enabled: true, baseUrl: 'https://hub.example', intervalMinutes: 30, batchLimit: 10 });
+  });
+
   it('keeps a cash-only checkout available when the inactive customer-credit tender has no approved limit', async () => {
     const user = userEvent.setup();
     const onCheckout = vi.fn<RetailPosWorkbenchProps['onCheckout']>().mockResolvedValue(undefined);

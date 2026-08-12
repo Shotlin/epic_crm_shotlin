@@ -4,6 +4,7 @@ import path from 'node:path';
 import {
   assignRole,
   applyAuthorizationFoundation,
+  applyWorkspaceOwnerRuntimeAuthorization,
   applyAssetCapitalizationAuthorization,
   applyAssetCustodyTransferAuthorization,
   applyAssetComponentizationAuthorization,
@@ -135,6 +136,7 @@ export class KernelStore {
       ),
       )))))))))));
       this.state = applyAssetComponentAllocationAuthorization(this.state);
+      this.state = applyWorkspaceOwnerRuntimeAuthorization(this.state);
       this.state = applyAssetTransferAccountingAuthorization(this.state);
       this.state = applyAssetSaleDisposalAuthorization(this.state);
       this.state = applyAssetLifecycleAuthorization(this.state);
@@ -180,6 +182,7 @@ export class KernelStore {
       ),
       )))))))))));
       this.state = applyAssetComponentAllocationAuthorization(this.state);
+      this.state = applyWorkspaceOwnerRuntimeAuthorization(this.state);
       this.state = applyAssetTransferAccountingAuthorization(this.state);
       this.state = applyAssetSaleDisposalAuthorization(this.state);
       this.state = applyAssetLifecycleAuthorization(this.state);
@@ -211,6 +214,7 @@ export class KernelStore {
     ),
     )))))))))));
     this.state = applyAssetComponentAllocationAuthorization(this.state);
+    this.state = applyWorkspaceOwnerRuntimeAuthorization(this.state);
     this.state = applyAssetTransferAccountingAuthorization(this.state);
     this.state = applyAssetSaleDisposalAuthorization(this.state);
     this.state = applyAssetLifecycleAuthorization(this.state);

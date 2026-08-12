@@ -193,6 +193,10 @@ export interface EpicBosBridge {
     logout: () => Promise<AuthStatus>;
     lock: () => Promise<AuthStatus>;
     changePassword: (input: ChangePasswordInput) => Promise<void>;
+    getMfaStatus: () => Promise<import('./auth-contracts').MfaStatus>;
+    beginMfaEnrollment: () => Promise<import('./auth-contracts').MfaEnrollment>;
+    confirmMfaEnrollment: (code: string) => Promise<import('./auth-contracts').MfaStatus>;
+    disableMfa: (input: import('./auth-contracts').DisableMfaInput) => Promise<void>;
   };
   storage: StorageBridge;
   retailWorkspace: import('./bakaloo-retail-reset-contracts').BakalooRetailWorkspaceBridge & RetailWorkspaceStatusBridge;
@@ -202,8 +206,14 @@ export interface EpicBosBridge {
     revokeApiKey: (input: RevokeApiKeyInput) => Promise<void>;
     exportApiKeyInventory: (scope: { companyId: string; branchId: string }) => Promise<GovernedExportReceipt | null>;
     exportProviderCertificationPackage: (input: ProviderCertificationHandoff) => Promise<ProviderCertificationExportReceipt | null>;
+    verifyProviderCertificationPackage: () => Promise<import('./provider-certification-contract').ProviderCertificationPackageVerificationReceipt | null>;
     getRetailCertificationPack: () => Promise<import('./retail-certification-pack-contracts').RetailCertificationPack>;
     exportRetailCertificationPack: () => Promise<import('./retail-certification-pack-contracts').RetailCertificationPackReceipt | null>;
+    verifyRetailCertificationPack: () => Promise<import('./retail-certification-pack-contracts').RetailCertificationPackVerificationReceipt | null>;
+  };
+  security?: {
+    /** Rewraps legacy encrypted artifacts and verifies the active envelope version. */
+    rotateArtifactKeyEnvelopes: () => Promise<import('./security-contracts').ArtifactKeyRotationReport>;
   };
   release: {
     listGates: () => Promise<ReleaseGateEvidence[]>;
@@ -286,6 +296,12 @@ export interface EpicBosBridge {
     getSnapshot: () => Promise<RevenueOpsSnapshot>;
     listRetailCutoverPlans: () => Promise<import('./retail-cutover-contracts').RetailCutoverPlan[]>;
     fetchRetailHubCutoverAssessment: (input: import('./retail-cutover-contracts').FetchRetailHubCutoverAssessmentInput) => Promise<import('./retail-cutover-contracts').RetailHubCutoverAssessment>;
+    fetchRetailHubDeploymentPreflight?: (input: import('./retail-hub-deployment-contracts').FetchRetailHubDeploymentPreflightInput) => Promise<import('./retail-hub-deployment-contracts').RetailHubDeploymentPreflight>;
+    fetchRetailHubShadowImportPreflight?: (input: import('./retail-hub-shadow-import-contracts').FetchRetailHubShadowImportPreflightInput) => Promise<import('./retail-hub-shadow-import-contracts').RetailHubShadowImportPreflight>;
+    fetchRetailHubShadowImportSourceStatus?: (input: import('./retail-hub-shadow-import-contracts').FetchRetailHubShadowImportSourceStatusInput) => Promise<import('./retail-hub-shadow-import-contracts').RetailHubShadowImportSourceStatusReport>;
+    fetchRetailHubShadowImportPullReceipts?: (input: import('./retail-hub-shadow-import-contracts').FetchRetailHubShadowImportPullReceiptsInput) => Promise<import('./retail-hub-shadow-import-contracts').RetailHubShadowImportPullReceiptsReport>;
+    fetchRetailHubStoreEdgeWorkerMetrics?: (input: import('./retail-hub-store-edge-metrics-contracts').FetchRetailHubStoreEdgeWorkerMetricsInput) => Promise<import('./retail-hub-store-edge-metrics-contracts').RetailHubStoreEdgeWorkerMetricsReport>;
+    fetchRetailHubCoverageMap?: (input: import('./retail-hub-coverage-map-contracts').FetchRetailHubCoverageMapInput) => Promise<import('./retail-hub-coverage-map-contracts').RetailHubCoverageMap>;
     createRetailCutoverPlan: (input: import('./retail-cutover-contracts').CreateRetailCutoverPlanInput) => Promise<import('./retail-cutover-contracts').RetailCutoverPlan>;
     createRetailCutoverPlanFromHubAssessment: (input: import('./retail-cutover-contracts').CreateRetailCutoverPlanFromAssessmentInput) => Promise<import('./retail-cutover-contracts').RetailCutoverPlan>;
     advanceRetailCutover: (input: import('./retail-cutover-contracts').AdvanceRetailCutoverInput & { id: string }) => Promise<import('./retail-cutover-contracts').RetailCutoverPlan>;
@@ -320,6 +336,9 @@ export interface EpicBosBridge {
     syncRetailOfflineSale: (input: import('./retail-offline-sync-contracts').SyncRetailOfflineSaleInput) => Promise<RevenueOpsSnapshot>;
     syncRetailOfflineQueue: (input: import('./retail-offline-sync-contracts').SyncRetailOfflineQueueInput) => Promise<RevenueOpsSnapshot>;
     resolveRetailOfflineSale: (input: import('./retail-offline-sync-contracts').ResolveRetailOfflineSaleInput) => Promise<RevenueOpsSnapshot>;
+    sendRetailHubStoreEdgeSync: (input: import('./retail-hub-store-edge-sync-contracts').SendRetailHubStoreEdgeSyncInput) => Promise<RevenueOpsSnapshot>;
+    syncRetailHubStoreEdgeQueue: (input: import('./retail-hub-store-edge-sync-contracts').SyncRetailHubStoreEdgeQueueInput) => Promise<RevenueOpsSnapshot>;
+    saveRetailHubStoreEdgeSyncPolicy: (input: import('./retail-hub-store-edge-sync-contracts').SaveRetailHubStoreEdgeSyncPolicyInput) => Promise<RevenueOpsSnapshot>;
     ingestRetailUnifiedOrder: (input: import('./retail-unified-order-contracts').IngestRetailOrderSourceEventInput) => Promise<RevenueOpsSnapshot>;
     prepareRetailUnifiedOrderHandoff: (input: import('./retail-unified-order-contracts').PrepareRetailOrderGovernedHandoffInput) => Promise<RevenueOpsSnapshot>;
     prepareRetailOrderHubHandoff: (input: import('./retail-unified-order-contracts').PrepareRetailOrderHubHandoffInput) => Promise<RevenueOpsSnapshot>;
@@ -335,11 +354,11 @@ export interface EpicBosBridge {
     dispatchRetailUnifiedOrder: (input: import('./retail-unified-order-contracts').DispatchRetailUnifiedOrderInput) => Promise<RevenueOpsSnapshot>;
     confirmRetailUnifiedOrderDelivery: (input: import('./retail-unified-order-contracts').ConfirmRetailUnifiedOrderDeliveryInput) => Promise<RevenueOpsSnapshot>;
     reconcileRetailUnifiedOrderRto: (input: import('./retail-unified-order-contracts').ReconcileRetailUnifiedOrderRtoInput) => Promise<RevenueOpsSnapshot>;
+    reconcileRetailUnifiedOrderCancellation: (input: import('./retail-unified-order-contracts').ReconcileRetailUnifiedOrderCancellationInput) => Promise<RevenueOpsSnapshot>;
     reconcileRetailUnifiedOrderReturn: (input: import('./retail-unified-order-contracts').ReconcileRetailUnifiedOrderReturnInput) => Promise<RevenueOpsSnapshot>;
     recordRetailUnifiedOrderCarrierCallback: (input: import('./retail-unified-order-contracts').RecordRetailUnifiedOrderCarrierCallbackInput) => Promise<RevenueOpsSnapshot>;
     prepareRetailDeviceTransport: (input: import('./retail-device-transport-contracts').PrepareRetailDeviceTransportInput) => Promise<RevenueOpsSnapshot>;
     recordRetailDeviceTransport: (input: import('./retail-device-transport-contracts').RecordRetailDeviceTransportInput) => Promise<RevenueOpsSnapshot>;
-    recordRetailNativeDeviceDriverResult: (input: import('./retail-device-transport-contracts').RecordRetailNativeDeviceDriverResultInput) => Promise<RevenueOpsSnapshot>;
     executeRetailDeviceTransport: (input: import('./retail-device-transport-contracts').ExecuteRetailDeviceTransportInput) => Promise<RevenueOpsSnapshot>;
     retryRetailDeviceTransport: (input: import('./retail-device-transport-contracts').RetryRetailDeviceTransportInput) => Promise<RevenueOpsSnapshot>;
     preflightRetailDeviceTransport: (input: import('./retail-device-transport-contracts').PreflightRetailDeviceTransportInput) => Promise<import('./retail-device-transport-contracts').RetailDeviceTransportPreflightResult>;
@@ -759,6 +778,10 @@ export const IPC_CHANNELS = {
   authLogout: 'epic-bos:auth:logout',
   authLock: 'epic-bos:auth:lock',
   authChangePassword: 'epic-bos:auth:change-password',
+  authMfaStatus: 'epic-bos:auth:mfa-status',
+  authMfaBeginEnrollment: 'epic-bos:auth:mfa-begin-enrollment',
+  authMfaConfirmEnrollment: 'epic-bos:auth:mfa-confirm-enrollment',
+  authMfaDisable: 'epic-bos:auth:mfa-disable',
   storageListAttachments: 'epic-bos:storage:list-attachments',
   storageAddAttachment: 'epic-bos:storage:add-attachment',
   storageExportAttachment: 'epic-bos:storage:export-attachment',
@@ -766,6 +789,7 @@ export const IPC_CHANNELS = {
   storageRestoreDatabaseBackup: 'epic-bos:storage:restore-database-backup',
   storageListRestoreDrills: 'epic-bos:storage:list-restore-drills',
   storageRunRestoreDrill: 'epic-bos:storage:run-restore-drill',
+  storageRewrapLocalBackups: 'epic-bos:storage:rewrap-local-backups',
   retailWorkspaceGetStatus: 'epic-bos:retail-workspace:get-status',
   retailWorkspaceGetDemoResetPreview: 'epic-bos:retail-workspace:get-demo-reset-preview',
   retailWorkspaceApplyDemoReset: 'epic-bos:retail-workspace:apply-demo-reset',
@@ -774,8 +798,11 @@ export const IPC_CHANNELS = {
   integrationRevokeApiKey: 'epic-bos:integration:revoke-api-key',
   integrationExportApiKeyInventory: 'epic-bos:integration:export-api-key-inventory',
   integrationExportProviderCertification: 'epic-bos:integration:export-provider-certification',
+  integrationVerifyProviderCertification: 'epic-bos:integration:verify-provider-certification',
   integrationGetRetailCertificationPack: 'epic-bos:integration:get-retail-certification-pack',
   integrationExportRetailCertificationPack: 'epic-bos:integration:export-retail-certification-pack',
+  integrationVerifyRetailCertificationPack: 'epic-bos:integration:verify-retail-certification-pack',
+  securityRotateArtifactKeyEnvelopes: 'epic-bos:security:rotate-artifact-key-envelopes',
   releaseListGates: 'epic-bos:release:list-gates',
   releaseRecordGate: 'epic-bos:release:record-gate',
   releaseListArtifactEvidence: 'epic-bos:release:list-artifact-evidence',
@@ -871,7 +898,13 @@ export const IPC_CHANNELS = {
   financeCompletionSave: 'epic-bos:finance-completion:save',
   revenueOpsSnapshot: 'epic-bos:revenue-ops:snapshot',
     revenueOpsListRetailCutoverPlans: 'epic-bos:revenue-ops:list-retail-cutover-plans',
-    revenueOpsFetchRetailHubCutoverAssessment: 'epic-bos:revenue-ops:fetch-retail-hub-cutover-assessment',
+  revenueOpsFetchRetailHubCutoverAssessment: 'epic-bos:revenue-ops:fetch-retail-hub-cutover-assessment',
+  revenueOpsFetchRetailHubDeploymentPreflight: 'epic-bos:revenue-ops:fetch-retail-hub-deployment-preflight',
+  revenueOpsFetchRetailHubShadowImportPreflight: 'epic-bos:revenue-ops:fetch-retail-hub-shadow-import-preflight',
+  revenueOpsFetchRetailHubShadowImportSourceStatus: 'epic-bos:revenue-ops:fetch-retail-hub-shadow-import-source-status',
+  revenueOpsFetchRetailHubShadowImportPullReceipts: 'epic-bos:revenue-ops:fetch-retail-hub-shadow-import-pull-receipts',
+  revenueOpsFetchRetailHubStoreEdgeWorkerMetrics: 'epic-bos:revenue-ops:fetch-retail-hub-store-edge-worker-metrics',
+  revenueOpsFetchRetailHubCoverageMap: 'epic-bos:revenue-ops:fetch-retail-hub-coverage-map',
     revenueOpsCreateRetailCutoverPlan: 'epic-bos:revenue-ops:create-retail-cutover-plan',
     revenueOpsCreateRetailCutoverPlanFromHubAssessment: 'epic-bos:revenue-ops:create-retail-cutover-plan-from-hub-assessment',
     revenueOpsAdvanceRetailCutover: 'epic-bos:revenue-ops:advance-retail-cutover',
@@ -906,6 +939,9 @@ export const IPC_CHANNELS = {
   retailSyncOfflineSale: 'epic-bos:retail:sync-offline-sale',
   retailSyncOfflineQueue: 'epic-bos:retail:sync-offline-queue',
   retailResolveOfflineSale: 'epic-bos:retail:resolve-offline-sale',
+  retailSendHubStoreEdgeSync: 'epic-bos:retail:send-hub-store-edge-sync',
+  retailSyncHubStoreEdgeQueue: 'epic-bos:retail:sync-hub-store-edge-queue',
+  retailSaveHubStoreEdgeSyncPolicy: 'epic-bos:retail:save-hub-store-edge-sync-policy',
   retailIngestUnifiedOrder: 'epic-bos:retail:ingest-unified-order',
   retailPrepareUnifiedOrderHandoff: 'epic-bos:retail:prepare-unified-order-handoff',
   retailPrepareOrderHubHandoff: 'epic-bos:retail:prepare-order-hub-handoff',
@@ -921,11 +957,11 @@ export const IPC_CHANNELS = {
   retailDispatchUnifiedOrder: 'epic-bos:retail:dispatch-unified-order',
   retailConfirmUnifiedOrderDelivery: 'epic-bos:retail:confirm-unified-order-delivery',
   retailReconcileUnifiedOrderRto: 'epic-bos:retail:reconcile-unified-order-rto',
+  retailReconcileUnifiedOrderCancellation: 'epic-bos:retail:reconcile-unified-order-cancellation',
   retailReconcileUnifiedOrderReturn: 'epic-bos:retail:reconcile-unified-order-return',
   retailRecordUnifiedOrderCarrierCallback: 'epic-bos:retail:record-unified-order-carrier-callback',
   retailPrepareDeviceTransport: 'epic-bos:retail:prepare-device-transport',
   retailRecordDeviceTransport: 'epic-bos:retail:record-device-transport',
-  retailRecordNativeDeviceDriverResult: 'epic-bos:retail:record-native-device-driver-result',
   retailExecuteDeviceTransport: 'epic-bos:retail:execute-device-transport',
   retailRetryDeviceTransport: 'epic-bos:retail:retry-device-transport',
   retailPreflightDeviceTransport: 'epic-bos:retail:preflight-device-transport',

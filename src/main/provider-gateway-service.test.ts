@@ -63,4 +63,14 @@ describe('ProviderGatewayService', () => {
     expect(result).toMatchObject({ statusCode: 200, ok: true, responseChecksum: expect.stringMatching(/^[a-f0-9]{64}$/), responseByteLength: expect.any(Number) });
     await expect(service.requestJson(connector.id, connector.baseUrl, 'https://evil.example/v1/orders', 'GET')).rejects.toThrow('relative HTTPS path');
   });
+
+  it('fails closed when a persisted credential envelope has an unknown key version', async () => {
+    const service = new ProviderGatewayService(database, Buffer.alloc(32, 8));
+    service.configureCredentials({ connectorId: connector.id, bearerToken: 'versioned-secret' }, 'inventory-admin');
+    const stored = database.getProviderSecret(connector.id)!;
+    database.upsertProviderSecret({ ...stored, keyVersion: 99 });
+
+    await expect(service.requestJson(connector.id, connector.baseUrl, '/v1/orders', 'GET'))
+      .rejects.toThrow(/unsupported key version 99/i);
+  });
 });

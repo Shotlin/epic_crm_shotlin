@@ -11,6 +11,7 @@ import type {
   RetailHubCutoverCapability,
 } from '../shared/retail-cutover-contracts';
 import type { OperatingRecordScope } from '../shared/revenue-ops-contracts';
+import type { FetchRetailHubDeploymentPreflightInput, RetailHubDeploymentPreflight } from '../shared/retail-hub-deployment-contracts';
 
 const CAPABILITIES: RetailCutoverCapability[] = ['analytics', 'catalog-inventory', 'orders', 'delivery', 'finance'];
 const HUB_CAPABILITIES = new Set(['catalog', 'inventory', 'customers', 'orders', 'delivery', 'settlements', 'campaigns', 'storefront']);
@@ -55,6 +56,7 @@ export function RetailCutoverGuardPanel({
   onRefresh,
   onCreateFromHubAssessment,
   onFetchHubAssessment,
+  onFetchHubDeploymentPreflight,
   onAdvance,
 }: {
   plans: RetailCutoverPlan[];
@@ -69,6 +71,7 @@ export function RetailCutoverGuardPanel({
   onCreate?: (input: CreateRetailCutoverPlanInput) => Promise<void>;
   onCreateFromHubAssessment: (input: CreateRetailCutoverPlanFromAssessmentInput) => Promise<void>;
   onFetchHubAssessment: (input: FetchRetailHubCutoverAssessmentInput) => Promise<RetailHubCutoverAssessment>;
+  onFetchHubDeploymentPreflight?: (input: FetchRetailHubDeploymentPreflightInput) => Promise<RetailHubDeploymentPreflight>;
   onAdvance: (input: AdvanceRetailCutoverInput & { id: string }) => Promise<void>;
 }): ReactNode {
   const [showHubAssessment, setShowHubAssessment] = useState(false);
@@ -81,6 +84,7 @@ export function RetailCutoverGuardPanel({
   const [hubBaseUrl, setHubBaseUrl] = useState('');
   const [hubBatchId, setHubBatchId] = useState('');
   const [hubCapability, setHubCapability] = useState<RetailHubCutoverCapability>('orders');
+  const [deploymentPreflight, setDeploymentPreflight] = useState<RetailHubDeploymentPreflight | null>(null);
 
   const byCapability = useMemo(() => new Map(plans.map((plan) => [plan.capability, plan])), [plans]);
   const selectedPlan = selectedPlanId ? plans.find((plan) => plan.id === selectedPlanId) ?? null : null;
@@ -117,6 +121,17 @@ export function RetailCutoverGuardPanel({
     } catch (errorValue: unknown) {
       setHubAssessment(null);
       setFormError(errorValue instanceof Error ? errorValue.message : 'The Retail Hub assessment could not be fetched.');
+    }
+  }
+
+  async function fetchHubDeploymentPreflight(): Promise<void> {
+    if (!onFetchHubDeploymentPreflight) return;
+    setFormError('');
+    try {
+      setDeploymentPreflight(await onFetchHubDeploymentPreflight({ baseUrl: hubBaseUrl.trim() }));
+    } catch (errorValue: unknown) {
+      setDeploymentPreflight(null);
+      setFormError(errorValue instanceof Error ? errorValue.message : 'The Retail Hub deployment readiness could not be fetched.');
     }
   }
 
@@ -177,6 +192,7 @@ export function RetailCutoverGuardPanel({
               <label>Batch ID<input value={hubBatchId} onChange={(event) => setHubBatchId(event.target.value)} placeholder="bakaloo-batch-2026-08-04" autoComplete="off" /></label>
               <label>Hub capability<select aria-label="Hub capability" value={hubCapability} onChange={(event) => setHubCapability(event.target.value as RetailHubCutoverCapability)}><option value="catalog">Catalog</option><option value="inventory">Inventory</option><option value="customers">Customers</option><option value="orders">Orders</option><option value="delivery">Delivery</option><option value="settlements">Settlements</option><option value="campaigns">Campaigns</option><option value="storefront">Storefront</option></select></label>
               <button type="button" className="button button--primary" disabled={busy || !hubBaseUrl.trim() || !hubBatchId.trim()} onClick={() => void fetchHubAssessment()}><Download size={15} aria-hidden="true" /> Fetch verified assessment</button>
+              {onFetchHubDeploymentPreflight ? <button type="button" className="button button--quiet" disabled={busy || !hubBaseUrl.trim()} onClick={() => void fetchHubDeploymentPreflight()}><ShieldCheck size={15} aria-hidden="true" /> Check Hub readiness</button> : null}
             </div>
             <small className="retail-cutover-guard__transport-note">GET only. No API key or request header is accepted from this screen; the Hub's authenticated server boundary remains authoritative. A fetched assessment is the only normal operator route to register a cutover plan.</small>
             {hubAssessment ? (
@@ -189,6 +205,7 @@ export function RetailCutoverGuardPanel({
                 <button type="button" className="button button--primary" disabled={busy || hubAssessment.status !== 'ready-for-parallel-run' || hubAssessment.blockers.length > 0} onClick={() => void registerHubAssessment()}>Register verified Hub assessment</button>
               </div>
             ) : null}
+            {deploymentPreflight ? <div className="retail-cutover-guard__hub-preview" role="status" aria-label="Retail Hub deployment readiness"><strong>Hub deployment: {deploymentPreflight.status} · {deploymentPreflight.environment}</strong><span>{deploymentPreflight.checks.filter(({ status }) => status === 'pass').length}/{deploymentPreflight.checks.length} server checks passing · write-back disabled</span>{deploymentPreflight.blockers.length ? <span className="form-error">Blockers: {deploymentPreflight.blockers.join(', ')}</span> : <span>All server-side deployment checks are passing; provider and device certification remain separate.</span>}</div> : null}
           </div>
         </div>
       ) : null}

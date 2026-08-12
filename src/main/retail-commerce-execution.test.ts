@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { configureRetailCommerceCredentials, createRetailCommerceConnector, createRetailCommerceSyncRun, importRetailCommerceOrder } from '../domain/retail-commerce';
 import { configureRetailOcrProvider, createRetailOcrProviderProfile, testRetailOcrProvider } from '../domain/retail-commerce-advanced';
 import { createInitialRevenueOpsState } from '../domain/revenue-ops';
+import { buildRetailHubStoreEdgeSaleEvent } from '../domain/retail-offline-sync';
+import type { RetailSale } from '../shared/retail-pos-contracts';
 import { configureProviderConnector } from '../domain/provider-control';
 import type { PartySnapshot } from '../shared/party-contracts';
 import { BusinessDatabase } from './database';
@@ -185,6 +187,94 @@ describe('retail commerce provider execution', () => {
       expect(snapshot.providerPreflightEvidence[0]).toMatchObject({ connectorId, method: 'GET', path: '/v1/health', status: 'succeeded', statusCode: 200, responseChecksum: 'd'.repeat(64), evidenceReference: 'SANDBOX-HEALTH-1' });
       expect(snapshot.providerConnectors[0]).toMatchObject({ conformanceStatus: 'draft', credentialStatus: 'configured' });
       expect(providerGateway.requestJson).toHaveBeenCalledWith(connectorId, 'https://bank.example', '/v1/health', 'GET', undefined, expect.any(String));
+    } finally {
+      database.close();
+    }
+  });
+
+  it('persists Store Edge → Hub receipt and cursor evidence across reloads', async () => {
+    const database = new BusinessDatabase(':memory:');
+    await database.initialize();
+    const base = createInitialRevenueOpsState();
+    const sale = {
+      id: 'sale-hub-001', number: 'INV-HUB-001', counterId: 'counter-store', cashierShiftId: 'shift-store', cashierId: 'cashier-1', customerAccountId: 'walk-in',
+      transactionKey: 'POS-HUB-001', requestChecksum: 'a'.repeat(64), saleAt: '2026-08-02T10:00:00.000Z', invoiceId: 'invoice-hub-001', paymentReceiptIds: ['payment-hub-001'],
+      lines: [{ id: 'line-hub-001', itemVariantId: 'variant-tea', catalogProductId: 'product-tea', binId: 'bin-shelf', serialUnitIds: [], description: 'Tea', hsnSac: '0902', quantity: 1, listUnitPrice: 100, unitPrice: 100, taxableValue: 100, gstRate: 5, taxCodeId: 'gst-5', priceListEntryId: 'price-1', discountAmount: 0, cessRate: 0, cessAmount: 0, lineTotal: 105, costValue: 60 }],
+      subtotal: 100, discountTotal: 0, taxPreview: { treatment: 'intra-state', taxableValue: 100, cgst: 2.5, sgst: 2.5, igst: 0, totalTax: 5, grandTotal: 105, determination: 'commercial-estimate' },
+      tenders: [{ id: 'tender-hub-001', method: 'cash', amount: 105, reference: 'CASH-HUB-001' }], costTotal: 60, status: 'completed', completedAt: '2026-08-02T10:00:02.000Z', scope: structuredClone(base.scope), version: 1,
+    } satisfies RetailSale;
+    database.saveState('revenue-ops-india', base.schemaVersion, base.revision, { ...base, retailSales: [sale] });
+    const response = JSON.stringify({ outcome: 'recorded', receipt: { id: 'hub-receipt-001', eventId: 'retail-sale:sale-hub-001:v1', eventType: 'retail.sale.completed', aggregateId: sale.id, transactionKey: sale.transactionKey, sequence: 1, payloadChecksum: buildRetailHubStoreEdgeSaleEvent(sale, 1).payloadChecksum, outcome: 'recorded', actorId: 'hub-worker', receivedAt: '2026-08-02T10:00:03.000Z', scope: { tenantId: 'tenant-bakaloo', companyId: base.scope.companyId, branchId: base.scope.branchId } } });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 202, headers: new Headers({ 'content-type': 'application/json' }), arrayBuffer: async () => new TextEncoder().encode(response).buffer }));
+    const providerGateway = {} as ProviderGatewayService;
+    const party = { accounts: [], contacts: [], addresses: [] } as unknown as PartySnapshot;
+    const store = new RevenueOpsStore(database, { getSnapshot: () => ({ opportunities: [] }) } as unknown as CrmStore, { getSnapshot: () => party } as unknown as import('./party-store').PartyStore, { getSnapshot: () => ({ users: [] }) } as unknown as KernelStore, {} as CrmDepthStore, {} as StatutoryGatewayService, providerGateway);
+    try {
+      await store.initialize();
+      const event = buildRetailHubStoreEdgeSaleEvent(sale, 1);
+      const snapshot = await store.sendRetailHubStoreEdgeSync({ baseUrl: 'https://hub.example', event }, 'cashier-1');
+      expect(snapshot.retailHubStoreEdgeSyncReceipts?.[0]).toMatchObject({ status: 'sent', hubReceiptId: 'hub-receipt-001', sequence: 1, actorId: 'cashier-1' });
+      expect(snapshot.retailHubStoreEdgeSyncCursor).toMatchObject({ nextSequence: 2, lastAcceptedSequence: 1, lastAcceptedEventId: event.eventId });
+      const reloaded = new RevenueOpsStore(database, { getSnapshot: () => ({ opportunities: [] }) } as unknown as CrmStore, { getSnapshot: () => party } as unknown as import('./party-store').PartyStore, { getSnapshot: () => ({ users: [] }) } as unknown as KernelStore, {} as CrmDepthStore, {} as StatutoryGatewayService, providerGateway);
+      await reloaded.initialize();
+      expect(reloaded.getSnapshot().retailHubStoreEdgeSyncReceipts?.[0]).toMatchObject({ status: 'sent', hubReceiptId: 'hub-receipt-001' });
+    } finally {
+      vi.unstubAllGlobals();
+      database.close();
+    }
+  });
+
+  it('replays a bounded Store Edge batch, isolates failures, and reuses the local ledger', async () => {
+    const database = new BusinessDatabase(':memory:');
+    await database.initialize();
+    const base = createInitialRevenueOpsState();
+    const sale = (id: string, number: string, completedAt: string): RetailSale => ({
+      id, number, counterId: 'counter-store', cashierShiftId: 'shift-store', cashierId: 'cashier-1', customerAccountId: 'walk-in',
+      transactionKey: `POS-${id}`, requestChecksum: 'a'.repeat(64), saleAt: completedAt, invoiceId: `invoice-${id}`, paymentReceiptIds: [`payment-${id}`],
+      lines: [{ id: `line-${id}`, itemVariantId: 'variant-tea', catalogProductId: 'product-tea', binId: 'bin-shelf', serialUnitIds: [], description: 'Tea', hsnSac: '0902', quantity: 1, listUnitPrice: 100, unitPrice: 100, taxableValue: 100, gstRate: 5, taxCodeId: 'gst-5', priceListEntryId: 'price-1', discountAmount: 0, cessRate: 0, cessAmount: 0, lineTotal: 105, costValue: 60 }],
+      subtotal: 100, discountTotal: 0, taxPreview: { treatment: 'intra-state', taxableValue: 100, cgst: 2.5, sgst: 2.5, igst: 0, totalTax: 5, grandTotal: 105, determination: 'commercial-estimate' },
+      tenders: [{ id: `tender-${id}`, method: 'cash', amount: 105, reference: `CASH-${id}` }], costTotal: 60, status: 'completed', completedAt, scope: structuredClone(base.scope), version: 1,
+    });
+    const first = sale('sale-batch-001', 'INV-BATCH-001', '2026-08-02T10:00:00.000Z');
+    const second = sale('sale-batch-002', 'INV-BATCH-002', '2026-08-02T10:01:00.000Z');
+    database.saveState('revenue-ops-india', base.schemaVersion, base.revision, { ...base, retailSales: [second, first] });
+    let calls = 0;
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+      calls += 1;
+      if (calls === 1) return { status: 503, headers: new Headers({ 'content-type': 'text/plain' }), arrayBuffer: async () => new TextEncoder().encode('offline').buffer };
+      const event = JSON.parse(String(init.body)) as Record<string, unknown>;
+      const response = JSON.stringify({ outcome: 'recorded', receipt: { ...event, id: 'hub-batch-receipt-002', outcome: 'recorded', actorId: 'hub-worker', receivedAt: '2026-08-02T10:02:00.000Z', scope: { tenantId: 'tenant-bakaloo', companyId: base.scope.companyId, branchId: base.scope.branchId } } });
+      return { status: 202, headers: new Headers({ 'content-type': 'application/json' }), arrayBuffer: async () => new TextEncoder().encode(response).buffer };
+    }));
+    const store = new RevenueOpsStore(database, { getSnapshot: () => ({ opportunities: [] }) } as unknown as CrmStore, { getSnapshot: () => ({ accounts: [], contacts: [], addresses: [] }) } as unknown as import('./party-store').PartyStore, { getSnapshot: () => ({ users: [] }) } as unknown as KernelStore, {} as CrmDepthStore, {} as StatutoryGatewayService, {} as ProviderGatewayService);
+    try {
+      await store.initialize();
+      const snapshot = await store.syncRetailHubStoreEdgeQueue({ baseUrl: 'https://hub.example', limit: 2 }, 'cashier-1');
+      expect(calls).toBe(2);
+      expect(snapshot.retailHubStoreEdgeSyncReceipts).toHaveLength(2);
+      expect(snapshot.retailHubStoreEdgeSyncReceipts?.map((receipt) => receipt.status)).toEqual(['sent', 'failed']);
+      expect(snapshot.retailHubStoreEdgeSyncReceipts?.find((receipt) => receipt.aggregateId === first.id)).toMatchObject({ status: 'failed', sequence: 1 });
+      expect(snapshot.retailHubStoreEdgeSyncReceipts?.find((receipt) => receipt.aggregateId === second.id)).toMatchObject({ status: 'sent', sequence: 2 });
+      expect(snapshot.retailHubStoreEdgeSyncRuns?.[0]).toMatchObject({ status: 'completed-with-errors', attempted: 2, sent: 1, failed: 1, conflicted: 0, baseUrlOrigin: 'https://hub.example' });
+    } finally {
+      vi.unstubAllGlobals();
+      database.close();
+    }
+  });
+
+  it('persists an opt-in retry policy without retaining URL credentials or query material', async () => {
+    const database = new BusinessDatabase(':memory:');
+    await database.initialize();
+    const store = new RevenueOpsStore(database, { getSnapshot: () => ({ opportunities: [] }) } as unknown as CrmStore, { getSnapshot: () => ({ accounts: [], contacts: [], addresses: [] }) } as unknown as import('./party-store').PartyStore, { getSnapshot: () => ({ users: [] }) } as unknown as KernelStore, {} as CrmDepthStore, {} as StatutoryGatewayService, {} as ProviderGatewayService);
+    try {
+      await store.initialize();
+      const saved = await store.saveRetailHubStoreEdgeSyncPolicy({ enabled: true, baseUrl: 'https://hub.example/path', intervalMinutes: 30, batchLimit: 10 }, 'manager-1');
+      expect(saved.retailHubStoreEdgeSyncPolicy).toMatchObject({ enabled: true, baseUrl: 'https://hub.example', intervalMinutes: 30, batchLimit: 10, updatedBy: 'manager-1', version: 1 });
+      const reloaded = new RevenueOpsStore(database, { getSnapshot: () => ({ opportunities: [] }) } as unknown as CrmStore, { getSnapshot: () => ({ accounts: [], contacts: [], addresses: [] }) } as unknown as import('./party-store').PartyStore, { getSnapshot: () => ({ users: [] }) } as unknown as KernelStore, {} as CrmDepthStore, {} as StatutoryGatewayService, {} as ProviderGatewayService);
+      await reloaded.initialize();
+      expect(reloaded.getSnapshot().retailHubStoreEdgeSyncPolicy).toMatchObject({ enabled: true, baseUrl: 'https://hub.example', intervalMinutes: 30, batchLimit: 10 });
+      await expect(reloaded.saveRetailHubStoreEdgeSyncPolicy({ enabled: true, baseUrl: 'http://hub.example', intervalMinutes: 5, batchLimit: 10 }, 'manager-1')).rejects.toThrow(/HTTPS/i);
+      await expect(reloaded.saveRetailHubStoreEdgeSyncPolicy({ enabled: true, baseUrl: 'https://hub.example?secret=never-store', intervalMinutes: 5, batchLimit: 10 }, 'manager-1')).rejects.toThrow(/query/i);
     } finally {
       database.close();
     }

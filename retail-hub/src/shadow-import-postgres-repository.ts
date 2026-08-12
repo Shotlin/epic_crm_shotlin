@@ -10,6 +10,49 @@ export interface ShadowImportScope {
 
 export interface ShadowImportSqlClient {
   query<T = Record<string, unknown>>(sql: string, parameters?: readonly unknown[]): Promise<{ rows: T[] }>;
+  /** Optional trusted transaction wrapper that sets transaction-local RLS scope. */
+  withScope?<T>(scope: ShadowImportScope, operation: (client: ShadowImportSqlClient) => Promise<T>): Promise<T>;
+}
+
+export interface ShadowImportTransactionPool {
+  /** The implementation must commit on success and roll back on failure. */
+  withTransaction<T>(operation: (client: ShadowImportSqlClient) => Promise<T>): Promise<T>;
+}
+
+/**
+ * Adapt an approved PostgreSQL transaction pool to the repository's RLS
+ * contract. Direct unscoped queries fail closed; every scoped operation first
+ * sets transaction-local tenant/company/branch settings with parameters.
+ */
+export function createRlsScopedSqlClient(pool: ShadowImportTransactionPool): ShadowImportSqlClient {
+  return {
+    query: async () => {
+      throw new Error('Retail Hub SQL requires an authenticated transaction scope.');
+    },
+    async withScope(scope, operation) {
+      const normalizedScope = normalizeScope(scope);
+      return pool.withTransaction(async (transaction) => {
+        await transaction.query(
+          `SELECT set_config('epic_bos.tenant_id', $1, true),
+                  set_config('epic_bos.company_id', $2, true),
+                  set_config('epic_bos.branch_id', $3, true)`,
+          [normalizedScope.tenantId, normalizedScope.companyId, normalizedScope.branchId],
+        );
+        const activeScope = await transaction.query<{ tenant_id: string | null; company_id: string | null; branch_id: string | null }>(
+          `SELECT current_setting('epic_bos.tenant_id', true) AS tenant_id,
+                  current_setting('epic_bos.company_id', true) AS company_id,
+                  current_setting('epic_bos.branch_id', true) AS branch_id`,
+        );
+        const activeRow = activeScope.rows[0];
+        if (activeRow?.tenant_id !== normalizedScope.tenantId
+          || activeRow.company_id !== normalizedScope.companyId
+          || activeRow.branch_id !== normalizedScope.branchId) {
+          throw new Error('Retail Hub transaction scope verification failed.');
+        }
+        return operation(transaction);
+      });
+    },
+  };
 }
 
 export interface ShadowImportPostgresRepository {
@@ -33,7 +76,7 @@ export function createPostgresShadowImportReviewStore(
     async list(scope, batchId) {
       const normalizedScope = normalizeScope(scope);
       const normalizedBatchId = batchId === undefined ? undefined : nonBlank(batchId, 'Shadow-import batch ID');
-      const result = await client.query<{ decision_json: unknown }>(
+      const result = await queryInScope<{ decision_json: unknown }>(client, normalizedScope,
         `SELECT decision_json
            FROM retail_shadow_import_review_decisions
           WHERE tenant_id = $1 AND company_id = $2 AND branch_id = $3
@@ -48,7 +91,7 @@ export function createPostgresShadowImportReviewStore(
       const normalizedScope = normalizeScope(scope);
       const normalizedDecision = parseStoredDecision(decision);
       if (!sameScope(normalizedDecision.scope, normalizedScope)) throw new Error('Review decision scope does not match the requested scope.');
-      await client.query(
+      await queryInScope(client, normalizedScope,
         `INSERT INTO retail_shadow_import_review_decisions
           (tenant_id, company_id, branch_id, decision_id, batch_id, actor_id, decision, reason, decided_at, plan_status, plan_checksum, decision_json)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)
@@ -70,7 +113,7 @@ export function createPostgresShadowImportRepository(
   return {
     async listPlans(scope) {
       const normalizedScope = normalizeScope(scope);
-      const result = await client.query<{ plan_json: unknown }>(
+      const result = await queryInScope<{ plan_json: unknown }>(client, normalizedScope,
         `SELECT plan_json
            FROM retail_shadow_import_batches
           WHERE tenant_id = $1 AND company_id = $2 AND branch_id = $3
@@ -83,7 +126,7 @@ export function createPostgresShadowImportRepository(
     async getPlan(scope, batchId) {
       const normalizedScope = normalizeScope(scope);
       const normalizedBatchId = nonBlank(batchId, 'Shadow-import batch ID');
-      const result = await client.query<{ plan_json: unknown }>(
+      const result = await queryInScope<{ plan_json: unknown }>(client, normalizedScope,
         `SELECT plan_json
            FROM retail_shadow_import_batches
           WHERE tenant_id = $1 AND company_id = $2 AND branch_id = $3 AND batch_id = $4`,
@@ -96,7 +139,7 @@ export function createPostgresShadowImportRepository(
     async registerPlan(scope, plan) {
       const normalizedScope = normalizeScope(scope);
       const batchId = nonBlank(plan.batch.id, 'Shadow-import batch ID');
-      const result = await client.query<{ batch_id: string }>(
+      const result = await queryInScope<{ batch_id: string }>(client, normalizedScope,
         `INSERT INTO retail_shadow_import_batches
           (tenant_id, company_id, branch_id, batch_id, source, observed_at, status, plan_json)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
@@ -110,7 +153,7 @@ export function createPostgresShadowImportRepository(
     async replacePlan(scope, plan) {
       const normalizedScope = normalizeScope(scope);
       const batchId = nonBlank(plan.batch.id, 'Shadow-import batch ID');
-      await client.query(
+      await queryInScope(client, normalizedScope,
         `INSERT INTO retail_shadow_import_batches
           (tenant_id, company_id, branch_id, batch_id, source, observed_at, status, plan_json)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
@@ -128,7 +171,7 @@ export function createPostgresShadowImportRepository(
       const normalizedScope = normalizeScope(scope);
       const normalizedReceipt = assertShadowImportPullReceipt(receipt);
       if (!sameScope(normalizedReceipt.scope, normalizedScope)) throw new Error('Pull receipt scope does not match the requested scope.');
-      const result = await client.query<{ receipt_id: string }>(
+      const result = await queryInScope<{ receipt_id: string }>(client, normalizedScope,
         `INSERT INTO retail_shadow_import_pull_receipts
           (tenant_id, company_id, branch_id, receipt_id, batch_id, observed_at, registered_at, credential_revision, pages_fetched, records_fetched, plan_checksum, receipt_json)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)
@@ -145,7 +188,7 @@ export function createPostgresShadowImportRepository(
       const normalizedReceipt = assertShadowImportPullReceipt(receipt, plan);
       if (!sameScope(normalizedReceipt.scope, normalizedScope)) throw new Error('Pull receipt scope does not match the requested scope.');
       if (normalizedReceipt.batchId !== batchId) throw new Error('Pull receipt batch does not match the shadow-import plan.');
-      const result = await client.query<{ receipt_id: string }>(
+      const result = await queryInScope<{ receipt_id: string }>(client, normalizedScope,
         `WITH inserted_plan AS (
            INSERT INTO retail_shadow_import_batches
              (tenant_id, company_id, branch_id, batch_id, source, observed_at, status, plan_json)
@@ -167,7 +210,7 @@ export function createPostgresShadowImportRepository(
     async listPullReceipts(scope, batchId) {
       const normalizedScope = normalizeScope(scope);
       const normalizedBatchId = batchId === undefined ? undefined : nonBlank(batchId, 'Shadow-import batch ID');
-      const result = await client.query<{ receipt_json: unknown }>(
+      const result = await queryInScope<{ receipt_json: unknown }>(client, normalizedScope,
         `SELECT receipt_json
            FROM retail_shadow_import_pull_receipts
           WHERE tenant_id = $1 AND company_id = $2 AND branch_id = $3
@@ -198,6 +241,19 @@ CREATE TABLE IF NOT EXISTS retail_shadow_import_batches (
 CREATE INDEX IF NOT EXISTS retail_shadow_import_batches_scope_observed_idx
   ON retail_shadow_import_batches (tenant_id, company_id, branch_id, observed_at DESC);
 ALTER TABLE retail_shadow_import_batches ENABLE ROW LEVEL SECURITY;
+ALTER TABLE retail_shadow_import_batches FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS retail_shadow_import_batches_scope_policy ON retail_shadow_import_batches;
+CREATE POLICY retail_shadow_import_batches_scope_policy ON retail_shadow_import_batches
+  USING (
+    tenant_id = current_setting('epic_bos.tenant_id', true)
+    AND company_id = current_setting('epic_bos.company_id', true)
+    AND branch_id = current_setting('epic_bos.branch_id', true)
+  )
+  WITH CHECK (
+    tenant_id = current_setting('epic_bos.tenant_id', true)
+    AND company_id = current_setting('epic_bos.company_id', true)
+    AND branch_id = current_setting('epic_bos.branch_id', true)
+  );
 
 CREATE TABLE IF NOT EXISTS retail_shadow_import_review_decisions (
   tenant_id text NOT NULL,
@@ -221,6 +277,19 @@ CREATE UNIQUE INDEX IF NOT EXISTS retail_shadow_import_review_decisions_one_acce
   ON retail_shadow_import_review_decisions (tenant_id, company_id, branch_id, batch_id)
   WHERE decision = 'accepted';
 ALTER TABLE retail_shadow_import_review_decisions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE retail_shadow_import_review_decisions FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS retail_shadow_import_review_decisions_scope_policy ON retail_shadow_import_review_decisions;
+CREATE POLICY retail_shadow_import_review_decisions_scope_policy ON retail_shadow_import_review_decisions
+  USING (
+    tenant_id = current_setting('epic_bos.tenant_id', true)
+    AND company_id = current_setting('epic_bos.company_id', true)
+    AND branch_id = current_setting('epic_bos.branch_id', true)
+  )
+  WITH CHECK (
+    tenant_id = current_setting('epic_bos.tenant_id', true)
+    AND company_id = current_setting('epic_bos.company_id', true)
+    AND branch_id = current_setting('epic_bos.branch_id', true)
+  );
 
 CREATE TABLE IF NOT EXISTS retail_shadow_import_pull_receipts (
   tenant_id text NOT NULL,
@@ -242,7 +311,162 @@ CREATE TABLE IF NOT EXISTS retail_shadow_import_pull_receipts (
 CREATE INDEX IF NOT EXISTS retail_shadow_import_pull_receipts_scope_registered_idx
   ON retail_shadow_import_pull_receipts (tenant_id, company_id, branch_id, registered_at DESC);
 ALTER TABLE retail_shadow_import_pull_receipts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE retail_shadow_import_pull_receipts FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS retail_shadow_import_pull_receipts_scope_policy ON retail_shadow_import_pull_receipts;
+CREATE POLICY retail_shadow_import_pull_receipts_scope_policy ON retail_shadow_import_pull_receipts
+  USING (
+    tenant_id = current_setting('epic_bos.tenant_id', true)
+    AND company_id = current_setting('epic_bos.company_id', true)
+    AND branch_id = current_setting('epic_bos.branch_id', true)
+  )
+  WITH CHECK (
+    tenant_id = current_setting('epic_bos.tenant_id', true)
+    AND company_id = current_setting('epic_bos.company_id', true)
+    AND branch_id = current_setting('epic_bos.branch_id', true)
+  );
+
+CREATE TABLE IF NOT EXISTS retail_store_edge_sync_events (
+  tenant_id text NOT NULL,
+  company_id text NOT NULL,
+  branch_id text NOT NULL,
+  event_id text NOT NULL,
+  event_type text NOT NULL,
+  aggregate_id text NOT NULL,
+  transaction_key text NOT NULL,
+  sequence bigint NOT NULL CHECK (sequence > 0),
+  produced_at timestamptz NOT NULL,
+  payload_checksum text NOT NULL CHECK (payload_checksum ~ '^[a-f0-9]{64}$'),
+  event_json jsonb NOT NULL,
+  received_at timestamptz NOT NULL,
+  received_by text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (tenant_id, company_id, branch_id, event_id),
+  UNIQUE (tenant_id, company_id, branch_id, transaction_key, sequence)
+);
+CREATE INDEX IF NOT EXISTS retail_store_edge_sync_events_scope_sequence_idx
+  ON retail_store_edge_sync_events (tenant_id, company_id, branch_id, sequence DESC);
+CREATE INDEX IF NOT EXISTS retail_store_edge_sync_events_scope_transaction_idx
+  ON retail_store_edge_sync_events (tenant_id, company_id, branch_id, transaction_key, sequence DESC);
+ALTER TABLE retail_store_edge_sync_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE retail_store_edge_sync_events FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS retail_store_edge_sync_events_scope_policy ON retail_store_edge_sync_events;
+CREATE POLICY retail_store_edge_sync_events_scope_policy ON retail_store_edge_sync_events
+  USING (
+    tenant_id = current_setting('epic_bos.tenant_id', true)
+    AND company_id = current_setting('epic_bos.company_id', true)
+    AND branch_id = current_setting('epic_bos.branch_id', true)
+  )
+  WITH CHECK (
+    tenant_id = current_setting('epic_bos.tenant_id', true)
+    AND company_id = current_setting('epic_bos.company_id', true)
+    AND branch_id = current_setting('epic_bos.branch_id', true)
+  );
+
+CREATE TABLE IF NOT EXISTS retail_store_edge_sync_receipts (
+  tenant_id text NOT NULL,
+  company_id text NOT NULL,
+  branch_id text NOT NULL,
+  receipt_id text NOT NULL,
+  event_id text NOT NULL,
+  outcome text NOT NULL CHECK (outcome IN ('recorded', 'idempotent', 'conflicted')),
+  actor_id text NOT NULL,
+  received_at timestamptz NOT NULL,
+  receipt_json jsonb NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (tenant_id, company_id, branch_id, receipt_id)
+);
+CREATE INDEX IF NOT EXISTS retail_store_edge_sync_receipts_scope_received_idx
+  ON retail_store_edge_sync_receipts (tenant_id, company_id, branch_id, received_at DESC);
+ALTER TABLE retail_store_edge_sync_receipts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE retail_store_edge_sync_receipts FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS retail_store_edge_sync_receipts_scope_policy ON retail_store_edge_sync_receipts;
+CREATE POLICY retail_store_edge_sync_receipts_scope_policy ON retail_store_edge_sync_receipts
+  USING (
+    tenant_id = current_setting('epic_bos.tenant_id', true)
+    AND company_id = current_setting('epic_bos.company_id', true)
+    AND branch_id = current_setting('epic_bos.branch_id', true)
+  )
+  WITH CHECK (
+    tenant_id = current_setting('epic_bos.tenant_id', true)
+    AND company_id = current_setting('epic_bos.company_id', true)
+    AND branch_id = current_setting('epic_bos.branch_id', true)
+  );
+
+CREATE TABLE IF NOT EXISTS retail_store_edge_sync_work (
+  tenant_id text NOT NULL,
+  company_id text NOT NULL,
+  branch_id text NOT NULL,
+  work_id text NOT NULL,
+  event_id text NOT NULL,
+  status text NOT NULL CHECK (status IN ('pending', 'leased', 'retryable', 'completed', 'dead-letter')),
+  attempts integer NOT NULL CHECK (attempts >= 0),
+  available_at timestamptz NOT NULL,
+  lease_owner text,
+  lease_expires_at timestamptz,
+  lease_token text,
+  last_error text,
+  completed_at timestamptz,
+  work_json jsonb NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (tenant_id, company_id, branch_id, work_id),
+  UNIQUE (tenant_id, company_id, branch_id, event_id)
+);
+ALTER TABLE retail_store_edge_sync_work
+  ADD COLUMN IF NOT EXISTS lease_token text;
+CREATE INDEX IF NOT EXISTS retail_store_edge_sync_work_claim_idx
+  ON retail_store_edge_sync_work (tenant_id, company_id, branch_id, status, available_at, work_id);
+ALTER TABLE retail_store_edge_sync_work ENABLE ROW LEVEL SECURITY;
+ALTER TABLE retail_store_edge_sync_work FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS retail_store_edge_sync_work_scope_policy ON retail_store_edge_sync_work;
+CREATE POLICY retail_store_edge_sync_work_scope_policy ON retail_store_edge_sync_work
+  USING (
+    tenant_id = current_setting('epic_bos.tenant_id', true)
+    AND company_id = current_setting('epic_bos.company_id', true)
+    AND branch_id = current_setting('epic_bos.branch_id', true)
+  )
+  WITH CHECK (
+    tenant_id = current_setting('epic_bos.tenant_id', true)
+    AND company_id = current_setting('epic_bos.company_id', true)
+    AND branch_id = current_setting('epic_bos.branch_id', true)
+  );
+
+CREATE TABLE IF NOT EXISTS retail_store_edge_sync_worker_metrics (
+  tenant_id text NOT NULL,
+  company_id text NOT NULL,
+  branch_id text NOT NULL,
+  metrics_json jsonb NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (tenant_id, company_id, branch_id)
+);
+ALTER TABLE retail_store_edge_sync_worker_metrics ENABLE ROW LEVEL SECURITY;
+ALTER TABLE retail_store_edge_sync_worker_metrics FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS retail_store_edge_sync_worker_metrics_scope_policy ON retail_store_edge_sync_worker_metrics;
+CREATE POLICY retail_store_edge_sync_worker_metrics_scope_policy ON retail_store_edge_sync_worker_metrics
+  USING (
+    tenant_id = current_setting('epic_bos.tenant_id', true)
+    AND company_id = current_setting('epic_bos.company_id', true)
+    AND branch_id = current_setting('epic_bos.branch_id', true)
+  )
+  WITH CHECK (
+    tenant_id = current_setting('epic_bos.tenant_id', true)
+    AND company_id = current_setting('epic_bos.company_id', true)
+    AND branch_id = current_setting('epic_bos.branch_id', true)
+  );
 `;
+
+async function queryInScope<T>(
+  client: ShadowImportSqlClient,
+  scope: ShadowImportScope,
+  sql: string,
+  parameters: readonly unknown[] = [],
+): Promise<{ rows: T[] }> {
+  if (client.withScope) {
+    return client.withScope(scope, (scopedClient) => scopedClient.query<T>(sql, parameters));
+  }
+  return client.query<T>(sql, parameters);
+}
 
 function normalizeScope(scope: ShadowImportScope): ShadowImportScope {
   return {

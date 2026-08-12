@@ -400,6 +400,111 @@
   padding: 20px;
 }
 
+.retail-pos-workbench__hub-sync-card {
+  border-color: rgba(37, 99, 235, .24);
+  background: linear-gradient(145deg, #f8fbff, #fff);
+}
+
+.retail-pos-workbench__hub-sync-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 10px 0;
+  color: #64748b;
+  font-size: .7rem;
+}
+
+.retail-pos-workbench__hub-sync-meta strong {
+  color: #1d4ed8;
+}
+
+.retail-pos-workbench__hub-sync-run {
+  display: grid;
+  gap: 3px;
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(37, 99, 235, .18);
+  border-radius: 10px;
+  background: rgba(239, 246, 255, .78);
+  color: #475569;
+  font-size: .72rem;
+}
+
+.retail-pos-workbench__hub-sync-run strong {
+  color: #1e3a8a;
+  text-transform: capitalize;
+}
+
+.retail-pos-workbench__hub-sync-run small {
+  color: #64748b;
+  font-size: .66rem;
+}
+
+.retail-pos-workbench__hub-sync-policy {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  background: rgba(248, 251, 255, .86);
+}
+
+.retail-pos-workbench__hub-sync-policy-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+}
+
+.retail-pos-workbench__hub-sync-policy-toggle input {
+  margin-top: 3px;
+}
+
+.retail-pos-workbench__hub-sync-policy-toggle span,
+.retail-pos-workbench__hub-sync-policy-fields {
+  display: grid;
+  gap: 4px;
+}
+
+.retail-pos-workbench__hub-sync-policy-toggle small {
+  color: #64748b;
+  font-size: .68rem;
+}
+
+.retail-pos-workbench__hub-sync-policy-fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.retail-pos-workbench__hub-sync-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid #e2e8f0;
+}
+
+.retail-pos-workbench__hub-sync-row > div {
+  display: grid;
+  gap: 3px;
+}
+
+.retail-pos-workbench__hub-sync-row small {
+  color: #64748b;
+  font-size: .68rem;
+}
+
+.retail-pos-workbench__hub-sync-row small[data-status="sent"],
+.retail-pos-workbench__hub-sync-row small[data-status="idempotent"] {
+  color: #047857;
+}
+
+.retail-pos-workbench__hub-sync-row small[data-status="conflicted"],
+.retail-pos-workbench__hub-sync-row small[data-status="failed"] {
+  color: #b91c1c;
+}
+
 .retail-pos-workbench__receipt-modal header {
   display: flex;
   align-items: flex-start;

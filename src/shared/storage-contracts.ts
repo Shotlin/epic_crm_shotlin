@@ -15,6 +15,29 @@ export interface DatabaseBackupReceipt {
   sha256: string;
   size: number;
   verifiedAt: string;
+  /** 0 = unencrypted legacy file, 1 = legacy direct-key envelope, 2 = active namespace key. */
+  keyVersion: number;
+}
+
+export type BackupInventoryStatus = 'active-v2' | 'legacy-v1' | 'plaintext' | 'invalid';
+
+export interface BackupInventoryEntry {
+  fileName: string;
+  status: BackupInventoryStatus;
+  keyVersion: number;
+  sha256?: string;
+  size?: number;
+  message?: string;
+}
+
+export interface BackupRewrapReceipt {
+  scanned: number;
+  migrated: number;
+  remainingLegacy: number;
+  invalid: number;
+  verified: boolean;
+  entries: BackupInventoryEntry[];
+  completedAt: string;
 }
 
 export interface RestoreReceipt {
@@ -48,4 +71,5 @@ export interface StorageBridge {
   restoreDatabaseBackup: () => Promise<RestoreReceipt | null>;
   listRestoreDrills: () => Promise<RestoreDrillRecord[]>;
   runRestoreDrill: () => Promise<RestoreDrillReceipt>;
+  rewrapLocalBackups?: () => Promise<BackupRewrapReceipt>;
 }

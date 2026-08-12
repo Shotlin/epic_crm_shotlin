@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { ReleaseArtifactManifest, ReleaseArtifactPlatform } from '../shared/release-artifact-manifest-contracts';
+import type { ReleaseArtifactBuildEnvironment, ReleaseArtifactManifest, ReleaseArtifactPlatform } from '../shared/release-artifact-manifest-contracts';
 import { isReleaseGradeBuildRevision } from './build-provenance';
 
 export interface CreateReleaseArtifactManifestInput {
@@ -8,6 +8,7 @@ export interface CreateReleaseArtifactManifestInput {
   platform: ReleaseArtifactPlatform;
   arch: string;
   buildRevision: string;
+  buildEnvironment: ReleaseArtifactBuildEnvironment;
   schemaRevision: number;
   releaseIdentitySha256: string;
   artifactReference: string;
@@ -35,6 +36,9 @@ export function createReleaseArtifactManifest(input: CreateReleaseArtifactManife
   if (!isReleaseGradeBuildRevision(input.buildRevision)) {
     throw new Error('Release artifact manifest requires an immutable build revision.');
   }
+  if (!['native', 'cross', 'unknown'].includes(input.buildEnvironment)) {
+    throw new Error('Release artifact manifest build environment is invalid.');
+  }
   assertChecksum(input.releaseIdentitySha256, 'release identity');
   assertChecksum(input.artifactSha256, 'artifact');
   if (!Number.isFinite(Date.parse(input.generatedAt))) {
@@ -42,12 +46,13 @@ export function createReleaseArtifactManifest(input: CreateReleaseArtifactManife
   }
 
   const canonicalPayload = {
-    schemaVersion: 1 as const,
+    schemaVersion: 2 as const,
     productName: input.productName,
     version: input.version,
     platform: input.platform,
     arch: input.arch,
     buildRevision: input.buildRevision,
+    buildEnvironment: input.buildEnvironment,
     schemaRevision: input.schemaRevision,
     releaseIdentitySha256: input.releaseIdentitySha256,
     artifactReference: input.artifactReference,

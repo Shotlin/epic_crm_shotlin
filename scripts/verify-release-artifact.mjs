@@ -9,12 +9,13 @@ if (!manifestPath) fail('Usage: node scripts/verify-release-artifact.mjs <artifa
 
 const resolvedManifestPath = path.resolve(manifestPath);
 const manifest = readJson(resolvedManifestPath, 'release manifest');
-const required = ['productName', 'version', 'platform', 'arch', 'buildRevision', 'schemaRevision', 'releaseIdentitySha256', 'artifactReference', 'artifactSha256', 'generatedAt', 'canonicalJson', 'manifestSha256'];
+const required = ['productName', 'version', 'platform', 'arch', 'buildRevision', 'buildEnvironment', 'schemaRevision', 'releaseIdentitySha256', 'artifactReference', 'artifactSha256', 'generatedAt', 'canonicalJson', 'manifestSha256'];
 for (const field of required) if (!(field in manifest)) fail(`Manifest is missing ${field}.`);
-if (manifest.schemaVersion !== 1) fail('Unsupported release manifest schema.');
+if (manifest.schemaVersion !== 2) fail('Unsupported release manifest schema.');
 if (!['win32', 'darwin', 'linux'].includes(manifest.platform)) fail('Manifest platform is invalid.');
 if (!Number.isInteger(manifest.schemaRevision) || manifest.schemaRevision < 1) fail('Manifest schema revision is invalid.');
-if (!/^ci-[A-Za-z0-9._-]+$/u.test(manifest.buildRevision)) fail('Manifest build revision is not immutable.');
+if (!/^(?:[a-f0-9]{7,64}|ci-[a-z0-9][a-z0-9._-]{1,127})$/iu.test(manifest.buildRevision)) fail('Manifest build revision is not immutable.');
+if (!['native', 'cross', 'unknown'].includes(manifest.buildEnvironment)) fail('Manifest build environment is invalid.');
 for (const [label, value] of [['release identity', manifest.releaseIdentitySha256], ['artifact', manifest.artifactSha256], ['manifest', manifest.manifestSha256]]) {
   if (typeof value !== 'string' || !/^[a-f0-9]{64}$/iu.test(value)) fail(`Manifest ${label} checksum is invalid.`);
 }
@@ -23,12 +24,13 @@ if (args[1] && manifest.platform !== args[1]) fail(`Manifest platform is ${manif
 if (args[2] && manifest.version !== args[2]) fail(`Manifest version is ${manifest.version}, not ${args[2]}.`);
 
 const canonicalPayload = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   productName: manifest.productName,
   version: manifest.version,
   platform: manifest.platform,
   arch: manifest.arch,
   buildRevision: manifest.buildRevision,
+  buildEnvironment: manifest.buildEnvironment,
   schemaRevision: manifest.schemaRevision,
   releaseIdentitySha256: manifest.releaseIdentitySha256,
   artifactReference: manifest.artifactReference,
@@ -44,7 +46,7 @@ if (!existsSync(artifactPath)) fail(`Artifact does not exist: ${artifactPath}`);
 const actualArtifactSha256 = sha256(readFileSync(artifactPath));
 if (actualArtifactSha256 !== manifest.artifactSha256.toLowerCase()) fail(`Artifact checksum mismatch: expected ${manifest.artifactSha256}, got ${actualArtifactSha256}.`);
 
-process.stdout.write(`${JSON.stringify({ ok: true, platform: manifest.platform, version: manifest.version, artifact: artifactPath, artifactSha256: actualArtifactSha256, manifestSha256: manifest.manifestSha256.toLowerCase() }, null, 2)}\n`);
+process.stdout.write(`${JSON.stringify({ ok: true, platform: manifest.platform, version: manifest.version, buildEnvironment: manifest.buildEnvironment, artifact: artifactPath, artifactSha256: actualArtifactSha256, manifestSha256: manifest.manifestSha256.toLowerCase() }, null, 2)}\n`);
 
 function readJson(file, label) {
   try { return JSON.parse(readFileSync(file, 'utf8')); } catch (error) { fail(`Could not read ${label}: ${error instanceof Error ? error.message : String(error)}`); }

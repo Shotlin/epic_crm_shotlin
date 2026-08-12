@@ -69,6 +69,20 @@ export interface SessionRecord {
   revokedAt: string | null;
 }
 
+export interface StoredMfaFactor {
+  userId: string;
+  encryptedSecret: string;
+  iv: string;
+  authTag: string;
+  keyVersion: number;
+  enabled: boolean;
+  recoveryCodeHashes: string[];
+  failedAttempts: number;
+  lockedUntil: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /**
  * A complete state document to be written during first-run provisioning.
  * These records deliberately use the same durable shape as `saveState`, but
@@ -109,6 +123,8 @@ export interface WorkspaceBootstrapManifest {
 }
 
 export interface StoredAttachment extends AttachmentMetadata {
+  companyId?: string | null;
+  branchId?: string | null;
   encryptedPath: string;
   iv: string;
   authTag: string;
@@ -1123,6 +1139,41 @@ const MIGRATIONS: Migration[] = [
         ON restore_drill_history(verified_at DESC, id);
     `,
   },
+  {
+    id: '025-attachment-operating-scope',
+    sql: `
+      ALTER TABLE attachments ADD COLUMN company_id TEXT;
+      ALTER TABLE attachments ADD COLUMN branch_id TEXT;
+      CREATE INDEX attachments_scope_idx
+        ON attachments(company_id, branch_id, resource, resource_id, created_at DESC);
+    `,
+  },
+  {
+    id: '026-encrypted-mfa-factors',
+    sql: `
+      CREATE TABLE mfa_factors (
+        user_id TEXT PRIMARY KEY REFERENCES credentials(user_id) ON DELETE CASCADE,
+        encrypted_secret TEXT NOT NULL,
+        iv TEXT NOT NULL,
+        auth_tag TEXT NOT NULL,
+        key_version INTEGER NOT NULL CHECK (key_version > 0),
+        enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+        recovery_code_hashes_json TEXT NOT NULL CHECK (json_valid(recovery_code_hashes_json)),
+        failed_attempts INTEGER NOT NULL DEFAULT 0 CHECK (failed_attempts >= 0),
+        locked_until TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      ) STRICT;
+    `,
+  },
+  {
+    id: '027-backup-envelope-key-version',
+    sql: `
+      ALTER TABLE backup_history
+        ADD COLUMN key_version INTEGER NOT NULL DEFAULT 0
+        CHECK (key_version >= 0);
+    `,
+  },
 ];
 
 export function getCurrentSchemaRevision(): number {
@@ -1617,6 +1668,57 @@ export class BusinessDatabase {
       .run(now, userId);
   }
 
+  public getMfaFactor(userId: string): StoredMfaFactor | null {
+    const row = this.database
+      .prepare('SELECT * FROM mfa_factors WHERE user_id = ?')
+      .get(userId) as Record<string, unknown> | undefined;
+    return row ? this.mapMfaFactor(row) : null;
+  }
+
+  public listMfaFactors(): StoredMfaFactor[] {
+    const rows = this.database
+      .prepare('SELECT * FROM mfa_factors ORDER BY user_id ASC')
+      .all() as Array<Record<string, unknown>>;
+    return rows.map((row) => this.mapMfaFactor(row));
+  }
+
+  public upsertMfaFactor(record: StoredMfaFactor): void {
+    this.database
+      .prepare(`
+        INSERT INTO mfa_factors(
+          user_id, encrypted_secret, iv, auth_tag, key_version, enabled,
+          recovery_code_hashes_json, failed_attempts, locked_until, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET
+          encrypted_secret = excluded.encrypted_secret,
+          iv = excluded.iv,
+          auth_tag = excluded.auth_tag,
+          key_version = excluded.key_version,
+          enabled = excluded.enabled,
+          recovery_code_hashes_json = excluded.recovery_code_hashes_json,
+          failed_attempts = excluded.failed_attempts,
+          locked_until = excluded.locked_until,
+          updated_at = excluded.updated_at
+      `)
+      .run(
+        record.userId,
+        record.encryptedSecret,
+        record.iv,
+        record.authTag,
+        record.keyVersion,
+        record.enabled ? 1 : 0,
+        JSON.stringify(record.recoveryCodeHashes),
+        record.failedAttempts,
+        record.lockedUntil,
+        record.createdAt,
+        record.updatedAt,
+      );
+  }
+
+  public deleteMfaFactor(userId: string): void {
+    this.database.prepare('DELETE FROM mfa_factors WHERE user_id = ?').run(userId);
+  }
+
   public insertSession(record: SessionRecord): void {
     this.database
       .prepare(`
@@ -1684,8 +1786,8 @@ export class BusinessDatabase {
         INSERT INTO attachments(
           id, resource, resource_id, file_name, mime_type, size, sha256,
           storage_key, encrypted_path, iv, auth_tag, key_version,
-          created_by, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          created_by, created_at, company_id, branch_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       .run(
         record.id,
@@ -1702,6 +1804,8 @@ export class BusinessDatabase {
         record.keyVersion,
         record.createdBy,
         record.createdAt,
+        record.companyId ?? null,
+        record.branchId ?? null,
       );
   }
 
@@ -1728,6 +1832,22 @@ export class BusinessDatabase {
     return { adapterId: String(row.adapter_id), encryptedPayload: String(row.encrypted_payload), iv: String(row.iv), authTag: String(row.auth_tag), keyVersion: Number(row.key_version), checksum: String(row.checksum), updatedBy: String(row.updated_by), updatedAt: String(row.updated_at) };
   }
 
+  public listStatutoryAdapterSecrets(): StoredAdapterSecret[] {
+    const rows = this.database
+      .prepare('SELECT * FROM statutory_adapter_secrets ORDER BY adapter_id ASC')
+      .all() as Array<Record<string, unknown>>;
+    return rows.map((row) => ({
+      adapterId: String(row.adapter_id),
+      encryptedPayload: String(row.encrypted_payload),
+      iv: String(row.iv),
+      authTag: String(row.auth_tag),
+      keyVersion: Number(row.key_version),
+      checksum: String(row.checksum),
+      updatedBy: String(row.updated_by),
+      updatedAt: String(row.updated_at),
+    }));
+  }
+
   public upsertProviderSecret(record: StoredProviderSecret): void {
     this.database.prepare(`
       INSERT INTO provider_connector_secrets(
@@ -1749,6 +1869,22 @@ export class BusinessDatabase {
     const row = this.database.prepare('SELECT * FROM provider_connector_secrets WHERE connector_id = ?').get(connectorId) as Record<string, unknown> | undefined;
     if (!row) return null;
     return { connectorId: String(row.connector_id), encryptedPayload: String(row.encrypted_payload), iv: String(row.iv), authTag: String(row.auth_tag), keyVersion: Number(row.key_version), checksum: String(row.checksum), updatedBy: String(row.updated_by), updatedAt: String(row.updated_at) };
+  }
+
+  public listProviderSecrets(): StoredProviderSecret[] {
+    const rows = this.database
+      .prepare('SELECT * FROM provider_connector_secrets ORDER BY connector_id ASC')
+      .all() as Array<Record<string, unknown>>;
+    return rows.map((row) => ({
+      connectorId: String(row.connector_id),
+      encryptedPayload: String(row.encrypted_payload),
+      iv: String(row.iv),
+      authTag: String(row.auth_tag),
+      keyVersion: Number(row.key_version),
+      checksum: String(row.checksum),
+      updatedBy: String(row.updated_by),
+      updatedAt: String(row.updated_at),
+    }));
   }
 
   public createApiKey(record: StoredApiKey): void {
@@ -2733,15 +2869,17 @@ export class BusinessDatabase {
     return true;
   }
 
-  public getAttachment(id: string): StoredAttachment | null {
-    const row = this.database
-      .prepare('SELECT * FROM attachments WHERE id = ?')
-      .get(id) as Record<string, unknown> | undefined;
+  public getAttachment(id: string, scope?: { companyId: string; branchId: string }): StoredAttachment | null {
+    const row = (scope
+      ? this.database.prepare('SELECT * FROM attachments WHERE id = ? AND company_id = ? AND branch_id = ?').get(id, scope.companyId, scope.branchId)
+      : this.database.prepare('SELECT * FROM attachments WHERE id = ?').get(id)) as Record<string, unknown> | undefined;
     if (!row) return null;
     return {
       id: String(row.id),
       resource: String(row.resource),
       resourceId: String(row.resource_id),
+      companyId: row.company_id == null ? null : String(row.company_id),
+      branchId: row.branch_id == null ? null : String(row.branch_id),
       fileName: String(row.file_name),
       mimeType: String(row.mime_type),
       size: Number(row.size),
@@ -2756,17 +2894,38 @@ export class BusinessDatabase {
     };
   }
 
-  public listAttachments(resource: string, resourceId: string): StoredAttachment[] {
+  public listAttachments(resource: string, resourceId: string, scope?: { companyId: string; branchId: string }): StoredAttachment[] {
+    const rows = (scope
+      ? this.database.prepare('SELECT * FROM attachments WHERE resource = ? AND resource_id = ? AND company_id = ? AND branch_id = ? ORDER BY created_at DESC').all(resource, resourceId, scope.companyId, scope.branchId)
+      : this.database.prepare('SELECT * FROM attachments WHERE resource = ? AND resource_id = ? ORDER BY created_at DESC').all(resource, resourceId)) as Array<Record<string, unknown>>;
+    return rows
+      .map((row) => this.getAttachment(String(row.id), scope))
+      .filter((record): record is StoredAttachment => record !== null);
+  }
+
+  public listAllAttachments(): StoredAttachment[] {
     const rows = this.database
-      .prepare(`
-        SELECT * FROM attachments
-        WHERE resource = ? AND resource_id = ?
-        ORDER BY created_at DESC
-      `)
-      .all(resource, resourceId) as Array<Record<string, unknown>>;
+      .prepare('SELECT id FROM attachments ORDER BY created_at ASC, id ASC')
+      .all() as Array<{ id: string }>;
     return rows
       .map((row) => this.getAttachment(String(row.id)))
       .filter((record): record is StoredAttachment => record !== null);
+  }
+
+  public updateAttachmentEncryption(
+    id: string,
+    encryptedPath: string,
+    iv: string,
+    authTag: string,
+    keyVersion: number,
+  ): void {
+    this.database
+      .prepare(`
+        UPDATE attachments
+        SET encrypted_path = ?, iv = ?, auth_tag = ?, key_version = ?
+        WHERE id = ?
+      `)
+      .run(encryptedPath, iv, authTag, keyVersion, id);
   }
 
   public async createOnlineBackup(targetPath: string): Promise<number> {
@@ -2779,12 +2938,13 @@ export class BusinessDatabase {
     sha256: string,
     size: number,
     verifiedAt: string,
+    keyVersion: number,
   ): void {
     this.database
       .prepare(`
         INSERT OR REPLACE INTO backup_history(
-          file_name, created_at, sha256, size, database_version, verified_at
-        ) VALUES (?, ?, ?, ?, ?, ?)
+          file_name, created_at, sha256, size, database_version, verified_at, key_version
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
       `)
       .run(
         fileName,
@@ -2793,6 +2953,7 @@ export class BusinessDatabase {
         size,
         MIGRATIONS.length,
         verifiedAt,
+        keyVersion,
       );
   }
 
@@ -3158,6 +3319,31 @@ export class BusinessDatabase {
       if (this.database.isTransaction) this.database.exec('ROLLBACK');
       throw error;
     }
+  }
+
+  private mapMfaFactor(row: Record<string, unknown>): StoredMfaFactor {
+    let recoveryCodeHashes: string[];
+    try {
+      const parsed: unknown = JSON.parse(String(row.recovery_code_hashes_json));
+      recoveryCodeHashes = Array.isArray(parsed)
+        ? parsed.filter((value): value is string => typeof value === 'string')
+        : [];
+    } catch {
+      recoveryCodeHashes = [];
+    }
+    return {
+      userId: String(row.user_id),
+      encryptedSecret: String(row.encrypted_secret),
+      iv: String(row.iv),
+      authTag: String(row.auth_tag),
+      keyVersion: Number(row.key_version),
+      enabled: Number(row.enabled) === 1,
+      recoveryCodeHashes,
+      failedAttempts: Number(row.failed_attempts),
+      lockedUntil: row.locked_until ? String(row.locked_until) : null,
+      createdAt: String(row.created_at),
+      updatedAt: String(row.updated_at),
+    };
   }
 
   private readWorkspaceBootstrapGuard(

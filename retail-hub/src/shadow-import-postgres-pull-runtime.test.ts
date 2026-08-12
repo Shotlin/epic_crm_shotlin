@@ -16,7 +16,14 @@ function adapter(batchId: string): ShadowImportSourceAdapter {
 }
 
 function repository(existing?: ShadowImportPlan): ShadowImportPostgresRepository {
-  return { listPlans: vi.fn(async () => existing ? [existing] : []), getPlan: vi.fn(async () => existing), registerPlan: vi.fn(async () => undefined), registerPullReceipt: vi.fn(async () => undefined), replacePlan: vi.fn() };
+  return {
+    listPlans: vi.fn(async () => existing ? [existing] : []),
+    getPlan: vi.fn(async () => existing),
+    registerPlan: vi.fn(async () => undefined),
+    registerPullReceipt: vi.fn(async () => undefined),
+    registerPlanAndPullReceipt: vi.fn(async () => undefined),
+    replacePlan: vi.fn(),
+  };
 }
 
 describe('scoped PostgreSQL shadow-import pull runtime', () => {
@@ -25,8 +32,9 @@ describe('scoped PostgreSQL shadow-import pull runtime', () => {
     const result = await pullAndRegisterScopedShadowImport(adapter('pg-batch-1'), durable, scope, { batchId: 'pg-batch-1', observedAt: '2026-08-04T11:00:00.000Z' }, '2026-08-04T11:01:00Z');
     expect(result).toMatchObject({ registeredAt: '2026-08-04T11:01:00.000Z', scope, plan: { batch: { id: 'pg-batch-1', credentialRevision: 8 } }, receipt: { batchId: 'pg-batch-1', credentialRevision: 8, pagesFetched: 1, recordsFetched: 1, writeBackAllowed: false } });
     expect(durable.getPlan).toHaveBeenCalledWith(scope, 'pg-batch-1');
-    expect(durable.registerPlan).toHaveBeenCalledWith(scope, result.plan);
-    expect(durable.registerPullReceipt).toHaveBeenCalledWith(scope, result.receipt);
+    expect(durable.registerPlanAndPullReceipt).toHaveBeenCalledWith(scope, result.plan, result.receipt);
+    expect(durable.registerPlan).not.toHaveBeenCalled();
+    expect(durable.registerPullReceipt).not.toHaveBeenCalled();
   });
 
   it('fails before contacting the source when the scoped batch already exists', async () => {
@@ -38,9 +46,10 @@ describe('scoped PostgreSQL shadow-import pull runtime', () => {
     expect(durable.registerPlan).not.toHaveBeenCalled();
   });
 
-  it('refuses a repository without immutable registration', async () => {
+  it('refuses a repository without atomic immutable registration', async () => {
     const durable = repository();
     delete durable.registerPlan;
+    delete durable.registerPlanAndPullReceipt;
     await expect(pullAndRegisterScopedShadowImport(adapter('pg-batch-3'), durable, scope, { batchId: 'pg-batch-3', observedAt: '2026-08-04T11:00:00.000Z' })).rejects.toThrow(/immutable registration/i);
     expect(durable.getPlan).not.toHaveBeenCalled();
   });

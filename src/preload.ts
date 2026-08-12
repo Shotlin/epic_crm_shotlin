@@ -16,6 +16,10 @@ const bridge: EpicBosBridge = {
     lock: () => ipcRenderer.invoke(IPC_CHANNELS.authLock),
     changePassword: (input) =>
       ipcRenderer.invoke(IPC_CHANNELS.authChangePassword, input),
+    getMfaStatus: () => ipcRenderer.invoke(IPC_CHANNELS.authMfaStatus),
+    beginMfaEnrollment: () => ipcRenderer.invoke(IPC_CHANNELS.authMfaBeginEnrollment),
+    confirmMfaEnrollment: (code) => ipcRenderer.invoke(IPC_CHANNELS.authMfaConfirmEnrollment, { code }),
+    disableMfa: (input) => ipcRenderer.invoke(IPC_CHANNELS.authMfaDisable, input),
   },
   storage: {
     listAttachments: (target) =>
@@ -32,6 +36,8 @@ const bridge: EpicBosBridge = {
       ipcRenderer.invoke(IPC_CHANNELS.storageListRestoreDrills),
     runRestoreDrill: () =>
       ipcRenderer.invoke(IPC_CHANNELS.storageRunRestoreDrill),
+    rewrapLocalBackups: () =>
+      ipcRenderer.invoke(IPC_CHANNELS.storageRewrapLocalBackups),
   },
   retailWorkspace: {
     getStatus: () => ipcRenderer.invoke(IPC_CHANNELS.retailWorkspaceGetStatus),
@@ -46,8 +52,13 @@ const bridge: EpicBosBridge = {
     revokeApiKey: (input) => ipcRenderer.invoke(IPC_CHANNELS.integrationRevokeApiKey, input),
     exportApiKeyInventory: (scope) => ipcRenderer.invoke(IPC_CHANNELS.integrationExportApiKeyInventory, scope),
     exportProviderCertificationPackage: (input) => ipcRenderer.invoke(IPC_CHANNELS.integrationExportProviderCertification, input),
+    verifyProviderCertificationPackage: () => ipcRenderer.invoke(IPC_CHANNELS.integrationVerifyProviderCertification),
     getRetailCertificationPack: () => ipcRenderer.invoke(IPC_CHANNELS.integrationGetRetailCertificationPack),
     exportRetailCertificationPack: () => ipcRenderer.invoke(IPC_CHANNELS.integrationExportRetailCertificationPack),
+    verifyRetailCertificationPack: () => ipcRenderer.invoke(IPC_CHANNELS.integrationVerifyRetailCertificationPack),
+  },
+  security: {
+    rotateArtifactKeyEnvelopes: () => ipcRenderer.invoke(IPC_CHANNELS.securityRotateArtifactKeyEnvelopes),
   },
   release: {
     listGates: () => ipcRenderer.invoke(IPC_CHANNELS.releaseListGates),
@@ -162,6 +173,12 @@ const bridge: EpicBosBridge = {
     getSnapshot: () => ipcRenderer.invoke(IPC_CHANNELS.revenueOpsSnapshot),
     listRetailCutoverPlans: () => ipcRenderer.invoke(IPC_CHANNELS.revenueOpsListRetailCutoverPlans),
     fetchRetailHubCutoverAssessment: (input) => ipcRenderer.invoke(IPC_CHANNELS.revenueOpsFetchRetailHubCutoverAssessment, input),
+    fetchRetailHubDeploymentPreflight: (input) => ipcRenderer.invoke(IPC_CHANNELS.revenueOpsFetchRetailHubDeploymentPreflight, input),
+    fetchRetailHubShadowImportPreflight: (input) => ipcRenderer.invoke(IPC_CHANNELS.revenueOpsFetchRetailHubShadowImportPreflight, input),
+    fetchRetailHubShadowImportSourceStatus: (input) => ipcRenderer.invoke(IPC_CHANNELS.revenueOpsFetchRetailHubShadowImportSourceStatus, input),
+    fetchRetailHubShadowImportPullReceipts: (input) => ipcRenderer.invoke(IPC_CHANNELS.revenueOpsFetchRetailHubShadowImportPullReceipts, input),
+    fetchRetailHubStoreEdgeWorkerMetrics: (input) => ipcRenderer.invoke(IPC_CHANNELS.revenueOpsFetchRetailHubStoreEdgeWorkerMetrics, input),
+    fetchRetailHubCoverageMap: (input) => ipcRenderer.invoke(IPC_CHANNELS.revenueOpsFetchRetailHubCoverageMap, input),
     createRetailCutoverPlan: (input) => ipcRenderer.invoke(IPC_CHANNELS.revenueOpsCreateRetailCutoverPlan, input),
     createRetailCutoverPlanFromHubAssessment: (input) => ipcRenderer.invoke(IPC_CHANNELS.revenueOpsCreateRetailCutoverPlanFromHubAssessment, input),
     advanceRetailCutover: (input) => ipcRenderer.invoke(IPC_CHANNELS.revenueOpsAdvanceRetailCutover, input),
@@ -196,6 +213,9 @@ const bridge: EpicBosBridge = {
     syncRetailOfflineSale: (input) => ipcRenderer.invoke(IPC_CHANNELS.retailSyncOfflineSale, input),
     syncRetailOfflineQueue: (input) => ipcRenderer.invoke(IPC_CHANNELS.retailSyncOfflineQueue, input),
     resolveRetailOfflineSale: (input) => ipcRenderer.invoke(IPC_CHANNELS.retailResolveOfflineSale, input),
+    sendRetailHubStoreEdgeSync: (input) => ipcRenderer.invoke(IPC_CHANNELS.retailSendHubStoreEdgeSync, input),
+    syncRetailHubStoreEdgeQueue: (input) => ipcRenderer.invoke(IPC_CHANNELS.retailSyncHubStoreEdgeQueue, input),
+    saveRetailHubStoreEdgeSyncPolicy: (input) => ipcRenderer.invoke(IPC_CHANNELS.retailSaveHubStoreEdgeSyncPolicy, input),
     ingestRetailUnifiedOrder: (input) => ipcRenderer.invoke(IPC_CHANNELS.retailIngestUnifiedOrder, input),
     prepareRetailUnifiedOrderHandoff: (input) => ipcRenderer.invoke(IPC_CHANNELS.retailPrepareUnifiedOrderHandoff, input),
     prepareRetailOrderHubHandoff: (input) => ipcRenderer.invoke(IPC_CHANNELS.retailPrepareOrderHubHandoff, input),
@@ -211,11 +231,11 @@ const bridge: EpicBosBridge = {
     dispatchRetailUnifiedOrder: (input) => ipcRenderer.invoke(IPC_CHANNELS.retailDispatchUnifiedOrder, input),
     confirmRetailUnifiedOrderDelivery: (input) => ipcRenderer.invoke(IPC_CHANNELS.retailConfirmUnifiedOrderDelivery, input),
     reconcileRetailUnifiedOrderRto: (input) => ipcRenderer.invoke(IPC_CHANNELS.retailReconcileUnifiedOrderRto, input),
+    reconcileRetailUnifiedOrderCancellation: (input) => ipcRenderer.invoke(IPC_CHANNELS.retailReconcileUnifiedOrderCancellation, input),
     reconcileRetailUnifiedOrderReturn: (input) => ipcRenderer.invoke(IPC_CHANNELS.retailReconcileUnifiedOrderReturn, input),
     recordRetailUnifiedOrderCarrierCallback: (input) => ipcRenderer.invoke(IPC_CHANNELS.retailRecordUnifiedOrderCarrierCallback, input),
     prepareRetailDeviceTransport: (input) => ipcRenderer.invoke(IPC_CHANNELS.retailPrepareDeviceTransport, input),
     recordRetailDeviceTransport: (input) => ipcRenderer.invoke(IPC_CHANNELS.retailRecordDeviceTransport, input),
-    recordRetailNativeDeviceDriverResult: (input) => ipcRenderer.invoke(IPC_CHANNELS.retailRecordNativeDeviceDriverResult, input),
     executeRetailDeviceTransport: (input) => ipcRenderer.invoke(IPC_CHANNELS.retailExecuteDeviceTransport, input),
     retryRetailDeviceTransport: (input) => ipcRenderer.invoke(IPC_CHANNELS.retailRetryDeviceTransport, input),
     preflightRetailDeviceTransport: (input) => ipcRenderer.invoke(IPC_CHANNELS.retailPreflightDeviceTransport, input),

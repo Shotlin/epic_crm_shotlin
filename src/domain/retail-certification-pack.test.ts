@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createRetailCertificationPack } from './retail-certification-pack';
+import { createRetailCertificationPack, verifyRetailCertificationPack } from './retail-certification-pack';
 import { createInitialRevenueOpsState } from './revenue-ops';
 import { createRetailCommerceConnector, configureRetailCommerceCredentials } from './retail-commerce';
 import { createRetailCommerceConformanceCase, recordRetailCommerceConformance } from './retail-commerce-advanced';
@@ -22,7 +22,7 @@ describe('retail provider and device certification pack', () => {
     const second = createRetailCertificationPack(source, 'auditor', '2026-08-01T10:04:00.000Z');
     expect(first).toEqual(second);
     expect(first.summary).toMatchObject({ connectorCount: 1, connectorReadyCount: 0, missingCapabilityCount: 1, devicePreparedCount: 1, deviceFailedCount: 0, preflightSuccessCount: 0, preflightFailureCount: 0, readyForProduction: false });
-    expect(first.connectors[0]).toMatchObject({ code: 'PACK-MKT', passedCapabilities: ['order-pull'], missingCapabilities: ['settlement-pull'], nextAction: 'complete-capability-evidence' });
+    expect(first.connectors[0]).toMatchObject({ code: 'PACK-MKT', credentialRevision: 1, passedCapabilities: ['order-pull'], missingCapabilities: ['settlement-pull'], nextAction: 'complete-capability-evidence' });
     expect(first.devices.find((device) => device.kind === 'escpos-printer')).toMatchObject({ preparedCount: 1, nextAction: 'record-result' });
     expect(first.preflight).toEqual([]);
     expect(first.checksum).toMatch(/^[a-f0-9]{64}$/);
@@ -40,9 +40,9 @@ describe('retail provider and device certification pack', () => {
       { scope: state.scope, id: 'preflight-pack-stale', connectorId: '00000000-0000-4000-8000-000000000091', method: 'GET', path: '/v1/health', requestChecksum: checksum, responseChecksum: checksum, responseByteLength: 15, status: 'succeeded', evidenceReference: 'BANK-HEALTH-OLD', requestedBy: 'assessor', requestedAt: '2026-08-01T10:03:20.000Z', credentialRevision: 0, version: 1 },
     ];
     const pack = createRetailCertificationPack({ scope: state.scope, retailCommerceConnectors: [], retailCommerceConformanceCases: [], retailDeviceTransportEvidence: [], retailOcrProviderProfiles: [], providerConnectors: state.providerConnectors, providerConformanceCases: state.providerConformanceCases, providerSubmissions: state.providerSubmissions, providerPreflightEvidence: state.providerPreflightEvidence }, 'auditor', '2026-08-01T10:04:00.000Z');
-    expect(pack.providers[0]).toMatchObject({ code: 'BANK-PACK', passedCapabilities: ['payment-release'], missingCapabilities: [], nextAction: 'ready' });
+    expect(pack.providers[0]).toMatchObject({ code: 'BANK-PACK', credentialRevision: 1, passedCapabilities: ['payment-release'], missingCapabilities: [], nextAction: 'ready' });
     expect(pack.summary).toMatchObject({ providerCount: 1, providerReadyCount: 1, providerMissingCapabilityCount: 0, readyForProduction: false, externalGateCount: 4 });
-    expect(pack.preflight[0]).toMatchObject({ connectorId: '00000000-0000-4000-8000-000000000091', successCount: 1, failureCount: 0, latestStatus: 'succeeded', evidenceReferences: ['BANK-HEALTH-PROD-1'] });
+    expect(pack.preflight[0]).toMatchObject({ connectorId: '00000000-0000-4000-8000-000000000091', credentialRevision: 1, successCount: 1, failureCount: 0, latestStatus: 'succeeded', evidenceReferences: ['BANK-HEALTH-PROD-1'] });
     expect(JSON.stringify(pack)).not.toContain(checksum);
   });
 
@@ -112,6 +112,15 @@ describe('retail provider and device certification pack', () => {
     const pack = createRetailCertificationPack({ scope: state.scope, retailCommerceConnectors: [], retailCommerceConformanceCases: [], retailDeviceTransportEvidence: state.retailDeviceTransportEvidence, retailDeviceAdapterProfiles: [], retailOcrProviderProfiles: [], providerConnectors: [], providerConformanceCases: [], providerSubmissions: [] }, 'auditor', '2026-08-03T10:02:00.000Z');
     expect(pack.devices.find((device) => device.kind === 'escpos-printer')).toMatchObject({ acknowledgedCount: 1, profileGateCount: 1, nextAction: 'complete-profile-certification' });
     expect(pack.summary.deviceProfileGateCount).toBe(1);
+  });
+
+  it('verifies an exported pack independently and rejects tampering or secret fields', () => {
+    const state = createInitialRevenueOpsState();
+    const pack = createRetailCertificationPack({ scope: state.scope, retailCommerceConnectors: [], retailCommerceConformanceCases: [], retailDeviceTransportEvidence: [], retailOcrProviderProfiles: [], providerConnectors: [], providerConformanceCases: [], providerSubmissions: [] }, 'auditor', '2026-08-06T13:00:00.000Z');
+    expect(verifyRetailCertificationPack(pack)).toMatchObject({ valid: true, declaredChecksum: pack.checksum, computedChecksum: pack.checksum, externalGateCount: 4 });
+    const tampered = { ...pack, summary: { ...pack.summary, externalGateCount: 0 } };
+    expect(verifyRetailCertificationPack(tampered)).toMatchObject({ valid: false });
+    expect(verifyRetailCertificationPack({ ...pack, credentialFingerprint: 'must-not-export' })).toMatchObject({ valid: false });
   });
 });
 

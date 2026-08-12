@@ -197,14 +197,14 @@ export function RetailCatalogOperationsWorkbench({
         <button type="submit" disabled={busy || !onTestPrinter || !revenue.retailPrinterAdapters.some((item) => item.status !== 'certified' && item.status !== 'disabled')}>Record printer test evidence</button>
         <small>Enter evidence you actually observed. A local test record is not a USB/Bluetooth driver certification or a transport acknowledgement.</small>
       </form>
-      <select value={selectedPrinter} onChange={(event) => setSelectedPrinter(event.target.value)}>
-        <option value="">Certified printer</option>
+      <label>Certified printer<select value={selectedPrinter} onChange={(event) => setSelectedPrinter(event.target.value)}>
+        <option value="">Choose a certified printer</option>
         {revenue.retailPrinterAdapters.filter((item) => item.status === 'certified').map((item) => <option key={item.id} value={item.id}>{item.code} · {item.model ?? item.connection}</option>)}
-      </select>
-      <select value={selectedRun} onChange={(event) => setSelectedRun(event.target.value)}>
-        <option value="">Label run</option>
+      </select></label>
+      <label>Label run<select value={selectedRun} onChange={(event) => setSelectedRun(event.target.value)}>
+        <option value="">Choose a label run</option>
         {revenue.retailLabelPrintRuns.map((item) => <option key={item.id} value={item.id}>{item.number} · {item.template} · {item.quantity}</option>)}
-      </select>
+      </select></label>
       <button type="button" disabled={busy || !onCreateDispatch || !certifiedPrinter || !activeRun} onClick={() => {
         if (onCreateDispatch && certifiedPrinter && activeRun) {
           void onCreateDispatch({ labelPrintRunId: activeRun.id, printerAdapterId: certifiedPrinter.id });

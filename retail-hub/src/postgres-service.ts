@@ -4,6 +4,10 @@ import { assessShadowImportCutover, shadowImportCutoverCapabilities, type Shadow
 import type { ShadowImportPostgresRepository, ShadowImportScope } from './shadow-import-postgres-repository';
 import type { RetailHubResponse } from './service';
 import { createShadowImportReviewDecision, projectShadowImportReviewApprovalState, type ShadowImportReviewDecisionInput, type ShadowImportReviewStore } from './shadow-import-review';
+import { evaluateRetailHubShadowImportPreflight } from './shadow-import-preflight';
+import { evaluateRetailHubDeploymentReadiness, type RetailHubDeploymentConfig } from './deployment-readiness';
+import { retailHubChannelOrderPermissions, type RetailHubChannelOrderPermission } from './channel-order-transport';
+import type { RetailHubCoverageMapProjection } from './bakaloo-coverage-map';
 
 export interface DurableRetailHubRequest {
   method: string;
@@ -12,14 +16,16 @@ export interface DurableRetailHubRequest {
   body?: unknown;
   /** Set only by an authenticated server adapter; renderer values are ignored. */
   scope?: ShadowImportScope;
+  /** Set only by a trusted adapter; never derived from renderer headers. */
+  authorization?: RetailHubAuthorization;
 }
 
 export interface DurableRetailHubService {
   handle(request: DurableRetailHubRequest): Promise<RetailHubResponse>;
 }
 
-export const retailHubPermissions = ['shadow-import:read', 'shadow-import:review'] as const;
-export type RetailHubPermission = (typeof retailHubPermissions)[number];
+export const retailHubPermissions = ['shadow-import:read', 'shadow-import:review', 'coverage-map:read', 'store-edge:sync', 'store-edge:observe', 'store-edge:recover', ...retailHubChannelOrderPermissions] as const;
+export type RetailHubPermission = (typeof retailHubPermissions)[number] | RetailHubChannelOrderPermission;
 
 /**
  * Trusted authorization evidence supplied by the server adapter. The Hub
@@ -51,6 +57,10 @@ export interface PostgresRetailHubServiceOptions {
   resolveShadowImportCredentialRevision?: (scope: ShadowImportScope) => number | undefined | Promise<number | undefined>;
   /** Optional server-owned live-source probe. Renderer requests cannot provide this state. */
   resolveShadowImportSourceStatus?: (scope: ShadowImportScope) => RetailHubShadowImportSourceStatus | Promise<RetailHubShadowImportSourceStatus>;
+  /** Server-owned, read-only Bakaloo coverage-map projection provider. */
+  resolveCoverageMap?: (scope: ShadowImportScope, shopId: string) => RetailHubCoverageMapProjection | undefined | Promise<RetailHubCoverageMapProjection | undefined>;
+  /** Server-side deployment controls used by the read-only shadow preflight route. */
+  deploymentConfig?: RetailHubDeploymentConfig;
   now?: () => string;
   createId?: () => string;
 }
@@ -71,7 +81,11 @@ export function createPostgresRetailHubService(options: PostgresRetailHubService
       if (options.resolveAuthorization && !authorization) {
         return jsonResponse(403, { error: 'authorization_required', message: 'An authenticated Retail Hub actor is required.' });
       }
-      const requiredPermission = method === 'POST' ? 'shadow-import:review' : 'shadow-import:read';
+      const requiredPermission = method === 'POST'
+        ? 'shadow-import:review'
+        : isCoverageMapPath(url)
+          ? 'coverage-map:read'
+          : 'shadow-import:read';
       if (authorization && !hasPermission(authorization.permissions, requiredPermission)) {
         return jsonResponse(403, { error: 'permission_required', message: `The authenticated actor is not allowed to ${requiredPermission === 'shadow-import:review' ? 'review' : 'read'} shadow-import evidence.` });
       }
@@ -79,15 +93,19 @@ export function createPostgresRetailHubService(options: PostgresRetailHubService
       const scope = authorization?.scope ?? await options.resolveScope(request);
       if (!scope) return jsonResponse(403, { error: 'scope_required', message: 'An authenticated tenant, company, and branch scope is required.' });
       if (method === 'POST') return createReviewDecision(request, url, scope, authorization, options);
+      if (isCoverageMapPath(url)) {
+        const response = await routeCoverageMap(url, scope, options.resolveCoverageMap);
+        return method === 'HEAD' ? { ...response, body: undefined } : response;
+      }
       const plans = await options.repository.listPlans(scope);
-      const needsCredentialRevision = url.pathname === '/v1/shadow-imports/review-decisions' || url.pathname === '/v1/shadow-imports/cutover';
+      const needsCredentialRevision = url.pathname === '/v1/shadow-imports/review-decisions' || url.pathname === '/v1/shadow-imports/cutover' || url.pathname === '/v1/shadow-imports/preflight';
       const currentCredentialRevision = needsCredentialRevision && options.resolveShadowImportCredentialRevision
         ? await options.resolveShadowImportCredentialRevision(scope)
         : undefined;
       const sourceStatus = options.resolveShadowImportSourceStatus
         ? normalizeSourceStatus(await options.resolveShadowImportSourceStatus(scope))
         : { status: 'unconfigured' as const };
-      const response = await routeGet(url, scope, plans, options.repository, options.reviewStore, currentCredentialRevision, sourceStatus);
+      const response = await routeGet(url, scope, plans, options.repository, options.reviewStore, currentCredentialRevision, sourceStatus, options.deploymentConfig);
       return method === 'HEAD' ? { ...response, body: undefined } : response;
     },
   };
@@ -97,8 +115,26 @@ function hasPermission(permissions: readonly RetailHubPermission[], required: Re
   return permissions.includes(required) || (required === 'shadow-import:read' && permissions.includes('shadow-import:review'));
 }
 
-async function routeGet(url: URL, scope: ShadowImportScope, plans: readonly ShadowImportPlan[], repository: ShadowImportPostgresRepository, reviewStore?: ShadowImportReviewStore, currentCredentialRevision?: number, sourceStatus: RetailHubShadowImportSourceStatus = { status: 'unconfigured' }): Promise<RetailHubResponse> {
+function isCoverageMapPath(url: URL): boolean {
+  return /^\/v1\/admin\/coverage-map\/[^/]+$/u.test(url.pathname);
+}
+
+async function routeCoverageMap(url: URL, scope: ShadowImportScope, resolveCoverageMap?: PostgresRetailHubServiceOptions['resolveCoverageMap']): Promise<RetailHubResponse> {
+  const coverageMapPath = /^\/v1\/admin\/coverage-map\/([^/]+)$/u.exec(url.pathname);
+  if (!coverageMapPath?.[1]) return notFound('route');
+  if (!resolveCoverageMap) return jsonResponse(503, { error: 'coverage_map_unavailable', message: 'Bakaloo coverage-map transport is not configured for this Hub.' });
+  const shopId = decodePathPart(coverageMapPath[1]);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(shopId)) return badRequest('shopId must be a UUID.');
+  const projection = await resolveCoverageMap(scope, shopId);
+  return projection === undefined ? notFound('coverage map') : jsonResponse(200, { success: true, data: projection, writeBackAllowed: false });
+}
+
+async function routeGet(url: URL, scope: ShadowImportScope, plans: readonly ShadowImportPlan[], repository: ShadowImportPostgresRepository, reviewStore?: ShadowImportReviewStore, currentCredentialRevision?: number, sourceStatus: RetailHubShadowImportSourceStatus = { status: 'unconfigured' }, deploymentConfig?: RetailHubDeploymentConfig): Promise<RetailHubResponse> {
   if (url.pathname === '/health') return jsonResponse(200, { service: 'epic-bos-retail-hub', mode: 'durable-read-only-shadow-import', writeBackAllowed: false, liveSourceConnected: sourceStatus.status === 'reachable', sourceStatus, batchCount: plans.length });
+  if (url.pathname === '/v1/deployment/preflight') {
+    if (!deploymentConfig) return jsonResponse(503, { error: 'deployment_config_unconfigured', message: 'Deployment preflight requires server-owned deployment configuration.' });
+    return jsonResponse(200, { preflight: evaluateRetailHubDeploymentReadiness(deploymentConfig) });
+  }
   if (url.pathname === '/v1/shadow-imports/source-status') return jsonResponse(200, { sourceStatus });
   if (url.pathname === '/v1/shadow-imports/batches') return jsonResponse(200, { batches: plans.map((plan) => plan.batch) });
 
@@ -116,6 +152,14 @@ async function routeGet(url: URL, scope: ShadowImportScope, plans: readonly Shad
   if (url.pathname === '/v1/shadow-imports/cursors') return jsonResponse(200, { cursors: selected.flatMap((plan) => plan.cursors) });
   if (url.pathname === '/v1/shadow-imports/conflicts') return jsonResponse(200, { conflicts: selected.flatMap((plan) => plan.conflicts) });
   if (url.pathname === '/v1/shadow-imports/reconciliation') return jsonResponse(200, { reconciliation: selected.map((plan) => plan.reconciliation) });
+  if (url.pathname === '/v1/shadow-imports/preflight') {
+    if (!deploymentConfig) return jsonResponse(503, { error: 'deployment_config_unconfigured', message: 'Shadow-import preflight requires server-owned deployment configuration.' });
+    const batchId = url.searchParams.get('batchId');
+    if (!batchId) return badRequest('batchId is required for shadow-import preflight.');
+    const plan = await repository.getPlan(scope, batchId);
+    if (!plan) return notFound('shadow-import batch');
+    return jsonResponse(200, { preflight: evaluateRetailHubShadowImportPreflight({ deployment: deploymentConfig, scope, plan, requiredCredentialRevision: currentCredentialRevision }) });
+  }
   if (url.pathname === '/v1/shadow-imports/pull-receipts') {
     if (!repository.listPullReceipts) return jsonResponse(503, { error: 'pull_receipt_store_unconfigured', message: 'Pull receipt persistence is not configured for this Hub deployment.' });
     return jsonResponse(200, { receipts: await repository.listPullReceipts(scope, url.searchParams.get('batchId') ?? undefined) });

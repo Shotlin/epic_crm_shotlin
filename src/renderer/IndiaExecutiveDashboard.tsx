@@ -1,9 +1,15 @@
 import {
   ArrowRight,
+  Banknote,
+  BarChart3,
+  CreditCard,
   IndianRupee,
   Landmark,
+  Package,
   PackageCheck,
+  RefreshCcw,
   ShieldCheck,
+  ShoppingCart,
   Sparkles,
   TrendingUp,
   Truck,
@@ -53,6 +59,15 @@ const workspaceIcons: Record<ExecutivePulseWorkspace, LucideIcon> = {
   service: Wrench,
   intelligence: Sparkles,
 };
+
+const QuickActionIcons = {
+  pos: ShoppingCart,
+  stock: Package,
+  returns: RefreshCcw,
+  payments: CreditCard,
+  payouts: Banknote,
+  reports: BarChart3,
+} as const;
 
 function formatMetric(metric: ExecutivePulseMetric): string {
   if (metric.restricted || metric.value === undefined) return 'Restricted';
@@ -124,7 +139,7 @@ export function IndiaExecutiveDashboard({
       <div className="india-pulse__quick-hub" aria-label="Quick Action Hub">
         <button type="button" className="india-pulse__quick-tile india-pulse__quick-tile--pos" onClick={() => onNavigate('sales')}>
           <div className="india-pulse__quick-badge">01</div>
-          <div className="india-pulse__quick-icon">🛒</div>
+          <div className="india-pulse__quick-icon"><QuickActionIcons.pos size={20} aria-hidden="true" /></div>
           <div className="india-pulse__quick-text">
             <strong>Counter POS</strong>
             <small>Sell items &amp; print receipt</small>
@@ -133,7 +148,7 @@ export function IndiaExecutiveDashboard({
 
         <button type="button" className="india-pulse__quick-tile india-pulse__quick-tile--stock" onClick={() => onNavigate('operations')}>
           <div className="india-pulse__quick-badge">02</div>
-          <div className="india-pulse__quick-icon">📦</div>
+          <div className="india-pulse__quick-icon"><QuickActionIcons.stock size={20} aria-hidden="true" /></div>
           <div className="india-pulse__quick-text">
             <strong>Inventory Stock</strong>
             <small>Bins, counts &amp; reorder</small>
@@ -142,7 +157,7 @@ export function IndiaExecutiveDashboard({
 
         <button type="button" className="india-pulse__quick-tile india-pulse__quick-tile--returns" onClick={() => onNavigate('sales')}>
           <div className="india-pulse__quick-badge">03</div>
-          <div className="india-pulse__quick-icon">🔄</div>
+          <div className="india-pulse__quick-icon"><QuickActionIcons.returns size={20} aria-hidden="true" /></div>
           <div className="india-pulse__quick-text">
             <strong>Returns &amp; Exchanges</strong>
             <small>Inspect &amp; replace items</small>
@@ -151,7 +166,7 @@ export function IndiaExecutiveDashboard({
 
         <button type="button" className="india-pulse__quick-tile india-pulse__quick-tile--finance" onClick={() => onNavigate('finance')}>
           <div className="india-pulse__quick-badge">04</div>
-          <div className="india-pulse__quick-icon">💳</div>
+          <div className="india-pulse__quick-icon"><QuickActionIcons.payments size={20} aria-hidden="true" /></div>
           <div className="india-pulse__quick-text">
             <strong>Collect Payments</strong>
             <small>Customer credit &amp; AR</small>
@@ -160,7 +175,7 @@ export function IndiaExecutiveDashboard({
 
         <button type="button" className="india-pulse__quick-tile india-pulse__quick-tile--payouts" onClick={() => onNavigate('finance')}>
           <div className="india-pulse__quick-badge">05</div>
-          <div className="india-pulse__quick-icon">💸</div>
+          <div className="india-pulse__quick-icon"><QuickActionIcons.payouts size={20} aria-hidden="true" /></div>
           <div className="india-pulse__quick-text">
             <strong>Vendor Payouts</strong>
             <small>Pay suppliers &amp; TDS</small>
@@ -169,7 +184,7 @@ export function IndiaExecutiveDashboard({
 
         <button type="button" className="india-pulse__quick-tile india-pulse__quick-tile--reports" onClick={() => onNavigate('intelligence')}>
           <div className="india-pulse__quick-badge">06</div>
-          <div className="india-pulse__quick-icon">📊</div>
+          <div className="india-pulse__quick-icon"><QuickActionIcons.reports size={20} aria-hidden="true" /></div>
           <div className="india-pulse__quick-text">
             <strong>Reports &amp; X/Z</strong>
             <small>Live sales &amp; GST tax</small>

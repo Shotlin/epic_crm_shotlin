@@ -105,6 +105,7 @@ tmp/
 app-test*.json
 vitest-*.json
 vitest-*.txt
+test-evidence/
 
 # Local environment, credentials, certificates, and runtime databases
 .env*

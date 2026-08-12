@@ -130,6 +130,9 @@ describe('BusinessDatabase', () => {
       '022-release-build-identity-binding',
       '023-ui-acceptance-evidence',
       '024-restore-drill-history',
+      '025-attachment-operating-scope',
+      '026-encrypted-mfa-factors',
+      '027-backup-envelope-key-version',
     ]);
     expect(migrations.every(({ checksum }) => /^[a-f0-9]{64}$/.test(checksum))).toBe(
       true,

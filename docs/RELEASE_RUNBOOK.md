@@ -32,6 +32,26 @@ Do not copy secrets, raw provider responses, customer data, or device payloads i
 4. Review the backup/restore gate using a controlled restore drill. See [STORE_RECOVERY_RUNBOOK.md](STORE_RECOVERY_RUNBOOK.md).
 5. Review provider certification freshness. A credential rotation invalidates the approval evidence created under the old credential revision; re-run the affected provider conformance flow before release.
 
+The Bakaloo backend repository also runs its full Vitest and ESLint gates in
+`.github/workflows/quality.yml` for every push and pull request. A green CI
+job is required evidence for source quality, but it does not replace the
+environmental `ops:preflight` or any provider/device/recovery certification.
+
+Before treating the backend environment as a release candidate, run its
+read-only production preflight from `audit/bakaloo-backend`:
+
+```powershell
+pnpm ops:preflight
+```
+
+The command returns redacted JSON and exits `0` only when production mode,
+strict auth flags, demo-disable flags, required secrets/MFA key,
+PostgreSQL/Redis probes, provider configuration, production origins, migration
+planning, and independently verified provider evidence all pass. Exit `2` is a
+truthful **hold** and is expected on a developer machine. The preflight never
+writes application state and cannot replace provider, device, recovery, or
+independent approval evidence.
+
 ## 2. Package on the target operating system
 
 The current Electron Forge configuration contains these makers:
@@ -50,6 +70,18 @@ pnpm make
 
 The package command proves only that packaging completed. It does **not** prove that an installer is signed, that macOS is notarised, that an update can be downloaded, or that another operating system has been tested.
 
+The repository's macOS matrix job uses the explicit x64 `macos-15-intel`
+runner. Do not restore the retired `macos-13` label; the native job must still
+produce and smoke-test the artifact before signing and notarisation evidence
+can be submitted.
+
+Native release jobs set `EPIC_BOS_NATIVE_BUILD=true`. A cross-platform ZIP
+inspection build sets `EPIC_BOS_ZIP_ONLY_CROSS_BUILD=true` and is recorded as
+`buildEnvironment: cross`; a local build without either flag is
+`buildEnvironment: unknown`. The release-matrix verifier accepts only
+`native` artifacts for a platform release row, so an inspection artifact can
+never be mistaken for a certified Linux or macOS build.
+
 For each platform, complete a clean-install and launch smoke test with the produced artifact. Record:
 
 - artifact location/reference and SHA-256;
@@ -59,7 +91,21 @@ For each platform, complete a clean-install and launch smoke test with the produ
 - macOS notarisation and staple-verification reference, where applicable;
 - builder identity, reviewer identity, timestamps, and any known limitations.
 
-`pnpm make` also writes a checksum sidecar next to each file returned by the Forge maker, for example `Epic BOS-0.1.0 Setup.exe.manifest.json`. Treat this sidecar as the machine-readable starting point for the evidence packet: verify that `artifactSha256` matches the distributable, that `releaseIdentitySha256` matches the active build identity, and that `schemaRevision` is the migration revision used by the packaged app. The sidecar itself is not a signature and does not replace clean-install, signing, notarisation, independent review, or provider certification. A make run without `EPIC_BOS_BUILD_REVISION` (or a source Git revision) remains `unversioned-local` and cannot produce approval-grade manifests.
+`pnpm make` also writes a checksum sidecar next to each file returned by the Forge maker, for example `Epic BOS-0.1.0 Setup.exe.manifest.json`. Treat this sidecar as the machine-readable starting point for the evidence packet: verify that `artifactSha256` matches the distributable, that `releaseIdentitySha256` matches the active build identity, that `buildEnvironment` is `native`, and that `schemaRevision` is the migration revision used by the packaged app. The sidecar itself is not a signature and does not replace clean-install, signing, notarisation, independent review, or provider certification. A make run without `EPIC_BOS_BUILD_REVISION` (or a source Git revision) remains `unversioned-local` and cannot produce approval-grade manifests.
+
+For a complete native matrix, run the cross-platform integrity gate after the
+Windows, macOS and Linux artifacts have been collected:
+
+```powershell
+pnpm verify:release-matrix -- out\\make 0.1.77
+```
+
+The command verifies every sidecar and requires explicit rows for all three
+platforms. It rejects mixed version/schema/build identities within a platform
+and exits non-zero when a native artifact is missing. A passing integrity
+report still leaves the release decision on **hold** until signatures,
+notarisation, external provider/device evidence, human UAT and independent
+approval are attached.
 
 Submit that information as artifact evidence in Epic BOS. The main process rejects a platform or version mismatch and injects the active release identity. An independent reviewer must verify the submitted evidence before the platform can be marked ready.
 
@@ -140,5 +186,15 @@ The release owner may mark a platform/channel **go** only when all applicable it
 - Update channel evidence is current, verified, and tied to the same release identity, if updates are enabled.
 - No provider, credential, device, security, or data-recovery hold remains for the released scope.
 - Monitoring/on-call and rollback ownership are active for production, not merely planned.
+
+For Store Edge specifically, the release control room must also show the
+worker lease/retry/dead-letter service deployed, the atomic inbox/outbox path
+enabled, queue metrics exported, and a recent backup/restore plus
+conflict-recovery drill. The four server-side configuration flags are
+`RETAIL_HUB_STORE_EDGE_WORKER_CONFIGURED`,
+`RETAIL_HUB_STORE_EDGE_ATOMIC_INBOX_CONFIGURED`,
+`RETAIL_HUB_STORE_EDGE_METRICS_CONFIGURED`, and
+`RETAIL_HUB_STORE_EDGE_RECOVERY_CONFIGURED`; missing or malformed values are a
+hold, never an implicit development default.
 
 If any item is missing, rejected, stale, or external-certification pending, the correct state is **hold**. The control-room readiness report is the source of truth for that decision.

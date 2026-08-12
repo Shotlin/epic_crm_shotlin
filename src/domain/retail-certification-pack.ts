@@ -1,16 +1,89 @@
 import { createHash } from 'node:crypto';
 import type { RetailCommerceCapability } from '../shared/retail-commerce-contracts';
-import { retailCommerceConformanceMatchesCredentialRevision } from '../shared/retail-commerce-contracts';
-import type { RetailCertificationPack, RetailCertificationPackSource } from '../shared/retail-certification-pack-contracts';
+import { retailCommerceConformanceMatchesCredentialRevision, retailCommerceCredentialRevision } from '../shared/retail-commerce-contracts';
+import type { RetailCertificationPack, RetailCertificationPackSource, RetailCertificationPackVerification } from '../shared/retail-certification-pack-contracts';
 import type { RetailPhysicalDeviceKind } from '../shared/retail-device-transport-contracts';
 import type { ProviderCapability } from '../shared/provider-contracts';
-import { providerConformanceMatchesCredentialRevision, providerCredentialLifecycle, providerPreflightMatchesCredentialRevision } from '../shared/provider-contracts';
+import { providerConformanceMatchesCredentialRevision, providerCredentialLifecycle, providerCredentialRevision, providerPreflightMatchesCredentialRevision } from '../shared/provider-contracts';
 import { computeRetailCertificationFreshness } from './retail-certification-freshness';
 
 const capabilityOrder: RetailCommerceCapability[] = ['catalog-push', 'inventory-push', 'order-pull', 'settlement-pull'];
 const deviceOrder: RetailPhysicalDeviceKind[] = ['barcode-scanner', 'escpos-printer', 'cash-drawer', 'weighing-scale'];
 const providerCapabilityOrder: ProviderCapability[] = ['payment-release', 'payment-status-pull', 'statement-pull', 'payroll-disbursement', 'payroll-status-pull', 'payslip-delivery', 'statutory-filing', 'statutory-status-pull', 'email-delivery', 'whatsapp-delivery'];
 const sha256 = (value: string) => createHash('sha256').update(value, 'utf8').digest('hex');
+
+const secretKey = /(?:password|secret|token|api[-_]?key|access[-_]?key|authorization|private[-_]?key|client[-_]?secret|signing[-_]?key|fingerprint)/i;
+const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value));
+const nonNegativeInteger = (value: unknown): value is number => typeof value === 'number' && Number.isInteger(value) && value >= 0;
+const nonEmptyString = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
+
+function collectSecretKeys(value: unknown, path = '$', found: string[] = []): string[] {
+  if (Array.isArray(value)) { value.forEach((item, index) => collectSecretKeys(item, `${path}[${index}]`, found)); return found; }
+  if (!isRecord(value)) return found;
+  Object.entries(value).forEach(([key, child]) => {
+    const childPath = `${path}.${key}`;
+    if (secretKey.test(key)) found.push(childPath);
+    collectSecretKeys(child, childPath, found);
+  });
+  return found;
+}
+
+/**
+ * Verifies a certification JSON package without trusting its declared summary.
+ * The verifier is deliberately independent of application state so an auditor
+ * can check a file after export or after transport to another environment.
+ */
+export function verifyRetailCertificationPack(input: unknown): RetailCertificationPackVerification {
+  const errors: string[] = [];
+  if (!isRecord(input)) return { valid: false, declaredChecksum: '', errors: ['Certification pack must be a JSON object.'] };
+  const declaredChecksum = typeof input.checksum === 'string' ? input.checksum : '';
+  const { checksum: _checksum, ...unsigned } = input;
+  void _checksum;
+  const computedChecksum = sha256(JSON.stringify(unsigned));
+  if (!/^[a-f0-9]{64}$/i.test(declaredChecksum)) errors.push('Declared checksum is not a SHA-256 digest.');
+  if (declaredChecksum.toLowerCase() !== computedChecksum) errors.push('Certification pack checksum does not match its contents.');
+  const secretPaths = collectSecretKeys(input);
+  if (secretPaths.length) errors.push(`Certification pack contains prohibited credential fields: ${secretPaths.slice(0, 5).join(', ')}.`);
+  if (!nonEmptyString(input.generatedAt) || !Number.isFinite(Date.parse(input.generatedAt))) errors.push('Generated timestamp is invalid.');
+  if (!nonEmptyString(input.generatedBy)) errors.push('Accountable generator is missing.');
+  if (!isRecord(input.scope) || !nonEmptyString(input.scope.companyId) || !nonEmptyString(input.scope.branchId)) errors.push('Company and branch scope are required.');
+  const summary = input.summary;
+  if (!isRecord(summary)) errors.push('Certification summary is missing.');
+  const arrays = ['connectors', 'devices', 'ocrProviders', 'providers', 'preflight'] as const;
+  arrays.forEach((key) => { if (!Array.isArray(input[key])) errors.push(`${key} must be an array.`); });
+  const connectors = Array.isArray(input.connectors) ? input.connectors.filter(isRecord) : [];
+  const devices = Array.isArray(input.devices) ? input.devices.filter(isRecord) : [];
+  const ocrProviders = Array.isArray(input.ocrProviders) ? input.ocrProviders.filter(isRecord) : [];
+  const providers = Array.isArray(input.providers) ? input.providers.filter(isRecord) : [];
+  const preflight = Array.isArray(input.preflight) ? input.preflight.filter(isRecord) : [];
+  [...connectors, ...providers, ...preflight].forEach((row) => { if (!nonNegativeInteger(row.credentialRevision)) errors.push('Every provider evidence row must declare a non-negative credential revision.'); });
+  if (isRecord(summary)) {
+    const countFields = ['connectorCount', 'connectorReadyCount', 'missingCapabilityCount', 'devicePreparedCount', 'deviceFailedCount', 'deviceProfileGateCount', 'ocrReadyCount', 'providerCount', 'providerReadyCount', 'providerMissingCapabilityCount', 'staleCredentialCaseCount', 'unresolvedSubmissionCount', 'preflightSuccessCount', 'preflightFailureCount', 'externalGateCount'] as const;
+    countFields.forEach((key) => { if (!nonNegativeInteger(summary[key])) errors.push(`Summary ${key} must be a non-negative integer.`); });
+    if (typeof summary.readyForProduction !== 'boolean') errors.push('Summary readyForProduction must be boolean.');
+    const connectorReadyCount = connectors.filter((row) => row.nextAction === 'ready' && row.status === 'certified').length;
+    const missingCapabilityCount = [...connectors, ...providers].reduce((sum, row) => sum + (Array.isArray(row.missingCapabilities) ? row.missingCapabilities.length : 0), 0);
+    const devicePreparedCount = devices.reduce((sum, row) => sum + (nonNegativeInteger(row.preparedCount) ? row.preparedCount : 0), 0);
+    const deviceFailedCount = devices.reduce((sum, row) => sum + (nonNegativeInteger(row.failedCount) ? row.failedCount : 0), 0);
+    const deviceProfileGateCount = devices.reduce((sum, row) => sum + (nonNegativeInteger(row.profileGateCount) ? row.profileGateCount : 0), 0);
+    const providerReadyCount = providers.filter((row) => row.nextAction === 'ready').length;
+    const staleCredentialCaseCount = [...connectors, ...providers].reduce((sum, row) => sum + (nonNegativeInteger(row.staleCredentialCaseCount) ? row.staleCredentialCaseCount : 0), 0);
+    const unresolvedSubmissionCount = providers.reduce((sum, row) => sum + (nonNegativeInteger(row.unresolvedSubmissionCount) ? row.unresolvedSubmissionCount : 0), 0);
+    const preflightSuccessCount = preflight.reduce((sum, row) => sum + (nonNegativeInteger(row.successCount) ? row.successCount : 0), 0);
+    const preflightFailureCount = preflight.reduce((sum, row) => sum + (nonNegativeInteger(row.failureCount) ? row.failureCount : 0), 0);
+    const externalGateCount = [...connectors, ...devices, ...ocrProviders, ...providers].filter((row) => row.nextAction !== 'ready').length;
+    const expected: Record<string, number> = { connectorCount: connectors.length, connectorReadyCount, missingCapabilityCount, devicePreparedCount, deviceFailedCount, deviceProfileGateCount, ocrReadyCount: ocrProviders.filter((row) => row.nextAction === 'ready').length, providerCount: providers.length, providerReadyCount, providerMissingCapabilityCount: providers.reduce((sum, row) => sum + (Array.isArray(row.missingCapabilities) ? row.missingCapabilities.length : 0), 0), staleCredentialCaseCount, unresolvedSubmissionCount, preflightSuccessCount, preflightFailureCount, externalGateCount };
+    Object.entries(expected).forEach(([key, value]) => { if (summary[key] !== value) errors.push(`Summary ${key} does not match the exported rows.`); });
+    if (summary.readyForProduction && (externalGateCount > 0 || devicePreparedCount > 0 || deviceFailedCount > 0 || deviceProfileGateCount > 0 || missingCapabilityCount > 0 || unresolvedSubmissionCount > 0)) errors.push('A production-ready pack cannot contain unresolved gates.');
+  }
+  return { valid: errors.length === 0, declaredChecksum, computedChecksum, generatedAt: typeof input.generatedAt === 'string' ? input.generatedAt : undefined, readyForProduction: isRecord(summary) && typeof summary.readyForProduction === 'boolean' ? summary.readyForProduction : undefined, externalGateCount: isRecord(summary) && nonNegativeInteger(summary.externalGateCount) ? summary.externalGateCount : undefined, errors };
+}
+
+export function assertRetailCertificationPack(input: unknown): RetailCertificationPack {
+  const verification = verifyRetailCertificationPack(input);
+  if (!verification.valid) throw new Error(`Retail certification pack verification failed: ${verification.errors.join(' ')}`);
+  return input as RetailCertificationPack;
+}
 
 const validConformance = (item: RetailCertificationPackSource['retailCommerceConformanceCases'][number]) => item.result === 'passed' && Boolean(item.evidenceReference?.trim()) && /^[a-f0-9]{64}$/i.test(item.resultChecksum ?? '') && Boolean(item.assessedBy?.trim()) && Boolean(item.assessedAt);
 
@@ -37,7 +110,7 @@ export function createRetailCertificationPack(source: RetailCertificationPackSou
     const hasExpiredEvidence = connectorFreshness.some((row) => row.status === 'expired');
     const renewalDue = connectorFreshness.some((row) => row.status === 'renewal-due');
     const nextAction: RetailCertificationPack['connectors'][number]['nextAction'] = connector.credentialStatus !== 'configured' ? 'configure-credentials' : staleCredentialCaseCount ? 'renew-capability-evidence' : hasExpiredEvidence || renewalDue ? 'renew-capability-evidence' : missingCapabilities.length ? 'complete-capability-evidence' : connector.environment === 'production' && connector.status !== 'certified' ? 'production-approval' : 'ready';
-    return { id: connector.id, code: connector.code, channel: connector.channel, environment: connector.environment, status: connector.status, credentialStatus: connector.credentialStatus, capabilities: [...connector.capabilities].sort(), passedCapabilities, missingCapabilities, conformanceCaseCount: cases.length, staleCredentialCaseCount, nextAction };
+    return { id: connector.id, code: connector.code, credentialRevision: retailCommerceCredentialRevision(connector), channel: connector.channel, environment: connector.environment, status: connector.status, credentialStatus: connector.credentialStatus, capabilities: [...connector.capabilities].sort(), passedCapabilities, missingCapabilities, conformanceCaseCount: cases.length, staleCredentialCaseCount, nextAction };
   }).sort((left, right) => left.code.localeCompare(right.code));
   const devices = deviceOrder.map((kind) => {
     const records = source.retailDeviceTransportEvidence.filter((item) => item.kind === kind);
@@ -71,12 +144,13 @@ export function createRetailCertificationPack(source: RetailCertificationPackSou
     const hasExpiredEvidence = providerFreshness.some((row) => row.status === 'expired');
     const renewalDue = providerFreshness.some((row) => row.status === 'renewal-due');
     const nextAction: RetailCertificationPack['providers'][number]['nextAction'] = credentialState !== 'configured' || connector.credentialStatus !== 'configured' ? 'configure-credentials' : staleCredentialCaseCount ? 'renew-capability-evidence' : hasExpiredEvidence || renewalDue ? 'renew-capability-evidence' : missingCapabilities.length ? 'complete-capability-evidence' : unresolvedSubmissionCount ? 'resolve-submissions' : connector.environment === 'production' && connector.conformanceStatus !== 'production-approved' ? 'production-approval' : 'ready';
-    return { id: connector.id, code: connector.code, domain: connector.domain, environment: connector.environment, conformanceStatus: connector.conformanceStatus, credentialStatus: connector.credentialStatus, credentialState, credentialExpiresAt: connector.credentialExpiresAt, capabilities: [...connector.capabilities].sort(), passedCapabilities, missingCapabilities, conformanceCaseCount: cases.length, staleCredentialCaseCount, unresolvedSubmissionCount, nextAction };
+    return { id: connector.id, code: connector.code, credentialRevision: providerCredentialRevision(connector), domain: connector.domain, environment: connector.environment, conformanceStatus: connector.conformanceStatus, credentialStatus: connector.credentialStatus, credentialState, credentialExpiresAt: connector.credentialExpiresAt, capabilities: [...connector.capabilities].sort(), passedCapabilities, missingCapabilities, conformanceCaseCount: cases.length, staleCredentialCaseCount, unresolvedSubmissionCount, nextAction };
   }).sort((left, right) => left.code.localeCompare(right.code));
   const preflight = source.providerConnectors.map((connector) => {
     const evidence = (source.providerPreflightEvidence ?? []).filter((item) => item.connectorId === connector.id && providerPreflightMatchesCredentialRevision(connector, item)).sort((left, right) => right.requestedAt.localeCompare(left.requestedAt));
     return {
       connectorId: connector.id,
+      credentialRevision: providerCredentialRevision(connector),
       successCount: evidence.filter((item) => item.status === 'succeeded').length,
       failureCount: evidence.filter((item) => item.status === 'failed').length,
       latestStatus: evidence[0]?.status ?? 'not-run' as const,

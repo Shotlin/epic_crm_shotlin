@@ -6,7 +6,7 @@
 export type RetailOrderChannel = 'pos' | 'website' | 'app' | 'whatsapp' | 'ondc' | 'marketplace';
 export type RetailExternalOrderStatus = 'received' | 'accepted' | 'picking' | 'packed' | 'fulfilled' | 'cancelled' | 'return-requested' | 'returned' | 'rto';
 export type RetailOrderIngestionMode = 'shadow' | 'governed';
-export type RetailOrderHandlingState = 'shadow-observed' | 'awaiting-local-handoff' | 'awaiting-stock-reservation' | 'awaiting-stock-mapping' | 'awaiting-pick-completion' | 'awaiting-pack' | 'awaiting-dispatch' | 'awaiting-carrier-dispatch' | 'awaiting-delivery' | 'delivered' | 'reconciliation-required' | 'rto-reconciled' | 'return-reconciled';
+export type RetailOrderHandlingState = 'shadow-observed' | 'awaiting-local-handoff' | 'awaiting-stock-reservation' | 'awaiting-stock-mapping' | 'awaiting-pick-completion' | 'awaiting-pack' | 'awaiting-dispatch' | 'awaiting-carrier-dispatch' | 'awaiting-delivery' | 'delivered' | 'reconciliation-required' | 'cancelled-reconciled' | 'rto-reconciled' | 'return-reconciled';
 export type RetailOrderIngestionOutcome = 'recorded' | 'idempotent' | 'conflicted';
 export type RetailOrderConflictKind = 'source-event-digest-mismatch' | 'invalid-status-transition' | 'unmapped-stock-line' | 'stale-governed-handoff';
 export type RetailOrderReconciliationKind = 'cancellation' | 'return' | 'rto';
@@ -125,6 +125,7 @@ export interface RetailOrderIngestionState {
   deliveryExecutions: RetailOrderDeliveryExecution[];
   rtoReconciliationExecutions: RetailOrderRtoReconciliationExecution[];
   returnReconciliationExecutions: RetailOrderReturnReconciliationExecution[];
+  cancellationReconciliationExecutions: RetailOrderCancellationReconciliationExecution[];
   /** Optional for legacy snapshots upgraded before provider callback evidence was introduced. */
   carrierCallbackEvidence?: RetailOrderCarrierCallbackEvidence[];
 }
@@ -399,6 +400,26 @@ export interface ReconcileRetailUnifiedOrderRtoInput {
   inventoryEvidenceReference: string;
   paymentEvidenceReference: string;
   taxEvidenceReference: string;
+}
+
+export interface RetailOrderCancellationReconciliationExecution {
+  id: string;
+  orderId: string;
+  sourceDigest: string;
+  salesOrderId?: string;
+  status: 'reconciled';
+  stockEvidenceReference: string;
+  paymentEvidenceReference: string;
+  reconciledBy: string;
+  reconciledAt: string;
+  version: number;
+}
+
+export interface ReconcileRetailUnifiedOrderCancellationInput {
+  orderId: string;
+  expectedSourceDigest: string;
+  stockEvidenceReference: string;
+  paymentEvidenceReference: string;
 }
 
 export interface RetailOrderReturnReconciliationExecution {

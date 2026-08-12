@@ -8,8 +8,8 @@ export type RetailDeviceTransportStatus = 'prepared' | 'acknowledged' | 'failed'
  * distinct from a transport failure so rollout tooling cannot mistake a
  * missing driver for a tested device. */
 export type RetailNativeDriverResultStatus = 'acknowledged' | 'failed' | 'unsupported';
-/** The app records whether an acknowledgement came from an operator or the bounded TCP executor. */
-export type RetailDeviceAcknowledgementSource = 'operator-evidence' | 'network-tcp-execution';
+/** The app records which controlled path produced a device acknowledgement. */
+export type RetailDeviceAcknowledgementSource = 'operator-evidence' | 'native-driver-attestation' | 'network-tcp-execution';
 export type RetailDeviceResponseProtocol = 'barcode-scanner-status-v1' | 'escpos-status-v1' | 'cash-drawer-status-v1' | 'weighing-scale-reading-v1';
 
 export interface RetailDeviceTransportEvidence {
@@ -37,6 +37,10 @@ export interface RetailDeviceTransportEvidence {
   nativeDriverStatus?: RetailNativeDriverResultStatus;
   nativeDriverCode?: string;
   nativeDriverVersion?: string;
+  nativeAttestationKeyFingerprint?: string;
+  nativeAttestationNonce?: string;
+  nativeAttestedAt?: string;
+  nativeAttestationSignature?: string;
   failureReason?: string;
   retryOfId?: string;
   retryReason?: string;
@@ -79,6 +83,20 @@ export interface RecordRetailNativeDeviceDriverResultInput {
   responseByteLength?: number;
   errorMessage?: string;
   expectedVersion: number;
+  attestation: RetailNativeDeviceDriverAttestation;
+}
+
+/**
+ * Detached proof returned by a real native bridge. The bridge signs the
+ * canonical command/response envelope in the main process; private key
+ * material and raw USB/Bluetooth bytes never enter the Electron state model.
+ */
+export interface RetailNativeDeviceDriverAttestation {
+  algorithm: 'ed25519';
+  keyFingerprint: string;
+  signature: string;
+  signedAt: string;
+  nonce: string;
 }
 
 /** Executes a prepared network command with the supplied payload and records the bounded response. */

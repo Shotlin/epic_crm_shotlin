@@ -40,7 +40,7 @@ describe('StatutoryGatewayService', () => {
     expect(fingerprint).toMatch(/^[a-f0-9]{16}$/);
     expect(stored?.encryptedPayload).not.toContain('never-persist-plain');
     expect(JSON.stringify(stored)).not.toContain('api-secret');
-    expect(stored).toMatchObject({ adapterId: adapter.id, keyVersion: 1, updatedBy: 'finance-admin' });
+    expect(stored).toMatchObject({ adapterId: adapter.id, keyVersion: 2, updatedBy: 'finance-admin' });
     const statuses = await service.pullStatuses(adapter, [exchange]);
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(String(fetchMock.mock.calls[0]?.[0])).toBe('https://gsp.example.in/v1/status/e-way-bill/181000000001');
@@ -53,5 +53,15 @@ describe('StatutoryGatewayService', () => {
     service.configureCredentials({ adapterId: adapter.id, bearerToken: 'opaque-token' }, 'finance-admin');
     await expect(service.pullStatuses(adapter, [exchange])).resolves.toEqual([{ exchangeId: 'exchange-1', remoteStatus: 'error', errorMessage: 'Adapter returned an unsupported canonical status.' }]);
     expect(() => service.verifySignature({ exchangeId: exchange.id, artifact: 'signed-json', algorithm: 'RSA-SHA256', payloadBase64: Buffer.from('payload').toString('base64'), signatureBase64: Buffer.from('signature').toString('base64'), certificatePem: '-----BEGIN CERTIFICATE-----\nnot-a-certificate\n-----END CERTIFICATE-----' })).toThrow();
+  });
+
+  it('fails closed when a persisted adapter envelope has an unknown key version', async () => {
+    const service = new StatutoryGatewayService(database, Buffer.alloc(32, 10));
+    service.configureCredentials({ adapterId: adapter.id, bearerToken: 'versioned-secret' }, 'finance-admin');
+    const stored = database.getStatutoryAdapterSecret(adapter.id)!;
+    database.upsertStatutoryAdapterSecret({ ...stored, keyVersion: 99 });
+
+    await expect(service.pullStatuses(adapter, [exchange]))
+      .rejects.toThrow('Encrypted adapter credentials use unsupported key version 99; rotate them before use.');
   });
 });

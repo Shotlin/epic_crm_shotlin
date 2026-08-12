@@ -3,6 +3,7 @@ import {
   adoptBootstrapOwnerIdentity,
   assignRole,
   applyAuthorizationFoundation,
+  applyWorkspaceOwnerRuntimeAuthorization,
   applyIndiaDemoLocalization,
   createBranch,
   createCompany,
@@ -324,6 +325,63 @@ describe('business kernel', () => {
     );
     expect(() => applyAuthorizationFoundation(legacy)).toThrow(
       'Segregation-of-duties conflict',
+    );
+  });
+
+  it('adds governed runtime visibility to the owner without changing the immutable foundation', () => {
+    const state = createCleanKernelState();
+    const migrated = applyWorkspaceOwnerRuntimeAuthorization(
+      state,
+      '2026-08-06T00:00:00.000Z',
+    );
+    const owner = migrated.users.find(({ id }) => id === 'user-avery');
+
+    expect(owner?.roleIds).toContain('role-workspace-owner-runtime');
+    expect(getAccessDecision(migrated, {
+      userId: 'user-avery',
+      companyId: migrated.context.companyId,
+      branchId: migrated.context.branchId,
+      resource: 'kernel.configuration',
+      action: 'read',
+    }).allowed).toBe(true);
+    expect(getAccessDecision(migrated, {
+      userId: 'user-avery',
+      companyId: migrated.context.companyId,
+      branchId: migrated.context.branchId,
+      resource: 'release.control',
+      action: 'read',
+    }).allowed).toBe(true);
+    expect(getAccessDecision(migrated, {
+      userId: 'user-avery',
+      companyId: migrated.context.companyId,
+      branchId: migrated.context.branchId,
+      resource: 'release.control',
+      action: 'approve',
+    }).allowed).toBe(true);
+    expect(getAccessDecision(migrated, {
+      userId: 'user-lee',
+      companyId: migrated.context.companyId,
+      branchId: migrated.context.branchId,
+      resource: 'release.control',
+      action: 'read',
+    }).allowed).toBe(false);
+    expect(migrated.migrations.at(-1)?.id).toBe('029-workspace-owner-runtime-authorization');
+    expect(migrated.audit.at(-1)?.action).toBe('authorization.workspace-owner-runtime-migrated');
+    expect(verifyAuditChain(migrated)).toBe(true);
+    expect(applyWorkspaceOwnerRuntimeAuthorization(migrated)).toBe(migrated);
+  });
+
+  it('fails closed when runtime authorization evidence is tampered', () => {
+    const migrated = applyWorkspaceOwnerRuntimeAuthorization(createCleanKernelState());
+    const tampered = structuredClone(migrated);
+    tampered.grants = tampered.grants.map((grant) =>
+      grant.id === 'grant-workspace-runtime-release'
+        ? { ...grant, actions: ['read'] }
+        : grant,
+    );
+
+    expect(() => applyWorkspaceOwnerRuntimeAuthorization(tampered)).toThrow(
+      'runtime authorization migration state is invalid',
     );
   });
 

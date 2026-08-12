@@ -13,6 +13,8 @@ export interface StatutoryAdapter {
   capabilities: StatutoryAdapterCapability[];
   credentialStatus: 'missing' | 'configured';
   credentialFingerprint?: string;
+  /** Monotonic credential generation; rotations invalidate prepared evidence. */
+  credentialRevision?: number;
   health: 'unknown' | 'healthy' | 'degraded' | 'offline';
   lastHealthAt?: string;
   lastPullAt?: string;
@@ -29,6 +31,8 @@ export interface StatutoryOperation {
   kind: 'cancel-irn' | 'cancel-ewb' | 'close-ewb' | 'extend-ewb';
   exchangeId: string;
   adapterId: string;
+  /** Credential generation used when this operation was prepared. */
+  credentialRevision?: number;
   reasonCode: string;
   remarks: string;
   effectiveDate?: string;
@@ -62,6 +66,8 @@ export interface ConsolidatedEwayBill {
   id: string;
   number: string;
   adapterId: string;
+  /** Credential generation used when this bill was prepared. */
+  credentialRevision?: number;
   gstRegistrationId: string;
   exchangeIds: string[];
   transportMode: 'road' | 'rail' | 'air' | 'ship';
@@ -148,6 +154,20 @@ export interface ConfigureStatutoryCredentialsInput {
   password?: string;
   apiKey?: string;
   bearerToken?: string;
+}
+
+export function statutoryCredentialRevision(adapter: Pick<StatutoryAdapter, 'credentialRevision'>): number {
+  return adapter.credentialRevision ?? 0;
+}
+
+/** Prepared statutory work may be submitted only with the same credential generation. */
+export function statutoryEvidenceMatchesCredentialRevision(
+  adapter: Pick<StatutoryAdapter, 'credentialRevision'>,
+  evidence: Pick<StatutoryOperation | ConsolidatedEwayBill, 'credentialRevision'>,
+): boolean {
+  return adapter.credentialRevision === undefined
+    ? evidence.credentialRevision === undefined
+    : evidence.credentialRevision === adapter.credentialRevision;
 }
 
 export interface PrepareStatutoryOperationInput {

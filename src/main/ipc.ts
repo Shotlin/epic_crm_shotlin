@@ -30,6 +30,7 @@ import type { AutomationScheduleStore } from './automation-schedule-store';
 import type { FinanceCompletionStore } from './finance-completion-store';
 import type { RetailWorkspaceModeStore } from './retail-workspace-mode-store';
 import type { WorkspaceProvisioner } from './workspace-provisioner';
+import type { ArtifactKeyRotationService } from './artifact-key-rotation';
 import { registerRetailWorkspaceStatusIpc } from './retail-workspace-status-ipc';
 import type { BusinessDatabase } from './database';
 import { proposeAutomationRun } from '../domain/workflow-execution';
@@ -41,7 +42,7 @@ import { createBuildProvenance } from './build-provenance';
 import { createSupportDiagnostics } from './support-diagnostics';
 import { createRestoreDrillEvidence } from './restore-drill';
 import { createGovernedExchangeExport } from './governed-exchange';
-import { createProviderCertificationPackage } from './provider-certification';
+import { createProviderCertificationPackage, verifyProviderCertificationPackage } from './provider-certification';
 import {
   activateRetailDeviceAdapterProfileIpcSchema,
   approveRetailDeviceAdapterProfileIpcSchema,
@@ -50,7 +51,7 @@ import {
   recordRetailDeviceAdapterAcknowledgementIpcSchema,
   suspendRetailDeviceAdapterProfileIpcSchema,
 } from './retail-device-profile-ipc-schemas';
-import { createRetailCertificationPack } from '../domain/retail-certification-pack';
+import { createRetailCertificationPack, verifyRetailCertificationPack } from '../domain/retail-certification-pack';
 import { evaluateUiAcceptanceReadiness } from '../domain/ui-acceptance-readiness';
 import {
   planBakalooRetailSampleReset,
@@ -59,8 +60,14 @@ import {
 import { QuotePdfService } from './quote-pdf-service';
 import { InvoicePdfService } from './invoice-pdf-service';
 import { fetchRetailHubCutoverAssessment } from './retail-hub-assessment-client';
+import { fetchRetailHubDeploymentPreflight } from './retail-hub-deployment-client';
+import { fetchRetailHubShadowImportPreflight } from './retail-hub-shadow-import-client';
+import { fetchRetailHubShadowImportPullReceipts, fetchRetailHubShadowImportSourceStatus } from './retail-hub-shadow-import-status-client';
+import { fetchRetailHubStoreEdgeWorkerMetrics } from './retail-hub-store-edge-metrics-client';
+import { fetchRetailHubCoverageMap } from './retail-hub-coverage-map-client';
 import { assertManualRetailCutoverRegistrationAllowed } from './retail-cutover-registration-guard';
 import { assertRendererRetailProviderOperationAllowed } from './retail-provider-boundary-guard';
+import { projectIpcResponseForPolicy } from './ipc-response-projection';
 import { IPC_CHANNELS } from '../shared/contracts';
 import type { CrmState } from '../shared/contracts';
 import {
@@ -78,6 +85,7 @@ import {
   assertIpcAuthorizationPolicyComplete,
   getIpcAuthorizationPolicy,
 } from './ipc-authorization-policy';
+import { getRuntimeDatabaseEncryptionEvidence } from './runtime-database-security';
 
 const createLeadSchema = z.object({
   name: z.string().trim().min(2).max(120),
@@ -285,7 +293,7 @@ const apiKeyScopeSchema = z.enum(['crm.read', 'sales.read', 'finance.read', 'inv
 const apiKeyScopeInputSchema = z.object({ companyId: z.string().trim().min(1).max(100), branchId: z.string().trim().min(1).max(100) });
 const issueApiKeySchema = apiKeyScopeInputSchema.extend({ label: z.string().trim().min(2).max(120), scopes: z.array(apiKeyScopeSchema).min(1).max(20) });
 const revokeApiKeySchema = z.object({ id: z.string().trim().min(1).max(100) });
-const providerCertificationHandoffSchema = z.object({ domain: z.enum(['gsp-irp', 'banking', 'payroll', 'messaging', 'logistics']), providerName: z.string().trim().max(160), contractReference: z.string().trim().max(240), sandboxEvidenceReference: z.string().trim().max(240), productionApprovalReference: z.string().trim().max(240).optional(), credentialOwner: z.string().trim().max(160), independentApprover: z.string().trim().max(160).optional(), testCaseReferences: z.array(z.string().trim().max(160)).max(100) });
+const providerCertificationHandoffSchema = z.object({ domain: z.enum(['gsp-irp', 'banking', 'payroll', 'messaging', 'logistics']), providerName: z.string().trim().max(160), contractReference: z.string().trim().max(240), sandboxEvidenceReference: z.string().trim().max(240), credentialRevision: z.number().int().positive(), productionApprovalReference: z.string().trim().max(240).optional(), credentialOwner: z.string().trim().max(160), independentApprover: z.string().trim().max(160).optional(), testCaseReferences: z.array(z.string().trim().max(160)).max(100) });
 const releaseGateSchema = z.object({ id: z.enum(['typecheck', 'lint', 'tests', 'package', 'backup-restore', 'provider-certification']), label: z.string().trim().min(2).max(160), status: z.enum(['passed', 'failed', 'deferred']), evidenceReference: z.string().trim().min(2).max(240), checkedAt: z.string().datetime(), notes: z.string().trim().max(500).optional(), evidenceChecksum: z.string().trim().regex(/^[a-fA-F0-9]{64}$/).optional() });
 const releaseArtifactEvidenceSchema = z.object({
   platform: z.enum(['win32', 'darwin', 'linux']),
@@ -342,11 +350,14 @@ const bootstrapOwnerSchema = z.object({
 const loginSchema = z.object({
   email: emailSchema,
   password: z.string().min(1).max(256),
+  mfaCode: z.string().trim().min(6).max(64).optional(),
 });
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1).max(256),
   newPassword: z.string().min(12).max(256),
 });
+const mfaConfirmSchema = z.object({ code: z.string().trim().min(6).max(64) }).strict();
+const mfaDisableSchema = z.object({ currentPassword: z.string().min(1).max(256) }).strict();
 const attachmentTargetSchema = z.object({
   resource: z.string().trim().min(3).max(120),
   resourceId: z.string().trim().min(1).max(200),
@@ -487,6 +498,28 @@ const fetchRetailHubCutoverAssessmentSchema = z.object({
   baseUrl: z.string().trim().min(1).max(300),
   batchId: z.string().trim().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{1,119}$/u),
   capability: z.enum(['catalog', 'inventory', 'customers', 'orders', 'delivery', 'settlements', 'campaigns', 'storefront']),
+}).strict();
+const fetchRetailHubDeploymentPreflightSchema = z.object({
+  baseUrl: z.string().trim().min(1).max(300),
+}).strict();
+const fetchRetailHubShadowImportPreflightSchema = z.object({
+  baseUrl: z.string().trim().min(1).max(300),
+  batchId: z.string().trim().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{1,119}$/u),
+}).strict();
+const fetchRetailHubShadowImportSourceStatusSchema = z.object({
+  baseUrl: z.string().trim().min(1).max(300),
+}).strict();
+const fetchRetailHubShadowImportPullReceiptsSchema = z.object({
+  baseUrl: z.string().trim().min(1).max(300),
+  batchId: z.string().trim().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{1,119}$/u).optional(),
+}).strict();
+const fetchRetailHubStoreEdgeWorkerMetricsSchema = z.object({
+  baseUrl: z.string().trim().min(1).max(300),
+}).strict();
+const fetchRetailHubCoverageMapSchema = z.object({
+  baseUrl: z.string().trim().min(1).max(300),
+  shopId: z.string().uuid(),
+  scope: z.object({ companyId: z.string().trim().min(1).max(120), branchId: z.string().trim().min(1).max(120) }).strict(),
 }).strict();
 const createRetailCutoverPlanSchema = z.object({
   id: z.string().trim().min(2).max(120),
@@ -945,6 +978,29 @@ const enqueueRetailOfflineSaleSchema = checkoutRetailSaleSchema.strict();
 const syncRetailOfflineSaleSchema = z.object({ id: inventoryIdSchema, expectedVersion: z.number().int().positive(), recoveryEvidenceReference: z.string().trim().min(8).max(240).optional() }).strict();
 const syncRetailOfflineQueueSchema = z.object({ limit: z.number().int().min(1).max(50), recoveryEvidenceReference: z.string().trim().min(8).max(240).optional() }).strict();
 const resolveRetailOfflineSaleSchema = z.object({ id: inventoryIdSchema, resolution: z.enum(['requeue', 'discard']), reason: z.string().trim().min(4).max(240), recoveryEvidenceReference: z.string().trim().min(8).max(240), expectedVersion: z.number().int().positive() }).strict();
+const sendRetailHubStoreEdgeSyncSchema = z.object({
+  baseUrl: z.string().trim().min(1).max(300),
+  event: z.object({
+    eventId: z.string().trim().min(3).max(160),
+    eventType: z.string().trim().min(3).max(80),
+    aggregateId: z.string().trim().min(1).max(160),
+    transactionKey: z.string().trim().min(3).max(160),
+    sequence: z.number().int().positive().safe().max(Number.MAX_SAFE_INTEGER),
+    producedAt: z.iso.datetime(),
+    payloadChecksum: z.string().regex(/^[a-f0-9]{64}$/u),
+    payload: z.record(z.string(), z.unknown()),
+  }).strict(),
+}).strict();
+const syncRetailHubStoreEdgeQueueSchema = z.object({
+  baseUrl: z.string().trim().min(1).max(300),
+  limit: z.number().int().min(1).max(50),
+}).strict();
+const saveRetailHubStoreEdgeSyncPolicySchema = z.object({
+  enabled: z.boolean(),
+  baseUrl: z.string().trim().min(1).max(300),
+  intervalMinutes: z.union([z.literal(5), z.literal(15), z.literal(30), z.literal(60)]),
+  batchLimit: z.number().int().min(1).max(50),
+}).strict();
 const ingestRetailUnifiedOrderSchema = z.object({
   event: z.object({
     source: z.object({
@@ -1067,6 +1123,12 @@ const reconcileRetailUnifiedOrderRtoSchema = z.object({
   paymentEvidenceReference: z.string().trim().min(4).max(240),
   taxEvidenceReference: z.string().trim().min(4).max(240),
 }).strict();
+const reconcileRetailUnifiedOrderCancellationSchema = z.object({
+  orderId: inventoryIdSchema,
+  expectedSourceDigest: z.string().regex(/^[a-f0-9]{64}$/i),
+  stockEvidenceReference: z.string().trim().min(4).max(240),
+  paymentEvidenceReference: z.string().trim().min(4).max(240),
+}).strict();
 const reconcileRetailUnifiedOrderReturnSchema = z.object({
   orderId: inventoryIdSchema,
   expectedSourceDigest: z.string().regex(/^[a-f0-9]{64}$/i),
@@ -1085,7 +1147,6 @@ const recordRetailUnifiedOrderCarrierCallbackSchema = z.object({
   payloadChecksum: z.string().regex(/^[a-f0-9]{64}$/i),
 }).strict();
 const recordRetailDeviceTransportSchema = z.object({ id: inventoryIdSchema, result: z.enum(['acknowledged', 'failed']), responseReference: z.string().trim().min(4).max(240), responseProtocol: z.enum(['barcode-scanner-status-v1', 'escpos-status-v1', 'cash-drawer-status-v1', 'weighing-scale-reading-v1']), responseChecksum: z.string().regex(/^[a-f0-9]{64}$/i).optional(), responseByteLength: z.number().int().min(0).max(65_536).optional(), expectedVersion: z.number().int().positive() }).strict();
-const recordRetailNativeDeviceDriverResultSchema = z.object({ id: inventoryIdSchema, result: z.enum(['acknowledged', 'failed', 'unsupported']), driverCode: z.string().trim().min(2).max(80), driverVersion: z.string().trim().min(1).max(40), responseReference: z.string().trim().min(4).max(240), responseProtocol: z.enum(['barcode-scanner-status-v1', 'escpos-status-v1', 'cash-drawer-status-v1', 'weighing-scale-reading-v1']), responseChecksum: z.string().regex(/^[a-f0-9]{64}$/i).optional(), responseByteLength: z.number().int().min(0).max(65_536).optional(), errorMessage: z.string().trim().min(4).max(500).optional(), expectedVersion: z.number().int().positive() }).strict();
 const executeRetailDeviceTransportSchema = z.object({ id: inventoryIdSchema, host: z.string().trim().min(1).max(253), port: z.number().int().min(1).max(65_535), payload: z.string().trim().min(1).max(20_000), timeoutMs: z.number().int().min(250).max(15_000).optional(), expectedVersion: z.number().int().positive() }).strict();
 const retryRetailDeviceTransportSchema = z.object({ id: inventoryIdSchema, payload: z.string().trim().min(1).max(20_000), reason: z.string().trim().min(8).max(500), expectedVersion: z.number().int().positive() }).strict();
 const preflightRetailDeviceTransportSchema = z.object({ kind: z.enum(['barcode-scanner', 'escpos-printer', 'cash-drawer', 'weighing-scale']), connection: z.enum(['usb', 'network', 'bluetooth', 'manual']), host: z.string().trim().min(1).max(253).optional(), port: z.number().int().min(1).max(65_535).optional(), payload: z.string().min(1).max(65_536), timeoutMs: z.number().int().min(250).max(15_000).optional() }).strict();
@@ -1583,6 +1644,8 @@ export function registerIpcHandlers(
   retailWorkspaceModeStore: RetailWorkspaceModeStore,
   database: BusinessDatabase,
   workspaceProvisioner?: WorkspaceProvisioner,
+  runtimeDatabaseEncryption = getRuntimeDatabaseEncryptionEvidence(),
+  artifactKeyRotation?: ArtifactKeyRotationService,
 ): void {
   assertIpcAuthorizationPolicyComplete();
   const rendererSessions = new Map<number, string>();
@@ -1691,6 +1754,14 @@ export function registerIpcHandlers(
       action,
     );
     return session;
+  };
+
+  const getAttachmentOperatingScope = (): { companyId: string; branchId: string } => {
+    const scope = revenueOpsStore.getSnapshot().scope;
+    if (!scope?.companyId || !scope.branchId) {
+      throw new Error('Attachment operations require an active company and branch scope.');
+    }
+    return { companyId: scope.companyId, branchId: scope.branchId };
   };
 
   const planBakalooRetailDemoReset = (actor: {
@@ -1824,16 +1895,19 @@ export function registerIpcHandlers(
           }
         } else {
           // Delegated routes resolve their target resource inside their own
-          // validated handler; all other legacy routes receive the session
-          // baseline until their record scope is promoted into this manifest.
+          // validated handler. There is no session-only fallback: every
+          // declared channel is explicitly trusted, permission-bound or
+          // delegated-record-bound by the authorization manifest.
           actorId = assertAuthenticated(event).userId;
         }
         const response = await listener(event, ...args);
-        if (policy.mode === 'permission' && policy.scope === 'revenue-operations-bound') {
-          if (!actorId) throw new Error('Revenue Operations response has no authenticated actor.');
-          return revenueOpsStore.projectResponseForActor(response, actorId);
-        }
-        return response;
+        return projectIpcResponseForPolicy(
+          channel,
+          policy,
+          actorId,
+          response,
+          (candidate, scopedActorId) => revenueOpsStore.projectResponseForActor(candidate, scopedActorId),
+        );
       });
     },
   };
@@ -1957,8 +2031,9 @@ export function registerIpcHandlers(
     IPC_CHANNELS.storageListAttachments,
     (event, payload: unknown) => {
       const target = attachmentTargetSchema.parse(payload);
-      assertAuthorized(event, target.resource, 'read');
-      return attachmentVault.list(target.resource, target.resourceId);
+      const scope = getAttachmentOperatingScope();
+      assertRevenueOperationsRecordAuthorized(event, scope, target.resource, 'read');
+      return attachmentVault.list(target.resource, target.resourceId, scope);
     },
   );
 
@@ -1966,7 +2041,8 @@ export function registerIpcHandlers(
     IPC_CHANNELS.storageAddAttachment,
     async (event, payload: unknown) => {
       const target = attachmentTargetSchema.parse(payload);
-      const actor = assertAuthorized(event, target.resource, 'update');
+      const scope = getAttachmentOperatingScope();
+      const actor = assertRevenueOperationsRecordAuthorized(event, scope, target.resource, 'update');
       const parent = BrowserWindow.fromWebContents(event.sender);
       const choice = parent
         ? await dialog.showOpenDialog(parent, {
@@ -1983,6 +2059,7 @@ export function registerIpcHandlers(
         target.resource,
         target.resourceId,
         actor.userId,
+        scope,
       );
     },
   );
@@ -1990,11 +2067,11 @@ export function registerIpcHandlers(
   ipcMain.handle(
     IPC_CHANNELS.storageExportAttachment,
     async (event, payload: unknown) => {
-      assertAuthenticated(event);
       const input = exportAttachmentSchema.parse(payload);
-      const record = attachmentVault.get(input.id);
+      const scope = getAttachmentOperatingScope();
+      const record = attachmentVault.get(input.id, scope);
       if (!record) throw new Error('Attachment not found.');
-      assertAuthorized(event, record.resource, 'export');
+      assertRevenueOperationsRecordAuthorized(event, scope, record.resource, 'export');
       const parent = BrowserWindow.fromWebContents(event.sender);
       const options = {
         title: 'Export verified attachment',
@@ -2006,7 +2083,7 @@ export function registerIpcHandlers(
         : await dialog.showSaveDialog(options);
       if (choice.canceled || !choice.filePath) return false;
       await rm(choice.filePath, { force: true });
-      await attachmentVault.exportToPath(input.id, choice.filePath);
+      await attachmentVault.exportToPath(input.id, choice.filePath, scope);
       return true;
     },
   );
@@ -2065,6 +2142,11 @@ export function registerIpcHandlers(
       });
     }
     return receipt;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.storageRewrapLocalBackups, async (event) => {
+    assertAuthorized(event, 'kernel.backup', 'admin');
+    return backupService.rewrapLocalBackups();
   });
 
   ipcMain.handle(IPC_CHANNELS.storageListRestoreDrills, (event) => {
@@ -2148,6 +2230,36 @@ export function registerIpcHandlers(
       };
     },
   );
+
+  ipcMain.handle(IPC_CHANNELS.authMfaStatus, (event) => {
+    assertAuthenticated(event);
+    const token = getToken(event);
+    if (!token) throw new Error('Your session has expired. Sign in again.');
+    return authService.getMfaStatus(token);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.authMfaBeginEnrollment, (event) => {
+    const session = assertAuthenticated(event);
+    const token = getToken(event);
+    if (!token) throw new Error(`The session for ${session.email} has expired. Sign in again.`);
+    return authService.beginMfaEnrollment(token);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.authMfaConfirmEnrollment, (event, payload: unknown) => {
+    assertAuthenticated(event);
+    const token = getToken(event);
+    if (!token) throw new Error('Your session has expired. Sign in again.');
+    return authService.confirmMfaEnrollment(token, mfaConfirmSchema.parse(payload).code);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.authMfaDisable, async (event, payload: unknown) => {
+    assertAuthenticated(event);
+    const token = getToken(event);
+    if (!token) throw new Error('Your session has expired. Sign in again.');
+    await authService.disableMfa(token, mfaDisableSchema.parse(payload).currentPassword);
+    rendererSessions.delete(event.sender.id);
+    return authService.getStatus();
+  });
 
   ipcMain.handle(IPC_CHANNELS.partySnapshot, (event) => {
     assertCompanyOwnedAuthorized(event, partyStore.getCompanyId(), 'crm.party', 'read');
@@ -2289,7 +2401,7 @@ export function registerIpcHandlers(
 
   ipcMain.handle(IPC_CHANNELS.generalLedgerBindCompany, (event, payload: unknown) => {
     const input = bindLedgerCompanySchema.parse(payload);
-    const actor = assertAuthenticated(event);
+    const actor = assertGeneralLedgerAuthorized(event, 'finance.chart-of-accounts', 'admin');
     kernelStore.assertAuthorizedInScope(
       actor.userId,
       input.companyId,
@@ -2438,73 +2550,101 @@ export function registerIpcHandlers(
   });
 
   ipcMain.handle(IPC_CHANNELS.revenueOpsSnapshot, (event) => {
-    assertAuthenticated(event);
+    assertRevenueOperationsAuthorized(event, 'operations.workspace', 'read');
     return revenueOpsStore.getSnapshot();
   });
 
   ipcMain.handle(IPC_CHANNELS.revenueOpsListRetailCutoverPlans, (event) => {
-    assertAuthenticated(event);
+    assertRevenueOperationsAuthorized(event, 'release.control', 'read');
     return revenueOpsStore.getRetailCutoverPlans();
   });
 
   ipcMain.handle(IPC_CHANNELS.revenueOpsFetchRetailHubCutoverAssessment, (event, payload: unknown) => {
-    assertAuthenticated(event);
+    assertRevenueOperationsAuthorized(event, 'release.control', 'read');
     return fetchRetailHubCutoverAssessment(fetchRetailHubCutoverAssessmentSchema.parse(payload));
   });
 
+  ipcMain.handle(IPC_CHANNELS.revenueOpsFetchRetailHubDeploymentPreflight, (event, payload: unknown) => {
+    assertRevenueOperationsAuthorized(event, 'release.control', 'read');
+    return fetchRetailHubDeploymentPreflight(fetchRetailHubDeploymentPreflightSchema.parse(payload));
+  });
+
+  ipcMain.handle(IPC_CHANNELS.revenueOpsFetchRetailHubShadowImportPreflight, (event, payload: unknown) => {
+    assertRevenueOperationsAuthorized(event, 'release.control', 'read');
+    return fetchRetailHubShadowImportPreflight(fetchRetailHubShadowImportPreflightSchema.parse(payload));
+  });
+
+  ipcMain.handle(IPC_CHANNELS.revenueOpsFetchRetailHubShadowImportSourceStatus, (event, payload: unknown) => {
+    assertRevenueOperationsAuthorized(event, 'release.control', 'read');
+    return fetchRetailHubShadowImportSourceStatus(fetchRetailHubShadowImportSourceStatusSchema.parse(payload));
+  });
+
+  ipcMain.handle(IPC_CHANNELS.revenueOpsFetchRetailHubShadowImportPullReceipts, (event, payload: unknown) => {
+    assertRevenueOperationsAuthorized(event, 'release.control', 'read');
+    return fetchRetailHubShadowImportPullReceipts(fetchRetailHubShadowImportPullReceiptsSchema.parse(payload));
+  });
+  ipcMain.handle(IPC_CHANNELS.revenueOpsFetchRetailHubStoreEdgeWorkerMetrics, (event, payload: unknown) => {
+    assertRevenueOperationsAuthorized(event, 'release.control', 'read');
+    return fetchRetailHubStoreEdgeWorkerMetrics(fetchRetailHubStoreEdgeWorkerMetricsSchema.parse(payload));
+  });
+  ipcMain.handle(IPC_CHANNELS.revenueOpsFetchRetailHubCoverageMap, (event, payload: unknown) => {
+    assertRevenueOperationsAuthorized(event, 'release.control', 'read');
+    return fetchRetailHubCoverageMap(fetchRetailHubCoverageMapSchema.parse(payload));
+  });
+
   ipcMain.handle(IPC_CHANNELS.revenueOpsCreateRetailCutoverPlan, (event, payload: unknown) => {
-    const actor = assertAuthenticated(event);
+    const actor = assertRevenueOperationsAuthorized(event, 'release.control', 'create');
     assertManualRetailCutoverRegistrationAllowed({ isPackaged: app.isPackaged, nodeEnv: process.env.NODE_ENV });
     return revenueOpsStore.createRetailCutoverPlan(createRetailCutoverPlanSchema.parse(payload), actor.userId);
   });
 
   ipcMain.handle(IPC_CHANNELS.revenueOpsCreateRetailCutoverPlanFromHubAssessment, (event, payload: unknown) => {
-    const actor = assertAuthenticated(event);
+    const actor = assertRevenueOperationsAuthorized(event, 'release.control', 'create');
     return revenueOpsStore.createRetailCutoverPlanFromHubAssessment(createRetailCutoverPlanFromHubAssessmentSchema.parse(payload), actor.userId);
   });
 
   ipcMain.handle(IPC_CHANNELS.revenueOpsAdvanceRetailCutover, (event, payload: unknown) => {
-    const actor = assertAuthenticated(event);
+    const actor = assertRevenueOperationsAuthorized(event, 'release.control', 'approve');
     return revenueOpsStore.advanceRetailCutover(advanceRetailCutoverSchema.parse(payload), actor.userId);
   });
 
   ipcMain.handle(IPC_CHANNELS.revenueOpsPeopleReadProjection, (event) => {
-    const actor = assertAuthenticated(event);
+    const actor = assertRevenueOperationsAuthorized(event, 'operations.workspace', 'read');
     return revenueOpsStore.getPeopleReadProjection(actor.userId);
   });
 
   ipcMain.handle(IPC_CHANNELS.revenueOpsUpdateProfile, (event, payload: unknown) => {
-    assertAuthenticated(event);
+    assertRevenueOperationsAuthorized(event, 'sales.geography', 'update');
     return revenueOpsStore.updateProfile(updateIndiaProfileSchema.parse(payload));
   });
 
   ipcMain.handle(IPC_CHANNELS.revenueOpsCreateTerritory, (event, payload: unknown) => {
-    assertAuthenticated(event);
+    assertRevenueOperationsAuthorized(event, 'sales.geography', 'create');
     return revenueOpsStore.addTerritory(createTerritorySchema.parse(payload));
   });
 
   ipcMain.handle(IPC_CHANNELS.revenueOpsCreateAssignmentRule, (event, payload: unknown) => {
-    assertAuthenticated(event);
+    assertRevenueOperationsAuthorized(event, 'sales.geography', 'create');
     return revenueOpsStore.addAssignmentRule(createAssignmentRuleSchema.parse(payload));
   });
 
   ipcMain.handle(IPC_CHANNELS.revenueOpsBulkAssign, (event, payload: unknown) => {
-    assertAuthenticated(event);
+    assertRevenueOperationsAuthorized(event, 'sales.geography', 'update');
     return revenueOpsStore.bulkAssign(bulkAssignSchema.parse(payload));
   });
 
   ipcMain.handle(IPC_CHANNELS.revenueOpsCreateSegment, (event, payload: unknown) => {
-    assertAuthenticated(event);
+    assertRevenueOperationsAuthorized(event, 'crm.configuration', 'create');
     return revenueOpsStore.addSegment(createAudienceSegmentSchema.parse(payload));
   });
 
   ipcMain.handle(IPC_CHANNELS.revenueOpsCreateOpportunity, (event, payload: unknown) => {
-    const actor = assertAuthenticated(event);
+    const actor = assertRevenueOperationsAuthorized(event, 'sales.commercial', 'create');
     return revenueOpsStore.createOpportunity(createIndiaOpportunitySchema.parse(payload), actor.userId);
   });
 
   ipcMain.handle(IPC_CHANNELS.revenueOpsCreateQuote, (event, payload: unknown) => {
-    const actor = assertAuthenticated(event);
+    const actor = assertRevenueOperationsAuthorized(event, 'sales.commercial', 'create');
     return revenueOpsStore.createQuote(createQuoteSchema.parse(payload), actor.userId);
   });
 
@@ -2514,14 +2654,14 @@ export function registerIpcHandlers(
     return revenueOpsStore.moveQuote(input);
   });
 
-  ipcMain.handle(IPC_CHANNELS.revenueOpsCreateGstTaxCode, (event, payload: unknown) => { assertAuthenticated(event); return revenueOpsStore.addGstTaxCode(createGstTaxCodeSchema.parse(payload)); });
-  ipcMain.handle(IPC_CHANNELS.revenueOpsCreateCatalogProduct, (event, payload: unknown) => { assertAuthenticated(event); return revenueOpsStore.addCatalogProduct(createCatalogProductSchema.parse(payload)); });
-  ipcMain.handle(IPC_CHANNELS.revenueOpsImportRetailProductPack, (event, payload: unknown) => { const actor = assertAuthenticated(event); return revenueOpsStore.importRetailProductPack(importRetailProductPackSchema.parse(payload), actor.userId); });
-  ipcMain.handle(IPC_CHANNELS.revenueOpsCreatePriceList, (event, payload: unknown) => { assertAuthenticated(event); return revenueOpsStore.addPriceList(createPriceListSchema.parse(payload)); });
-  ipcMain.handle(IPC_CHANNELS.revenueOpsCreatePriceListEntry, (event, payload: unknown) => { assertAuthenticated(event); return revenueOpsStore.addPriceListEntry(createPriceListEntrySchema.parse(payload)); });
-  ipcMain.handle(IPC_CHANNELS.revenueOpsCreateDiscountPolicy, (event, payload: unknown) => { assertAuthenticated(event); return revenueOpsStore.addDiscountPolicy(createDiscountPolicySchema.parse(payload)); });
-  ipcMain.handle(IPC_CHANNELS.revenueOpsSubmitPriceListForApproval, (event, payload: unknown) => { const actor = assertAuthenticated(event); return revenueOpsStore.submitPriceList(submitPriceListForApprovalSchema.parse(payload), actor.userId); });
-  ipcMain.handle(IPC_CHANNELS.revenueOpsDecidePriceListApproval, (event, payload: unknown) => { const actor = assertAuthenticated(event); return revenueOpsStore.decidePriceList(decidePriceListApprovalSchema.parse(payload), actor.userId); });
+  ipcMain.handle(IPC_CHANNELS.revenueOpsCreateGstTaxCode, (event, payload: unknown) => { assertRevenueOperationsAuthorized(event, 'sales.catalog', 'create'); return revenueOpsStore.addGstTaxCode(createGstTaxCodeSchema.parse(payload)); });
+  ipcMain.handle(IPC_CHANNELS.revenueOpsCreateCatalogProduct, (event, payload: unknown) => { assertRevenueOperationsAuthorized(event, 'sales.catalog', 'create'); return revenueOpsStore.addCatalogProduct(createCatalogProductSchema.parse(payload)); });
+  ipcMain.handle(IPC_CHANNELS.revenueOpsImportRetailProductPack, (event, payload: unknown) => { const actor = assertRevenueOperationsAuthorized(event, 'sales.catalog', 'create'); return revenueOpsStore.importRetailProductPack(importRetailProductPackSchema.parse(payload), actor.userId); });
+  ipcMain.handle(IPC_CHANNELS.revenueOpsCreatePriceList, (event, payload: unknown) => { assertRevenueOperationsAuthorized(event, 'sales.catalog', 'create'); return revenueOpsStore.addPriceList(createPriceListSchema.parse(payload)); });
+  ipcMain.handle(IPC_CHANNELS.revenueOpsCreatePriceListEntry, (event, payload: unknown) => { assertRevenueOperationsAuthorized(event, 'sales.catalog', 'update'); return revenueOpsStore.addPriceListEntry(createPriceListEntrySchema.parse(payload)); });
+  ipcMain.handle(IPC_CHANNELS.revenueOpsCreateDiscountPolicy, (event, payload: unknown) => { assertRevenueOperationsAuthorized(event, 'sales.pricing', 'create'); return revenueOpsStore.addDiscountPolicy(createDiscountPolicySchema.parse(payload)); });
+  ipcMain.handle(IPC_CHANNELS.revenueOpsSubmitPriceListForApproval, (event, payload: unknown) => { const actor = assertRevenueOperationsAuthorized(event, 'sales.pricing', 'create'); return revenueOpsStore.submitPriceList(submitPriceListForApprovalSchema.parse(payload), actor.userId); });
+  ipcMain.handle(IPC_CHANNELS.revenueOpsDecidePriceListApproval, (event, payload: unknown) => { const actor = assertRevenueOperationsAuthorized(event, 'sales.pricing', 'approve'); return revenueOpsStore.decidePriceList(decidePriceListApprovalSchema.parse(payload), actor.userId); });
   ipcMain.handle(IPC_CHANNELS.revenueOpsSubmitQuoteForApproval, (event, payload: unknown) => { const input = submitQuoteForApprovalSchema.parse(payload); const actor = assertCommercialRecordAuthorized(event, 'quote', input.id, 'sales.commercial', 'submit'); return revenueOpsStore.submitQuote(input, actor.userId); });
   ipcMain.handle(IPC_CHANNELS.revenueOpsDecideQuoteApproval, (event, payload: unknown) => { const input = decideQuoteApprovalSchema.parse(payload); const actor = assertCommercialRecordAuthorized(event, 'quote-approval', input.requestId, 'sales.commercial', 'approve'); return revenueOpsStore.decideQuote(input, actor.userId); });
   ipcMain.handle(IPC_CHANNELS.revenueOpsExportQuotePdf, async (event, payload: unknown) => {
@@ -2539,7 +2679,7 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC_CHANNELS.revenueOpsConvertQuoteToSalesOrder, (event, payload: unknown) => { const input = convertQuoteToSalesOrderSchema.parse(payload); const actor = assertCommercialRecordAuthorized(event, 'quote', input.quoteId, 'sales.commercial', 'create'); return revenueOpsStore.convertQuote(input, actor.userId); });
   ipcMain.handle(IPC_CHANNELS.revenueOpsTransitionSalesOrder, (event, payload: unknown) => { const input = transitionSalesOrderSchema.parse(payload); assertCommercialRecordAuthorized(event, 'sales-order', input.id, 'sales.commercial', 'update'); return revenueOpsStore.moveSalesOrder(input); });
   ipcMain.handle(IPC_CHANNELS.revenueOpsUpdateFulfilmentTask, (event, payload: unknown) => { const input = updateFulfilmentTaskSchema.parse(payload); assertCommercialRecordAuthorized(event, 'fulfilment-task', input.id, 'sales.commercial', 'update'); return revenueOpsStore.moveFulfilmentTask(input); });
-  ipcMain.handle(IPC_CHANNELS.revenueOpsCreatePaymentTerm, (event, payload: unknown) => { assertAuthenticated(event); return revenueOpsStore.addPaymentTerm(createPaymentTermSchema.parse(payload)); });
+  ipcMain.handle(IPC_CHANNELS.revenueOpsCreatePaymentTerm, (event, payload: unknown) => { assertRevenueOperationsAuthorized(event, 'sales.commercial', 'create'); return revenueOpsStore.addPaymentTerm(createPaymentTermSchema.parse(payload)); });
   ipcMain.handle(IPC_CHANNELS.retailCreateCounter, (event, payload: unknown) => {
     const input = createRetailCounterSchema.parse(payload);
     const actor = assertInventoryRecordAuthorized(event, 'warehouse', input.warehouseId, 'inventory.master', 'create');
@@ -2586,6 +2726,21 @@ export function registerIpcHandlers(
     const actor = assertRevenueOperationsAuthorized(event, 'sales.commercial', 'update');
     assertRevenueOperationsAuthorized(event, 'inventory.execution', 'update');
     return revenueOpsStore.resolveRetailOfflineSale(input, actor.userId);
+  });
+  ipcMain.handle(IPC_CHANNELS.retailSendHubStoreEdgeSync, async (event, payload: unknown) => {
+    const input = sendRetailHubStoreEdgeSyncSchema.parse(payload);
+    const actor = assertRevenueOperationsAuthorized(event, 'sales.commercial', 'create');
+    return revenueOpsStore.sendRetailHubStoreEdgeSync(input, actor.userId);
+  });
+  ipcMain.handle(IPC_CHANNELS.retailSyncHubStoreEdgeQueue, async (event, payload: unknown) => {
+    const input = syncRetailHubStoreEdgeQueueSchema.parse(payload);
+    const actor = assertRevenueOperationsAuthorized(event, 'sales.commercial', 'create');
+    return revenueOpsStore.syncRetailHubStoreEdgeQueue(input, actor.userId);
+  });
+  ipcMain.handle(IPC_CHANNELS.retailSaveHubStoreEdgeSyncPolicy, async (event, payload: unknown) => {
+    const input = saveRetailHubStoreEdgeSyncPolicySchema.parse(payload);
+    const actor = assertRevenueOperationsAuthorized(event, 'sales.commercial', 'update');
+    return revenueOpsStore.saveRetailHubStoreEdgeSyncPolicy(input, actor.userId);
   });
   ipcMain.handle(IPC_CHANNELS.retailIngestUnifiedOrder, (event, payload: unknown) => {
     const input = ingestRetailUnifiedOrderSchema.parse(payload);
@@ -2675,6 +2830,12 @@ export function registerIpcHandlers(
     assertRevenueOperationsAuthorized(event, 'sales.commercial', 'update');
     return revenueOpsStore.reconcileRetailUnifiedOrderRto(input, actor.userId);
   });
+  ipcMain.handle(IPC_CHANNELS.retailReconcileUnifiedOrderCancellation, (event, payload: unknown) => {
+    const input = reconcileRetailUnifiedOrderCancellationSchema.parse(payload);
+    const actor = assertRevenueOperationsAuthorized(event, 'inventory.execution', 'update');
+    assertRevenueOperationsAuthorized(event, 'sales.commercial', 'update');
+    return revenueOpsStore.reconcileRetailUnifiedOrderCancellation(input, actor.userId);
+  });
   ipcMain.handle(IPC_CHANNELS.retailReconcileUnifiedOrderReturn, (event, payload: unknown) => {
     const input = reconcileRetailUnifiedOrderReturnSchema.parse(payload);
     const actor = assertRevenueOperationsAuthorized(event, 'inventory.execution', 'update');
@@ -2696,10 +2857,6 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC_CHANNELS.retailRecordDeviceTransport, (event, payload: unknown) => {
     const actor = assertRevenueOperationsAuthorized(event, 'inventory.master', 'approve');
     return revenueOpsStore.recordRetailDeviceTransport(recordRetailDeviceTransportSchema.parse(payload), actor.userId);
-  });
-  ipcMain.handle(IPC_CHANNELS.retailRecordNativeDeviceDriverResult, (event, payload: unknown) => {
-    const actor = assertRevenueOperationsAuthorized(event, 'inventory.master', 'approve');
-    return revenueOpsStore.recordRetailNativeDeviceDriverResult(recordRetailNativeDeviceDriverResultSchema.parse(payload), actor.userId);
   });
   ipcMain.handle(IPC_CHANNELS.retailExecuteDeviceTransport, async (event, payload: unknown) => {
     const actor = assertRevenueOperationsAuthorized(event, 'inventory.master', 'approve');
@@ -2933,7 +3090,8 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC_CHANNELS.retailSaveMerchandisingProfile, (event, payload: unknown) => {
     assertRevenueOperationsAuthorized(event, 'inventory.master', 'update');
     const input = saveRetailMerchandisingProfileSchema.parse(payload);
-    const rawDescriptor = input.imageAttachmentId ? attachmentVault.get(input.imageAttachmentId) : undefined;
+    const attachmentScope = getAttachmentOperatingScope();
+    const rawDescriptor = input.imageAttachmentId ? attachmentVault.get(input.imageAttachmentId, attachmentScope) : undefined;
     const descriptor: RetailMerchandisingImageDescriptor | undefined = rawDescriptor
       ? { id: rawDescriptor.id, mimeType: rawDescriptor.mimeType, resource: rawDescriptor.resource, resourceId: rawDescriptor.resourceId }
       : undefined;
@@ -3100,9 +3258,9 @@ export function registerIpcHandlers(
     if (receipt) await revenueOpsStore.recordInvoicePdf(receipt);
     return receipt;
   });
-  ipcMain.handle(IPC_CHANNELS.revenueOpsCreateGstRegistration, (event, payload: unknown) => { assertAuthenticated(event); return revenueOpsStore.addGstRegistration(createGstRegistrationSchema.parse(payload)); });
-  ipcMain.handle(IPC_CHANNELS.revenueOpsCreatePlaceOfSupplyReview, (event, payload: unknown) => { const actor = assertAuthenticated(event); return revenueOpsStore.addPlaceOfSupplyReview(createPlaceOfSupplyReviewSchema.parse(payload), actor.userId); });
-  ipcMain.handle(IPC_CHANNELS.revenueOpsDecidePlaceOfSupplyReview, (event, payload: unknown) => { const actor = assertAuthenticated(event); return revenueOpsStore.decidePlaceOfSupplyReview(decidePlaceOfSupplyReviewSchema.parse(payload), actor.userId); });
+  ipcMain.handle(IPC_CHANNELS.revenueOpsCreateGstRegistration, (event, payload: unknown) => { assertRevenueOperationsAuthorized(event, 'sales.catalog', 'create'); return revenueOpsStore.addGstRegistration(createGstRegistrationSchema.parse(payload)); });
+  ipcMain.handle(IPC_CHANNELS.revenueOpsCreatePlaceOfSupplyReview, (event, payload: unknown) => { const actor = assertRevenueOperationsAuthorized(event, 'sales.commercial', 'create'); return revenueOpsStore.addPlaceOfSupplyReview(createPlaceOfSupplyReviewSchema.parse(payload), actor.userId); });
+  ipcMain.handle(IPC_CHANNELS.revenueOpsDecidePlaceOfSupplyReview, (event, payload: unknown) => { const actor = assertRevenueOperationsAuthorized(event, 'sales.commercial', 'approve'); return revenueOpsStore.decidePlaceOfSupplyReview(decidePlaceOfSupplyReviewSchema.parse(payload), actor.userId); });
   ipcMain.handle(IPC_CHANNELS.revenueOpsCreateStockLocation, (event, payload: unknown) => { assertRevenueOperationsAuthorized(event, 'inventory.execution', 'create'); return revenueOpsStore.addStockLocation(createStockLocationSchema.parse(payload)); });
   ipcMain.handle(IPC_CHANNELS.revenueOpsRecordStockMovement, (event, payload: unknown) => { const input = recordStockMovementSchema.parse(payload); const actor = assertPhysicalFulfilmentRecordAuthorized(event, 'stock-location', input.locationId, 'inventory.execution', 'create'); return revenueOpsStore.addStockMovement(input, actor.userId); });
   ipcMain.handle(IPC_CHANNELS.revenueOpsReserveStock, (event, payload: unknown) => { const input = reserveStockSchema.parse(payload); const actor = assertCommercialRecordAuthorized(event, 'sales-order', input.salesOrderId, 'sales.commercial', 'update'); assertPhysicalFulfilmentRecordAuthorized(event, 'stock-location', input.locationId, 'inventory.execution', 'create'); return revenueOpsStore.reserveStock(input, actor.userId); });
@@ -3417,24 +3575,24 @@ export function registerIpcHandlers(
     const actor = assertAssetMaintenanceRecordAuthorized(event, 'maintenance-work-order', input.id, 'maintenance.work-order', 'approve');
     return revenueOpsStore.verifyMaintenanceWorkOrder(input, actor.userId);
   });
-  ipcMain.handle(IPC_CHANNELS.deliveryCreateProject, (event, payload: unknown) => { const actor = assertAuthenticated(event); return revenueOpsStore.createProject(createProjectSchema.parse(payload), actor.userId); });
+  ipcMain.handle(IPC_CHANNELS.deliveryCreateProject, (event, payload: unknown) => { const actor = assertRevenueOperationsAuthorized(event, 'delivery.project', 'create'); return revenueOpsStore.createProject(createProjectSchema.parse(payload), actor.userId); });
   ipcMain.handle(IPC_CHANNELS.deliveryDecideProject, (event, payload: unknown) => { const input = decideProjectSchema.parse(payload); const actor = assertDeliveryRecordAuthorized(event, 'project', input.id, 'delivery.project', 'approve'); return revenueOpsStore.decideProject(input, actor.userId); });
   ipcMain.handle(IPC_CHANNELS.deliveryTransitionProject, (event, payload: unknown) => { const input = transitionProjectSchema.parse(payload); const actor = assertDeliveryRecordAuthorized(event, 'project', input.id, 'delivery.project', 'update'); return revenueOpsStore.transitionProject(input, actor.userId); });
   ipcMain.handle(IPC_CHANNELS.deliveryCreateTask, (event, payload: unknown) => { const input = createProjectTaskSchema.parse(payload); const actor = assertDeliveryRecordAuthorized(event, 'project', input.projectId, 'delivery.project', 'create'); return revenueOpsStore.createProjectTask(input, actor.userId); });
   ipcMain.handle(IPC_CHANNELS.deliveryTransitionTask, (event, payload: unknown) => { const input = transitionProjectTaskSchema.parse(payload); const actor = assertDeliveryRecordAuthorized(event, 'task', input.id, 'delivery.project', 'update'); return revenueOpsStore.transitionProjectTask(input, actor.userId); });
   ipcMain.handle(IPC_CHANNELS.deliveryRecordTime, (event, payload: unknown) => { const input = recordTimeEntrySchema.parse(payload); const actor = assertDeliveryRecordAuthorized(event, 'task', input.projectTaskId, 'delivery.project', 'create'); return revenueOpsStore.recordTimeEntry(input, actor.userId); });
   ipcMain.handle(IPC_CHANNELS.deliveryDecideTime, (event, payload: unknown) => { const input = decideTimeEntrySchema.parse(payload); const actor = assertDeliveryRecordAuthorized(event, 'time-entry', input.id, 'delivery.project', 'approve'); return revenueOpsStore.decideTimeEntry(input, actor.userId); });
-  ipcMain.handle(IPC_CHANNELS.deliveryCreateAgreement, (event, payload: unknown) => { const actor = assertAuthenticated(event); return revenueOpsStore.createServiceAgreement(createServiceAgreementSchema.parse(payload), actor.userId); });
+  ipcMain.handle(IPC_CHANNELS.deliveryCreateAgreement, (event, payload: unknown) => { const actor = assertRevenueOperationsAuthorized(event, 'delivery.service', 'create'); return revenueOpsStore.createServiceAgreement(createServiceAgreementSchema.parse(payload), actor.userId); });
   ipcMain.handle(IPC_CHANNELS.deliveryDecideAgreement, (event, payload: unknown) => { const input = decideServiceAgreementSchema.parse(payload); const actor = assertDeliveryRecordAuthorized(event, 'service-agreement', input.id, 'delivery.service', 'approve'); return revenueOpsStore.decideServiceAgreement(input, actor.userId); });
   ipcMain.handle(IPC_CHANNELS.deliveryCreateTicket, (event, payload: unknown) => { const input = createSupportTicketSchema.parse(payload); const actor = assertDeliveryRecordAuthorized(event, 'service-agreement', input.agreementId, 'delivery.service', 'create'); return revenueOpsStore.createSupportTicket(input, actor.userId); });
   ipcMain.handle(IPC_CHANNELS.deliveryTransitionTicket, (event, payload: unknown) => { const input = transitionSupportTicketSchema.parse(payload); const actor = assertDeliveryRecordAuthorized(event, 'support-ticket', input.id, 'delivery.service', 'update'); return revenueOpsStore.transitionSupportTicket(input, actor.userId); });
   ipcMain.handle(IPC_CHANNELS.deliveryCreateFieldJob, (event, payload: unknown) => { const input = createFieldServiceJobSchema.parse(payload); const actor = assertDeliveryRecordAuthorized(event, 'support-ticket', input.ticketId, 'delivery.service', 'create'); return revenueOpsStore.createFieldServiceJob(input, actor.userId); });
   ipcMain.handle(IPC_CHANNELS.deliveryTransitionFieldJob, (event, payload: unknown) => { const input = transitionFieldServiceJobSchema.parse(payload); const actor = assertDeliveryRecordAuthorized(event, 'field-service-job', input.id, 'delivery.service', 'update'); return revenueOpsStore.transitionFieldServiceJob(input, actor.userId); });
-  ipcMain.handle(IPC_CHANNELS.workforceCreateProfile, (event, payload: unknown) => { const actor = assertAuthenticated(event); return revenueOpsStore.createWorkforceProfile(createWorkforceProfileSchema.parse(payload), actor.userId); });
+  ipcMain.handle(IPC_CHANNELS.workforceCreateProfile, (event, payload: unknown) => { const actor = assertRevenueOperationsAuthorized(event, 'workforce.profile', 'create'); return revenueOpsStore.createWorkforceProfile(createWorkforceProfileSchema.parse(payload), actor.userId); });
   ipcMain.handle(IPC_CHANNELS.workforceDecideProfile, (event, payload: unknown) => { const input = decideWorkforceProfileSchema.parse(payload); const actor = assertWorkforcePayrollRecordAuthorized(event, input.id, 'workforce.profile', 'approve'); return revenueOpsStore.decideWorkforceProfile(input, actor.userId); });
-  ipcMain.handle(IPC_CHANNELS.workforceRecordAvailability, (event, payload: unknown) => { const actor = assertAuthenticated(event); return revenueOpsStore.recordWorkforceAvailability(recordWorkforceAvailabilitySchema.parse(payload), actor.userId); });
+  ipcMain.handle(IPC_CHANNELS.workforceRecordAvailability, (event, payload: unknown) => { const actor = assertRevenueOperationsAuthorized(event, 'workforce.availability', 'create'); return revenueOpsStore.recordWorkforceAvailability(recordWorkforceAvailabilitySchema.parse(payload), actor.userId); });
   ipcMain.handle(IPC_CHANNELS.workforceDecideAvailability, (event, payload: unknown) => { const input = decideWorkforceAvailabilitySchema.parse(payload); const actor = assertWorkforcePayrollRecordAuthorized(event, input.id, 'workforce.availability', 'approve'); return revenueOpsStore.decideWorkforceAvailability(input, actor.userId); });
-  ipcMain.handle(IPC_CHANNELS.workforceCreateAllocation, (event, payload: unknown) => { const actor = assertAuthenticated(event); return revenueOpsStore.createWorkforceAllocation(createWorkforceAllocationSchema.parse(payload), actor.userId); });
+  ipcMain.handle(IPC_CHANNELS.workforceCreateAllocation, (event, payload: unknown) => { const actor = assertRevenueOperationsAuthorized(event, 'workforce.allocation', 'create'); return revenueOpsStore.createWorkforceAllocation(createWorkforceAllocationSchema.parse(payload), actor.userId); });
   ipcMain.handle(IPC_CHANNELS.workforceCancelAllocation, (event, payload: unknown) => { const input = cancelWorkforceAllocationSchema.parse(payload); const actor = assertWorkforcePayrollRecordAuthorized(event, input.id, 'workforce.allocation', 'update'); return revenueOpsStore.cancelWorkforceAllocation(input, actor.userId); });
   ipcMain.handle(IPC_CHANNELS.payrollCreateRegistration, (event, payload: unknown) => { const actor = assertAuthorized(event, 'payroll.employer-registration', 'create'); return revenueOpsStore.createEmployerRegistration(createEmployerRegistrationSchema.parse(payload), actor.userId); });
   ipcMain.handle(IPC_CHANNELS.payrollDecideRegistration, (event, payload: unknown) => { const input = decideEmployerRegistrationSchema.parse(payload); const actor = assertWorkforcePayrollRecordAuthorized(event, input.id, 'payroll.employer-registration', 'approve'); return revenueOpsStore.decideEmployerRegistration(input, actor.userId); });
@@ -3488,25 +3646,25 @@ export function registerIpcHandlers(
     return revenueOpsStore.createProjectBillingClaim(input, actor.userId);
   });
   ipcMain.handle(IPC_CHANNELS.financialDecideBillingClaim, (event, payload: unknown) => { const input = decideProjectBillingClaimSchema.parse(payload); const actor = assertFinanceControlRecordAuthorized(event, input.id, 'financial.billing-claim', 'approve'); return revenueOpsStore.decideProjectBillingClaim(input, actor.userId); });
-  ipcMain.handle(IPC_CHANNELS.financialConsumeEntitlement, (event, payload: unknown) => { const actor = assertAuthenticated(event); return revenueOpsStore.consumeServiceEntitlement(consumeServiceEntitlementSchema.parse(payload), actor.userId); });
-  ipcMain.handle(IPC_CHANNELS.financialCreateClosePeriod, (event, payload: unknown) => { const actor = assertAuthenticated(event); return revenueOpsStore.createAccountingClosePeriod(createAccountingClosePeriodSchema.parse(payload), actor.userId); });
+  ipcMain.handle(IPC_CHANNELS.financialConsumeEntitlement, (event, payload: unknown) => { const actor = assertRevenueOperationsAuthorized(event, 'finance.entitlement', 'update'); return revenueOpsStore.consumeServiceEntitlement(consumeServiceEntitlementSchema.parse(payload), actor.userId); });
+  ipcMain.handle(IPC_CHANNELS.financialCreateClosePeriod, (event, payload: unknown) => { const actor = assertRevenueOperationsAuthorized(event, 'finance.period', 'create'); return revenueOpsStore.createAccountingClosePeriod(createAccountingClosePeriodSchema.parse(payload), actor.userId); });
   ipcMain.handle(IPC_CHANNELS.financialDecideClosePeriod, (event, payload: unknown) => { const input = decideAccountingClosePeriodSchema.parse(payload); const actor = assertFinanceControlRecordAuthorized(event, input.id, 'financial.close-period', 'approve'); return revenueOpsStore.decideAccountingClosePeriod(input, actor.userId); });
   ipcMain.handle(IPC_CHANNELS.financialReopenClosePeriod, (event, payload: unknown) => { const input = reopenAccountingClosePeriodSchema.parse(payload); const actor = assertFinanceControlRecordAuthorized(event, input.id, 'financial.close-period', 'approve'); return revenueOpsStore.reopenAccountingClosePeriod(input, actor.userId); });
-  ipcMain.handle(IPC_CHANNELS.commercialCreateExchangeRate, (event, payload: unknown) => { const actor = assertAuthenticated(event); return revenueOpsStore.createProjectExchangeRate(createProjectExchangeRateSchema.parse(payload), actor.userId); });
-  ipcMain.handle(IPC_CHANNELS.commercialDecideExchangeRate, (event, payload: unknown) => { const actor = assertAuthenticated(event); return revenueOpsStore.decideProjectExchangeRate(decideProjectExchangeRateSchema.parse(payload), actor.userId); });
-  ipcMain.handle(IPC_CHANNELS.commercialCreateCurrencyProfile, (event, payload: unknown) => { const actor = assertAuthenticated(event); return revenueOpsStore.createProjectCurrencyProfile(createProjectCurrencyProfileSchema.parse(payload), actor.userId); });
-  ipcMain.handle(IPC_CHANNELS.commercialDecideCurrencyProfile, (event, payload: unknown) => { const actor = assertAuthenticated(event); return revenueOpsStore.decideProjectCurrencyProfile(decideProjectCurrencyProfileSchema.parse(payload), actor.userId); });
-  ipcMain.handle(IPC_CHANNELS.commercialCreateVariation, (event, payload: unknown) => { const actor = assertAuthenticated(event); return revenueOpsStore.createProjectContractVariation(createProjectContractVariationSchema.parse(payload), actor.userId); });
-  ipcMain.handle(IPC_CHANNELS.commercialDecideVariation, (event, payload: unknown) => { const actor = assertAuthenticated(event); return revenueOpsStore.decideProjectContractVariation(decideProjectContractVariationSchema.parse(payload), actor.userId); });
-  ipcMain.handle(IPC_CHANNELS.commercialCreateRetainer, (event, payload: unknown) => { const actor = assertAuthenticated(event); return revenueOpsStore.createProjectRetainer(createProjectRetainerSchema.parse(payload), actor.userId); });
-  ipcMain.handle(IPC_CHANNELS.commercialDecideRetainer, (event, payload: unknown) => { const actor = assertAuthenticated(event); return revenueOpsStore.decideProjectRetainer(decideProjectRetainerSchema.parse(payload), actor.userId); });
-  ipcMain.handle(IPC_CHANNELS.commercialCreateDrawdown, (event, payload: unknown) => { const actor = assertAuthenticated(event); return revenueOpsStore.createRetainerDrawdown(createRetainerDrawdownSchema.parse(payload), actor.userId); });
-  ipcMain.handle(IPC_CHANNELS.commercialDecideDrawdown, (event, payload: unknown) => { const actor = assertAuthenticated(event); return revenueOpsStore.decideRetainerDrawdown(decideRetainerDrawdownSchema.parse(payload), actor.userId); });
-  ipcMain.handle(IPC_CHANNELS.commercialCreateResourcePlan, (event, payload: unknown) => { const actor = assertAuthenticated(event); return revenueOpsStore.createProjectResourcePlan(createProjectResourcePlanSchema.parse(payload), actor.userId); });
-  ipcMain.handle(IPC_CHANNELS.commercialDecideResourcePlan, (event, payload: unknown) => { const actor = assertAuthenticated(event); return revenueOpsStore.decideProjectResourcePlan(decideProjectResourcePlanSchema.parse(payload), actor.userId); });
-  ipcMain.handle(IPC_CHANNELS.commercialGenerateMarginReview, (event, payload: unknown) => { const actor = assertAuthenticated(event); return revenueOpsStore.generateProjectMarginReview(generateProjectMarginReviewSchema.parse(payload), actor.userId); });
-  ipcMain.handle(IPC_CHANNELS.commercialReviewMargin, (event, payload: unknown) => { const actor = assertAuthenticated(event); return revenueOpsStore.reviewProjectMargin(reviewProjectMarginSchema.parse(payload), actor.userId); });
-  ipcMain.handle(IPC_CHANNELS.inventoryCreateUom, (event, payload: unknown) => { assertAuthenticated(event); return revenueOpsStore.addUom(createUomSchema.parse(payload)); });
+  ipcMain.handle(IPC_CHANNELS.commercialCreateExchangeRate, (event, payload: unknown) => { const actor = assertRevenueOperationsAuthorized(event, 'commercial.currency', 'create'); return revenueOpsStore.createProjectExchangeRate(createProjectExchangeRateSchema.parse(payload), actor.userId); });
+  ipcMain.handle(IPC_CHANNELS.commercialDecideExchangeRate, (event, payload: unknown) => { const actor = assertRevenueOperationsAuthorized(event, 'commercial.currency', 'approve'); return revenueOpsStore.decideProjectExchangeRate(decideProjectExchangeRateSchema.parse(payload), actor.userId); });
+  ipcMain.handle(IPC_CHANNELS.commercialCreateCurrencyProfile, (event, payload: unknown) => { const actor = assertRevenueOperationsAuthorized(event, 'commercial.currency', 'create'); return revenueOpsStore.createProjectCurrencyProfile(createProjectCurrencyProfileSchema.parse(payload), actor.userId); });
+  ipcMain.handle(IPC_CHANNELS.commercialDecideCurrencyProfile, (event, payload: unknown) => { const actor = assertRevenueOperationsAuthorized(event, 'commercial.currency', 'approve'); return revenueOpsStore.decideProjectCurrencyProfile(decideProjectCurrencyProfileSchema.parse(payload), actor.userId); });
+  ipcMain.handle(IPC_CHANNELS.commercialCreateVariation, (event, payload: unknown) => { const actor = assertRevenueOperationsAuthorized(event, 'commercial.contract', 'create'); return revenueOpsStore.createProjectContractVariation(createProjectContractVariationSchema.parse(payload), actor.userId); });
+  ipcMain.handle(IPC_CHANNELS.commercialDecideVariation, (event, payload: unknown) => { const actor = assertRevenueOperationsAuthorized(event, 'commercial.contract', 'approve'); return revenueOpsStore.decideProjectContractVariation(decideProjectContractVariationSchema.parse(payload), actor.userId); });
+  ipcMain.handle(IPC_CHANNELS.commercialCreateRetainer, (event, payload: unknown) => { const actor = assertRevenueOperationsAuthorized(event, 'commercial.retainer', 'create'); return revenueOpsStore.createProjectRetainer(createProjectRetainerSchema.parse(payload), actor.userId); });
+  ipcMain.handle(IPC_CHANNELS.commercialDecideRetainer, (event, payload: unknown) => { const actor = assertRevenueOperationsAuthorized(event, 'commercial.retainer', 'approve'); return revenueOpsStore.decideProjectRetainer(decideProjectRetainerSchema.parse(payload), actor.userId); });
+  ipcMain.handle(IPC_CHANNELS.commercialCreateDrawdown, (event, payload: unknown) => { const actor = assertRevenueOperationsAuthorized(event, 'commercial.retainer', 'create'); return revenueOpsStore.createRetainerDrawdown(createRetainerDrawdownSchema.parse(payload), actor.userId); });
+  ipcMain.handle(IPC_CHANNELS.commercialDecideDrawdown, (event, payload: unknown) => { const actor = assertRevenueOperationsAuthorized(event, 'commercial.retainer', 'approve'); return revenueOpsStore.decideRetainerDrawdown(decideRetainerDrawdownSchema.parse(payload), actor.userId); });
+  ipcMain.handle(IPC_CHANNELS.commercialCreateResourcePlan, (event, payload: unknown) => { const actor = assertRevenueOperationsAuthorized(event, 'commercial.resource-plan', 'create'); return revenueOpsStore.createProjectResourcePlan(createProjectResourcePlanSchema.parse(payload), actor.userId); });
+  ipcMain.handle(IPC_CHANNELS.commercialDecideResourcePlan, (event, payload: unknown) => { const actor = assertRevenueOperationsAuthorized(event, 'commercial.resource-plan', 'approve'); return revenueOpsStore.decideProjectResourcePlan(decideProjectResourcePlanSchema.parse(payload), actor.userId); });
+  ipcMain.handle(IPC_CHANNELS.commercialGenerateMarginReview, (event, payload: unknown) => { const actor = assertRevenueOperationsAuthorized(event, 'commercial.margin', 'create'); return revenueOpsStore.generateProjectMarginReview(generateProjectMarginReviewSchema.parse(payload), actor.userId); });
+  ipcMain.handle(IPC_CHANNELS.commercialReviewMargin, (event, payload: unknown) => { const actor = assertRevenueOperationsAuthorized(event, 'commercial.margin', 'approve'); return revenueOpsStore.reviewProjectMargin(reviewProjectMarginSchema.parse(payload), actor.userId); });
+  ipcMain.handle(IPC_CHANNELS.inventoryCreateUom, (event, payload: unknown) => { assertRevenueOperationsAuthorized(event, 'inventory.master', 'create'); return revenueOpsStore.addUom(createUomSchema.parse(payload)); });
   ipcMain.handle(IPC_CHANNELS.inventoryCreateUomConversion, (event, payload: unknown) => { const input = createUomConversionSchema.parse(payload); assertInventoryRecordAuthorized(event, 'inventory-item', input.itemId, 'inventory.master', 'create'); return revenueOpsStore.addUomConversion(input); });
   ipcMain.handle(IPC_CHANNELS.inventoryCreateItem, (event, payload: unknown) => { const input = createInventoryItemSchema.parse(payload); assertInventoryRecordAuthorized(event, 'uom', input.baseUomId, 'inventory.master', 'create'); return revenueOpsStore.addInventoryItem(input); });
   ipcMain.handle(IPC_CHANNELS.inventoryCreateVariant, (event, payload: unknown) => { const input = createItemVariantSchema.parse(payload); assertInventoryRecordAuthorized(event, 'inventory-item', input.itemId, 'inventory.master', 'create'); return revenueOpsStore.addItemVariant(input); });
@@ -3578,7 +3736,7 @@ export function registerIpcHandlers(
   });
   ipcMain.handle(IPC_CHANNELS.kernelOperationalHealth, (event) => {
     assertAuthorized(event, 'kernel.configuration', 'read');
-    return kernelStore.getOperationalHealth();
+    return { ...kernelStore.getOperationalHealth(), runtimeDatabaseEncryption };
   });
   ipcMain.handle(IPC_CHANNELS.kernelOutboxReplayPlan, (event) => {
     assertAuthorized(event, 'kernel.configuration', 'read');
@@ -3632,6 +3790,24 @@ export function registerIpcHandlers(
     await writeFile(choice.filePath, JSON.stringify(artifact, null, 2), 'utf8');
     return { filePath: choice.filePath, checksum: artifact.checksum, readyForSandbox: artifact.readyForSandbox, readyForProduction: artifact.readyForProduction, exportedAt: artifact.generatedAt };
   });
+  ipcMain.handle(IPC_CHANNELS.integrationVerifyProviderCertification, async (event) => {
+    const actor = assertAuthorized(event, 'release.control', 'read');
+    void actor;
+    const parent = BrowserWindow.fromWebContents(event.sender);
+    const options = { title: 'Verify provider certification package', filters: [{ name: 'JSON package', extensions: ['json'] }] };
+    const choice = parent ? await dialog.showOpenDialog(parent, options) : await dialog.showOpenDialog(options);
+    if (choice.canceled || !choice.filePaths[0]) return null;
+    const filePath = choice.filePaths[0];
+    const fileStat = await stat(filePath);
+    if (fileStat.size > 5 * 1024 * 1024) throw new Error('Provider certification package exceeds the 5 MB verification limit.');
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(await readFile(filePath, 'utf8'));
+    } catch {
+      return { filePath, verifiedAt: new Date().toISOString(), valid: false, declaredChecksum: '', missing: [], errors: ['Provider certification package is not valid JSON.'] };
+    }
+    return { filePath, verifiedAt: new Date().toISOString(), ...verifyProviderCertificationPackage(parsed) };
+  });
   ipcMain.handle(IPC_CHANNELS.integrationGetRetailCertificationPack, (event) => {
     const actor = assertAuthorized(event, 'release.control', 'read');
     return createRetailCertificationPack(revenueOpsStore.getSnapshot(), actor.userId);
@@ -3646,6 +3822,25 @@ export function registerIpcHandlers(
     if (choice.canceled || !choice.filePath) return null;
     await writeFile(choice.filePath, JSON.stringify(artifact, null, 2), 'utf8');
     return { filePath: choice.filePath, checksum: artifact.checksum, readyForProduction: artifact.summary.readyForProduction, externalGateCount: artifact.summary.externalGateCount, exportedAt: artifact.generatedAt };
+  });
+  ipcMain.handle(IPC_CHANNELS.integrationVerifyRetailCertificationPack, async (event) => {
+    const actor = assertAuthorized(event, 'release.control', 'read');
+    void actor;
+    const parent = BrowserWindow.fromWebContents(event.sender);
+    const options = { title: 'Verify retail certification pack', filters: [{ name: 'JSON package', extensions: ['json'] }] };
+    const choice = parent ? await dialog.showOpenDialog(parent, options) : await dialog.showOpenDialog(options);
+    if (choice.canceled || !choice.filePaths[0]) return null;
+    const filePath = choice.filePaths[0];
+    const fileStat = await stat(filePath);
+    if (fileStat.size > 5 * 1024 * 1024) throw new Error('Certification pack exceeds the 5 MB verification limit.');
+    let parsed: unknown;
+    try { parsed = JSON.parse(await readFile(filePath, 'utf8')) as unknown; } catch { return { filePath, verifiedAt: new Date().toISOString(), valid: false, declaredChecksum: '', errors: ['Selected file is not valid JSON.'] }; }
+    return { filePath, verifiedAt: new Date().toISOString(), ...verifyRetailCertificationPack(parsed) };
+  });
+  ipcMain.handle(IPC_CHANNELS.securityRotateArtifactKeyEnvelopes, async (event) => {
+    const actor = assertAuthorized(event, 'release.control', 'admin');
+    if (!artifactKeyRotation) throw new Error('Encrypted artifact rotation is unavailable in this process.');
+    return artifactKeyRotation.rotate(actor.userId);
   });
   ipcMain.handle(IPC_CHANNELS.releaseListGates, (event) => {
     assertAuthorized(event, 'release.control', 'read');
@@ -3979,13 +4174,13 @@ export function registerIpcHandlers(
   ipcMain.handle(
     IPC_CHANNELS.kernelTransitionWorkflow,
     (event, payload: unknown) => {
-      const actor = assertAuthenticated(event);
+      const actor = assertAuthorized(event, 'kernel.workflow', 'update');
       return kernelStore.moveWorkflow(transitionWorkflowSchema.parse(payload), actor.userId);
     },
   );
 
   ipcMain.handle(IPC_CHANNELS.kernelDecideApproval, (event, payload: unknown) => {
-    const actor = assertAuthenticated(event);
+    const actor = assertAuthorized(event, 'kernel.approval', 'approve');
     return kernelStore.decideApproval(decideApprovalSchema.parse(payload), actor.userId);
   });
 

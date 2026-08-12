@@ -323,6 +323,16 @@ export interface OperationalHealthSnapshot {
   pendingOutboxEvents: number;
   failedOutboxEvents: number;
   recentAuditEvents: number;
+  runtimeDatabaseEncryption?: RuntimeDatabaseEncryptionEvidence;
+}
+
+export type RuntimeDatabaseEncryptionStatus = 'native-encrypted' | 'interim-persisted-envelope' | 'unknown';
+
+export interface RuntimeDatabaseEncryptionEvidence {
+  status: RuntimeDatabaseEncryptionStatus;
+  driver: string;
+  statement: string;
+  checkedAt: string;
 }
 
 export interface OutboxReplayPlan {

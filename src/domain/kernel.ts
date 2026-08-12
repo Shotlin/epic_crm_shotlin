@@ -61,6 +61,7 @@ const ASSET_SALE_DISPOSAL_AUTHORIZATION_MIGRATION_ID = '025-asset-sale-disposal-
 const ASSET_LIFECYCLE_AUTHORIZATION_MIGRATION_ID = '026-asset-lifecycle-authorization';
 const PROCUREMENT_REQUISITION_AUTHORIZATION_MIGRATION_ID = '027-procurement-requisition-authorization';
 const INDIA_DEMO_LOCALIZATION_MIGRATION_ID = '028-india-demo-localization';
+const WORKSPACE_OWNER_RUNTIME_AUTHORIZATION_MIGRATION_ID = '029-workspace-owner-runtime-authorization';
 export const WORKSPACE_OWNER_ROLE_ID = 'role-workspace-owner';
 export const WORKSPACE_OWNER_ID = 'user-avery';
 const WORKSPACE_OWNER_GRANTS: ReadonlyArray<PermissionGrant> = [
@@ -114,6 +115,34 @@ const AUTHORIZATION_FOUNDATION_CHECKSUM = sha256(
     ownerId: WORKSPACE_OWNER_ID,
     role: WORKSPACE_OWNER_ROLE,
     grants: WORKSPACE_OWNER_GRANTS,
+  }),
+);
+const WORKSPACE_OWNER_RUNTIME_ROLE_ID = 'role-workspace-owner-runtime';
+const WORKSPACE_OWNER_RUNTIME_GRANTS: ReadonlyArray<PermissionGrant> = [
+  {
+    id: 'grant-workspace-runtime-kernel',
+    resource: 'kernel.configuration',
+    actions: ['read'],
+  },
+  {
+    id: 'grant-workspace-runtime-release',
+    resource: 'release.control',
+    actions: ['read', 'create', 'approve', 'export'],
+  },
+];
+const WORKSPACE_OWNER_RUNTIME_ROLE: Role = {
+  id: WORKSPACE_OWNER_RUNTIME_ROLE_ID,
+  name: 'Workspace owner runtime controls',
+  description: 'Read and governed approval access for operational health and retail release control surfaces.',
+  grantIds: WORKSPACE_OWNER_RUNTIME_GRANTS.map(({ id }) => id),
+  system: true,
+  version: 1,
+};
+const WORKSPACE_OWNER_RUNTIME_AUTHORIZATION_CHECKSUM = sha256(
+  JSON.stringify({
+    ownerId: WORKSPACE_OWNER_ID,
+    role: WORKSPACE_OWNER_RUNTIME_ROLE,
+    grants: WORKSPACE_OWNER_RUNTIME_GRANTS,
   }),
 );
 const GENERAL_LEDGER_GRANTS: ReadonlyArray<PermissionGrant> = [
@@ -529,6 +558,25 @@ function hasExpectedRoleDefinition(candidate: Role | undefined): boolean {
       candidate.system === WORKSPACE_OWNER_ROLE.system &&
       candidate.version === WORKSPACE_OWNER_ROLE.version &&
       sameStringSet(candidate.grantIds, WORKSPACE_OWNER_ROLE.grantIds),
+  );
+}
+
+function cloneWorkspaceOwnerRuntimeGrant(grant: PermissionGrant): PermissionGrant {
+  return { ...grant, actions: [...grant.actions] };
+}
+
+function cloneWorkspaceOwnerRuntimeRole(): Role {
+  return { ...WORKSPACE_OWNER_RUNTIME_ROLE, grantIds: [...WORKSPACE_OWNER_RUNTIME_ROLE.grantIds] };
+}
+
+function hasExpectedWorkspaceOwnerRuntimeRole(candidate: Role | undefined): boolean {
+  return Boolean(
+    candidate &&
+      candidate.name === WORKSPACE_OWNER_RUNTIME_ROLE.name &&
+      candidate.description === WORKSPACE_OWNER_RUNTIME_ROLE.description &&
+      candidate.system === WORKSPACE_OWNER_RUNTIME_ROLE.system &&
+      candidate.version === WORKSPACE_OWNER_RUNTIME_ROLE.version &&
+      sameStringSet(candidate.grantIds, WORKSPACE_OWNER_RUNTIME_ROLE.grantIds),
   );
 }
 
@@ -1326,6 +1374,126 @@ export function applyAuthorizationFoundation(
     now,
     `audit-${AUTHORIZATION_FOUNDATION_MIGRATION_ID}`,
     `event-${AUTHORIZATION_FOUNDATION_MIGRATION_ID}`,
+  );
+}
+
+/**
+ * Gives the bootstrap owner the narrow read/approval scope required by the
+ * operational health and retail cutover workbenches.  This is deliberately a
+ * follow-on migration: the immutable 002 foundation remains unchanged so
+ * existing backups and their checksums continue to verify.
+ */
+export function applyWorkspaceOwnerRuntimeAuthorization(
+  state: KernelState,
+  now = new Date().toISOString(),
+): KernelState {
+  const existingMigration = state.migrations.find(
+    ({ id }) => id === WORKSPACE_OWNER_RUNTIME_AUTHORIZATION_MIGRATION_ID,
+  );
+  const owner = state.users.find(({ id }) => id === WORKSPACE_OWNER_ID);
+  const existingRole = state.roles.find(({ id }) => id === WORKSPACE_OWNER_RUNTIME_ROLE_ID);
+  const grantsValid = WORKSPACE_OWNER_RUNTIME_GRANTS.every((expected) =>
+    hasExpectedGrantDefinition(state.grants.find(({ id }) => id === expected.id), expected),
+  );
+  const roleValid = hasExpectedWorkspaceOwnerRuntimeRole(existingRole);
+
+  if (existingMigration) {
+    if (
+      existingMigration.checksum !== WORKSPACE_OWNER_RUNTIME_AUTHORIZATION_CHECKSUM ||
+      !owner ||
+      owner.status !== 'active' ||
+      !owner.roleIds.includes(WORKSPACE_OWNER_RUNTIME_ROLE_ID) ||
+      !grantsValid ||
+      !roleValid
+    ) {
+      throw new Error('Workspace-owner runtime authorization migration state is invalid.');
+    }
+    assertNoSegregationConflict(state, [
+      ...state.roles
+        .filter(({ id }) => owner.roleIds.includes(id))
+        .flatMap(({ grantIds }) => grantIds),
+    ]);
+    return state;
+  }
+
+  if (!owner || owner.status !== 'active') {
+    throw new Error('Workspace-owner runtime authorization requires active bootstrap owner user-avery.');
+  }
+  if (existingRole && !roleValid) {
+    throw new Error('Workspace-owner runtime role collision.');
+  }
+  for (const expected of WORKSPACE_OWNER_RUNTIME_GRANTS) {
+    const existing = state.grants.find(({ id }) => id === expected.id);
+    if (existing && !hasExpectedGrantDefinition(existing, expected)) {
+      throw new Error(`Workspace-owner runtime grant collision for ${expected.id}.`);
+    }
+  }
+
+  const ownerRoleIds = normalizedUnique([
+    ...owner.roleIds,
+    WORKSPACE_OWNER_RUNTIME_ROLE_ID,
+  ]);
+  const rolesAfterMigration = existingRole
+    ? state.roles
+    : [...state.roles, cloneWorkspaceOwnerRuntimeRole()];
+  const effectiveGrantIds = rolesAfterMigration
+    .filter(({ id }) => ownerRoleIds.includes(id))
+    .flatMap(({ grantIds }) => grantIds);
+  assertNoSegregationConflict(state, effectiveGrantIds);
+
+  const missingGrants = WORKSPACE_OWNER_RUNTIME_GRANTS.filter(
+    ({ id }) => !state.grants.some((grant) => grant.id === id),
+  ).map(cloneWorkspaceOwnerRuntimeGrant);
+  const next: KernelState = {
+    ...state,
+    users: state.users.map((user) =>
+      user.id === WORKSPACE_OWNER_ID
+        ? { ...user, roleIds: ownerRoleIds, version: user.version + 1 }
+        : user,
+    ),
+    roles: rolesAfterMigration,
+    grants: [...state.grants, ...missingGrants],
+    migrations: [
+      ...state.migrations,
+      {
+        id: WORKSPACE_OWNER_RUNTIME_AUTHORIZATION_MIGRATION_ID,
+        appliedAt: now,
+        checksum: WORKSPACE_OWNER_RUNTIME_AUTHORIZATION_CHECKSUM,
+      },
+    ],
+  };
+
+  return appendEvidence(
+    state,
+    next,
+    {
+      actorId: 'system:migration',
+      action: 'authorization.workspace-owner-runtime-migrated',
+      resource: 'kernel.authorization',
+      resourceId: WORKSPACE_OWNER_RUNTIME_AUTHORIZATION_MIGRATION_ID,
+      reason: 'Granted the bootstrap owner governed runtime visibility and retail cutover control access without changing the immutable authorization foundation.',
+      before: {
+        ownerId: WORKSPACE_OWNER_ID,
+        ownerRoleIds: owner.roleIds,
+        grantIds: state.grants
+          .filter((grant) => WORKSPACE_OWNER_RUNTIME_GRANTS.some(({ id }) => id === grant.id))
+          .map(({ id }) => id),
+      },
+      after: {
+        ownerId: WORKSPACE_OWNER_ID,
+        ownerRoleIds,
+        grantIds: WORKSPACE_OWNER_RUNTIME_GRANTS.map(({ id }) => id),
+      },
+      eventType: 'kernel.authorization.workspace-owner-runtime-migrated.v1',
+      payload: {
+        ownerId: WORKSPACE_OWNER_ID,
+        roleId: WORKSPACE_OWNER_RUNTIME_ROLE_ID,
+        grantIds: WORKSPACE_OWNER_RUNTIME_GRANTS.map(({ id }) => id),
+      },
+    },
+    now,
+    `audit-${WORKSPACE_OWNER_RUNTIME_AUTHORIZATION_MIGRATION_ID}`,
+    `event-${WORKSPACE_OWNER_RUNTIME_AUTHORIZATION_MIGRATION_ID}`,
   );
 }
 

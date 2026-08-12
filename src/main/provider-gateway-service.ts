@@ -1,6 +1,7 @@
-import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 import type { CanonicalProviderStatus, ConfigureProviderCredentialsInput, ProviderConnector, ProviderSubmission } from '../shared/provider-contracts';
 import type { BusinessDatabase, StoredProviderSecret } from './database';
+import { ACTIVE_ARTIFACT_KEY_VERSION, assertSupportedArtifactKeyVersion, deriveArtifactKey } from './artifact-key';
 
 interface ProviderCredentials {
   clientId?: string;
@@ -9,6 +10,14 @@ interface ProviderCredentials {
   bearerToken?: string;
   signingKey?: string;
 }
+
+/**
+ * Credential envelopes are versioned independently from the OS keyring.  A
+ * future rotation must explicitly migrate every stored secret before this
+ * value changes; accepting an unknown version would risk decrypting an
+ * artifact with the wrong derived key and silently widening the blast radius.
+ */
+export const ACTIVE_CREDENTIAL_KEY_VERSION = ACTIVE_ARTIFACT_KEY_VERSION;
 
 export interface ProviderJsonResponse {
   statusCode: number;
@@ -29,11 +38,11 @@ const aad = (connectorId: string): Buffer => Buffer.from(`epic-bos\0provider-con
  * performs bounded status pulls without exposing either to the renderer.
  */
 export class ProviderGatewayService {
-  private readonly key: Buffer;
+  private readonly masterKey: Buffer;
 
   public constructor(private readonly database: BusinessDatabase, masterKey: Buffer, private readonly fetcher: typeof fetch = fetch) {
     if (masterKey.length !== 32) throw new Error('Provider vault requires a 256-bit master key.');
-    this.key = createHmac('sha256', masterKey).update('epic-bos/provider-connector-secrets/v1').digest();
+    this.masterKey = Buffer.from(masterKey);
   }
 
   public configureCredentials(input: ConfigureProviderCredentialsInput, actorId: string, now = new Date().toISOString()): string {
@@ -41,9 +50,9 @@ export class ProviderGatewayService {
     if (!Object.keys(credentials).length) throw new Error('Provide at least one provider credential.');
     for (const value of Object.values(credentials)) if (value.length > 8192) throw new Error('A provider credential exceeds the 8192-character limit.');
     const plaintext = Buffer.from(JSON.stringify(credentials), 'utf8');
-    const iv = randomBytes(12); const cipher = createCipheriv('aes-256-gcm', this.key, iv); cipher.setAAD(aad(input.connectorId));
+    const iv = randomBytes(12); const cipher = createCipheriv('aes-256-gcm', this.keyForVersion(ACTIVE_CREDENTIAL_KEY_VERSION), iv); cipher.setAAD(aad(input.connectorId));
     const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);
-    const record: StoredProviderSecret = { connectorId: input.connectorId, encryptedPayload: encrypted.toString('base64'), iv: iv.toString('base64'), authTag: cipher.getAuthTag().toString('base64'), keyVersion: 1, checksum: digest(plaintext), updatedBy: actorId, updatedAt: now };
+    const record: StoredProviderSecret = { connectorId: input.connectorId, encryptedPayload: encrypted.toString('base64'), iv: iv.toString('base64'), authTag: cipher.getAuthTag().toString('base64'), keyVersion: ACTIVE_CREDENTIAL_KEY_VERSION, checksum: digest(plaintext), updatedBy: actorId, updatedAt: now };
     this.database.upsertProviderSecret(record);
     return record.checksum.slice(0, 16);
   }
@@ -53,6 +62,33 @@ export class ProviderGatewayService {
     const record = this.database.getProviderSecret(connectorId);
     if (!record) throw new Error('Encrypted provider credentials are missing.');
     return record.checksum;
+  }
+
+  /** Re-encrypts every provider secret with the active envelope key version. */
+  public rewrapCredentialEnvelopes(actorId = 'system-key-rotation', targetVersion = ACTIVE_CREDENTIAL_KEY_VERSION, now = new Date().toISOString()): number {
+    assertSupportedArtifactKeyVersion(targetVersion);
+    let migrated = 0;
+    for (const record of this.database.listProviderSecrets()) {
+      if (record.keyVersion === targetVersion) continue;
+      const credentials = this.decryptRecord(record);
+      const plaintext = Buffer.from(JSON.stringify(credentials), 'utf8');
+      const iv = randomBytes(12);
+      const cipher = createCipheriv('aes-256-gcm', this.keyForVersion(targetVersion), iv);
+      cipher.setAAD(aad(record.connectorId));
+      const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+      this.database.upsertProviderSecret({
+        ...record,
+        encryptedPayload: encrypted.toString('base64'),
+        iv: iv.toString('base64'),
+        authTag: cipher.getAuthTag().toString('base64'),
+        keyVersion: targetVersion,
+        checksum: digest(plaintext),
+        updatedBy: actorId,
+        updatedAt: now,
+      });
+      migrated += 1;
+    }
+    return migrated;
   }
 
   /** Executes one bounded same-origin JSON request for a certified commerce adapter. */
@@ -108,10 +144,23 @@ export class ProviderGatewayService {
   private decrypt(connectorId: string): ProviderCredentials {
     const record = this.database.getProviderSecret(connectorId);
     if (!record) throw new Error('Encrypted provider credentials are missing.');
-    const decipher = createDecipheriv('aes-256-gcm', this.key, Buffer.from(record.iv, 'base64')); decipher.setAAD(aad(connectorId)); decipher.setAuthTag(Buffer.from(record.authTag, 'base64'));
+    return this.decryptRecord(record);
+  }
+
+  private decryptRecord(record: StoredProviderSecret): ProviderCredentials {
+    try {
+      assertSupportedArtifactKeyVersion(record.keyVersion);
+    } catch {
+      throw new Error(`Encrypted provider credentials use unsupported key version ${record.keyVersion}; rotate them before use.`);
+    }
+    const decipher = createDecipheriv('aes-256-gcm', this.keyForVersion(record.keyVersion), Buffer.from(record.iv, 'base64')); decipher.setAAD(aad(record.connectorId)); decipher.setAuthTag(Buffer.from(record.authTag, 'base64'));
     const plaintext = Buffer.concat([decipher.update(Buffer.from(record.encryptedPayload, 'base64')), decipher.final()]);
     if (digest(plaintext) !== record.checksum) throw new Error('Provider credential integrity verification failed.');
     return JSON.parse(plaintext.toString('utf8')) as ProviderCredentials;
+  }
+
+  private keyForVersion(version: number): Buffer {
+    return deriveArtifactKey(this.masterKey, 'epic-bos/provider-connector-secrets', version);
   }
 
   private headers(credentials: ProviderCredentials): Headers {

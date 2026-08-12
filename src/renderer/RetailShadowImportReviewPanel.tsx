@@ -1,5 +1,17 @@
 import { FileSearch, ShieldCheck, Upload, X } from 'lucide-react';
 import { useState, type ChangeEvent, type ReactNode } from 'react';
+import type {
+  FetchRetailHubShadowImportPullReceiptsInput,
+  FetchRetailHubShadowImportSourceStatusInput,
+  FetchRetailHubShadowImportPreflightInput,
+  RetailHubShadowImportPreflight,
+  RetailHubShadowImportPullReceiptsReport,
+  RetailHubShadowImportSourceStatusReport,
+} from '../shared/retail-hub-shadow-import-contracts';
+import type {
+  FetchRetailHubStoreEdgeWorkerMetricsInput,
+  RetailHubStoreEdgeWorkerMetricsReport,
+} from '../shared/retail-hub-store-edge-metrics-contracts';
 
 interface ShadowImportPreview {
   fileName: string;
@@ -15,19 +27,36 @@ interface ShadowImportPreview {
   entityCounts: Array<{ entity: string; observed: number; declared: number | null }>;
 }
 
+export interface RetailShadowImportReviewPanelProps {
+  busy?: boolean;
+  onFetchHubPreflight?: (input: FetchRetailHubShadowImportPreflightInput) => Promise<RetailHubShadowImportPreflight>;
+  onFetchHubSourceStatus?: (input: FetchRetailHubShadowImportSourceStatusInput) => Promise<RetailHubShadowImportSourceStatusReport>;
+  onFetchHubPullReceipts?: (input: FetchRetailHubShadowImportPullReceiptsInput) => Promise<RetailHubShadowImportPullReceiptsReport>;
+  onFetchHubWorkerMetrics?: (input: FetchRetailHubStoreEdgeWorkerMetricsInput) => Promise<RetailHubStoreEdgeWorkerMetricsReport>;
+}
+
 /**
  * Local preview only. The Hub remains the authority for checksum verification
  * and registry ingestion; this surface deliberately cannot import or sync.
  */
-export function RetailShadowImportReviewPanel(): ReactNode {
+export function RetailShadowImportReviewPanel({ busy = false, onFetchHubPreflight, onFetchHubSourceStatus, onFetchHubPullReceipts, onFetchHubWorkerMetrics }: RetailShadowImportReviewPanelProps = {}): ReactNode {
   const [preview, setPreview] = useState<ShadowImportPreview | null>(null);
   const [error, setError] = useState('');
+  const [hubBaseUrl, setHubBaseUrl] = useState('');
+  const [hubPreflight, setHubPreflight] = useState<RetailHubShadowImportPreflight | null>(null);
+  const [hubSourceStatus, setHubSourceStatus] = useState<RetailHubShadowImportSourceStatusReport | null>(null);
+  const [hubPullReceipts, setHubPullReceipts] = useState<RetailHubShadowImportPullReceiptsReport | null>(null);
+  const [hubWorkerMetrics, setHubWorkerMetrics] = useState<RetailHubStoreEdgeWorkerMetricsReport | null>(null);
 
   async function previewFile(event: ChangeEvent<HTMLInputElement>): Promise<void> {
     const file = event.target.files?.[0];
     if (!file) return;
     setError('');
     setPreview(null);
+    setHubPreflight(null);
+    setHubSourceStatus(null);
+    setHubPullReceipts(null);
+    setHubWorkerMetrics(null);
     try {
       const parsed: unknown = JSON.parse(await readFileText(file));
       const next = parsePreview(parsed, file.name);
@@ -40,7 +69,52 @@ export function RetailShadowImportReviewPanel(): ReactNode {
 
   function clearPreview(): void {
     setPreview(null);
+    setHubPreflight(null);
+    setHubSourceStatus(null);
+    setHubPullReceipts(null);
+    setHubWorkerMetrics(null);
     setError('');
+  }
+
+  async function checkHubReadiness(): Promise<void> {
+    if (!onFetchHubPreflight || !preview) return;
+    setError('');
+    setHubPreflight(null);
+    try {
+      setHubPreflight(await onFetchHubPreflight({ baseUrl: hubBaseUrl, batchId: preview.batchId }));
+    } catch (hubError) {
+      setError(hubError instanceof Error ? hubError.message : 'The Retail Hub shadow-import readiness could not be fetched.');
+    }
+  }
+
+  async function checkHubSource(): Promise<void> {
+    if (!onFetchHubSourceStatus) return;
+    setError('');
+    try {
+      setHubSourceStatus(await onFetchHubSourceStatus({ baseUrl: hubBaseUrl }));
+    } catch (sourceError) {
+      setError(sourceError instanceof Error ? sourceError.message : 'The Retail Hub source status could not be fetched.');
+    }
+  }
+
+  async function loadHubReceipts(): Promise<void> {
+    if (!onFetchHubPullReceipts || !preview) return;
+    setError('');
+    try {
+      setHubPullReceipts(await onFetchHubPullReceipts({ baseUrl: hubBaseUrl, batchId: preview.batchId }));
+    } catch (receiptError) {
+      setError(receiptError instanceof Error ? receiptError.message : 'The Retail Hub pull receipts could not be fetched.');
+    }
+  }
+
+  async function checkHubWorkerMetrics(): Promise<void> {
+    if (!onFetchHubWorkerMetrics) return;
+    setError('');
+    try {
+      setHubWorkerMetrics(await onFetchHubWorkerMetrics({ baseUrl: hubBaseUrl }));
+    } catch (metricsError) {
+      setError(metricsError instanceof Error ? metricsError.message : 'The Retail Hub worker health could not be fetched.');
+    }
   }
 
   return (
@@ -75,6 +149,22 @@ export function RetailShadowImportReviewPanel(): ReactNode {
           <div className="ledger-register" aria-label="Shadow import entity counts">
             {preview.entityCounts.map((entry) => <div key={entry.entity}><div><strong>{entry.entity}</strong><small>Observed {entry.observed.toLocaleString('en-IN')} · Declared {entry.declared === null ? 'not declared' : entry.declared.toLocaleString('en-IN')}</small></div><em data-status={entry.declared === null || entry.declared === entry.observed ? 'ready' : 'attention'}>{entry.declared === null || entry.declared === entry.observed ? 'review' : 'count mismatch'}</em></div>)}
           </div>
+          {onFetchHubPreflight || onFetchHubSourceStatus || onFetchHubPullReceipts || onFetchHubWorkerMetrics ? <div className="compact-form shadow-import-review__hub-check" aria-label="Retail Hub shadow-import readiness">
+            <div className="compact-form__row">
+              <label>Retail Hub HTTPS URL<input value={hubBaseUrl} onChange={(event) => setHubBaseUrl(event.target.value)} placeholder="https://hub.example" autoComplete="url" /></label>
+              <div className="bharat-panel__actions">
+                {onFetchHubPreflight ? <button type="button" className="button button--quiet" onClick={() => void checkHubReadiness()} disabled={busy || !preview || !hubBaseUrl.trim()}>Check Hub import readiness</button> : null}
+                {onFetchHubSourceStatus ? <button type="button" className="button button--quiet" onClick={() => void checkHubSource()} disabled={busy || !hubBaseUrl.trim()}>Check source health</button> : null}
+                {onFetchHubPullReceipts ? <button type="button" className="button button--quiet" onClick={() => void loadHubReceipts()} disabled={busy || !preview || !hubBaseUrl.trim()}>Load pull receipts</button> : null}
+                {onFetchHubWorkerMetrics ? <button type="button" className="button button--quiet" onClick={() => void checkHubWorkerMetrics()} disabled={busy || !hubBaseUrl.trim()}>Check Store Edge worker</button> : null}
+              </div>
+            </div>
+            <small>GET only. The Hub authenticates the request server-side; this screen accepts no API key, credential, or write-back setting.</small>
+            {hubPreflight ? <div className="retail-cutover-guard__hub-preview" role="status" aria-label="Retail Hub shadow-import readiness result"><strong>Import readiness: {hubPreflight.status}</strong><span>{hubPreflight.checks.filter(({ status }) => status === 'pass').length}/{hubPreflight.checks.length} server checks passing · write-back disabled</span>{hubPreflight.blockers.length ? <span className="form-error">Blockers: {hubPreflight.blockers.join(', ')}</span> : <span>Snapshot is ready for human review; this does not authorize cutover.</span>}</div> : null}
+            {hubSourceStatus ? <div className="retail-cutover-guard__hub-preview" role="status" aria-label="Retail Hub source status"><strong>Source: {hubSourceStatus.sourceStatus.status}</strong><span>Credential generation {hubSourceStatus.sourceStatus.credentialRevision ?? 'not supplied'} · write-back disabled</span><small>{hubSourceStatus.sourceStatus.checkedAt ?? 'No check time supplied'}{hubSourceStatus.sourceStatus.message ? ` · ${hubSourceStatus.sourceStatus.message}` : ''}</small></div> : null}
+            {hubPullReceipts ? <div className="retail-cutover-guard__hub-preview" role="status" aria-label="Retail Hub pull receipts"><strong>Pull receipts: {hubPullReceipts.receipts.length}</strong><span>{hubPullReceipts.receipts.reduce((total, receipt) => total + receipt.recordsFetched, 0).toLocaleString('en-IN')} records evidenced · write-back disabled</span>{hubPullReceipts.receipts.length ? <div className="ledger-register">{hubPullReceipts.receipts.map((receipt) => <div key={receipt.id}><div><strong>{receipt.batchId}</strong><small>{receipt.pagesFetched} pages · {receipt.recordsFetched} records · {receipt.registeredAt}</small></div><em data-status="ready">{receipt.planChecksum.slice(0, 10)}…</em></div>)}</div> : <small>No durable pull receipt is available for this batch.</small>}</div> : null}
+            {hubWorkerMetrics ? <div className="retail-cutover-guard__hub-preview" role="status" aria-label="Retail Hub Store Edge worker metrics"><strong>Store Edge worker: {hubWorkerMetrics.metrics.deadLetter ? 'review required' : 'healthy'}</strong><span>{hubWorkerMetrics.metrics.completed.toLocaleString('en-IN')} completed · {hubWorkerMetrics.metrics.retryable.toLocaleString('en-IN')} retryable · {hubWorkerMetrics.metrics.deadLetter.toLocaleString('en-IN')} dead-letter</span><small>{hubWorkerMetrics.metrics.runs.toLocaleString('en-IN')} runs · observed {hubWorkerMetrics.observedAt} · write-back disabled</small></div> : null}
+           </div> : null}
           <p className="ledger-sheet__note"><strong>Next step:</strong> the Retail Hub must verify checksum <code>{preview.declaredChecksum || 'not supplied'}</code>, resolve the {preview.unmappedRecordCount + preview.duplicateIdentityCount} identity review item{preview.unmappedRecordCount + preview.duplicateIdentityCount === 1 ? '' : 's'}, and register the evidence. This preview cannot approve reconciliation or enable live writes.</p>
         </>
       ) : (

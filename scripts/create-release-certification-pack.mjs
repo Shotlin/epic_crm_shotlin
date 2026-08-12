@@ -38,6 +38,7 @@ const evidence = smokeEvidencePath === '-'
   : readSmokeEvidence(path.resolve(root, smokeEvidencePath), artifactsRoot, expectedPlatform, expectedVersion);
 const buildRevisions = [...new Set(manifests.map(({ metadata }) => metadata.buildRevision).filter(Boolean))];
 const releaseIdentityHashes = [...new Set(manifests.map(({ metadata }) => metadata.releaseIdentitySha256).filter(Boolean))];
+const buildEnvironments = [...new Set(manifests.map(({ metadata }) => metadata.buildEnvironment).filter(Boolean))];
 const index = {
   schema: 'epic-bos.release-certification-pack.v1',
   product: 'Epic BOS',
@@ -53,12 +54,14 @@ const index = {
     releaseIdentitySha256: metadata.releaseIdentitySha256,
     schemaRevision: metadata.schemaRevision,
     buildRevision: metadata.buildRevision,
+    buildEnvironment: metadata.buildEnvironment,
   })),
   smokeEvidence: evidence,
   externalGates: {
     codeSigning: 'required',
     macosNotarisation: expectedPlatform === 'darwin' ? 'required' : 'not-applicable',
     nativeLaunchReview: evidence.status === 'passed' ? 'submitted' : 'required',
+    nativeBuild: buildEnvironments.length === 1 && buildEnvironments[0] === 'native' ? 'verified' : 'required',
     providerCertification: 'required',
     physicalDeviceCertification: 'required',
     independentReviewer: 'required',
@@ -67,6 +70,7 @@ const index = {
   goNoGo: 'hold',
   holdReasons: [
     'This pack records unsigned evidence only.',
+    ...(buildEnvironments.length === 1 && buildEnvironments[0] === 'native' ? [] : ['The artifact was not proven to come from a native target runner.']),
     'Provider and physical-device certification must be supplied by the selected production providers and store hardware.',
     ...(evidence.status === 'passed' ? [] : ['Native launch smoke evidence is missing or not independently verified.']),
   ],

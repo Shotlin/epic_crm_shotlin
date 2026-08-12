@@ -208,7 +208,12 @@ export function RetailReturnsWorkbench({
   async function submitReturnRequest(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     if (!selectedSale) return;
-    const data = new FormData(event.currentTarget);
+    // Keep a stable reference across the async IPC call. React may clear the
+    // synthetic event's currentTarget after the await, so calling reset on
+    // event.currentTarget later can turn a committed request into a false UI
+    // error notice.
+    const form = event.currentTarget;
+    const data = new FormData(form);
     const lines = selectedSale.lines.flatMap((line) => {
       const draft = requestLines[line.id];
       if (!draft?.selected) return [];
@@ -232,7 +237,7 @@ export function RetailReturnsWorkbench({
       setNotice('Counter-return request recorded from the immutable POS receipt. No stock, refund, settlement, or GST credit note was created.');
       setRequestLines(sourceRequestDraft(selectedSale));
       setReturnTransactionKey(newReturnTransactionKey());
-      event.currentTarget.reset();
+      form.reset();
     } catch (error) {
       setNotice(errorMessage(error));
     }

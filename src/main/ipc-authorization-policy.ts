@@ -5,7 +5,6 @@ type IpcChannelKey = keyof typeof IPC_CHANNELS;
 
 export type IpcAuthorizationPolicy =
   | { mode: 'trusted' }
-  | { mode: 'session' }
   | { mode: 'delegated'; reason: string }
   | {
       mode: 'permission';
@@ -17,20 +16,40 @@ export type IpcAuthorizationPolicy =
 const channelKeys = Object.keys(IPC_CHANNELS) as IpcChannelKey[];
 
 /**
- * Every registered IPC route must resolve through this manifest. The session
- * default is a deliberately visible transitional classification for legacy
- * domain routes; new sensitive routes must be promoted to permission or
- * delegated policy as their record ownership is introduced.
+ * Every route below is intentionally named. These handlers already resolve a
+ * validated self/record scope within their own typed command boundary, but
+ * their authorization still needs to be promoted to an exact resource/action
+ * policy in the domain batches listed in the Phase 0 register. This explicit
+ * list replaces the former silent session baseline: a newly declared channel
+ * now fails the completeness check until it has a named posture.
  */
-const sessionBaseline = Object.fromEntries(
-  channelKeys.map((key) => [key, { mode: 'session' } as const]),
-) as Record<IpcChannelKey, IpcAuthorizationPolicy>;
+const EXPLICIT_DELEGATED_SCOPE_CHANNEL_KEYS = [
+] as const satisfies readonly IpcChannelKey[];
 
-const BASE_IPC_AUTHORIZATION_POLICY: Record<
-  IpcChannelKey,
-  IpcAuthorizationPolicy
-> = {
-  ...sessionBaseline,
+const delegatedScopeBaseline = Object.fromEntries(
+  EXPLICIT_DELEGATED_SCOPE_CHANNEL_KEYS.map((key) => [key, {
+    mode: 'delegated' as const,
+    reason: 'The handler resolves a validated self or record scope before the mutation.',
+  }]),
+) as Partial<Record<IpcChannelKey, IpcAuthorizationPolicy>>;
+
+function completeIpcAuthorizationPolicyMap(
+  policy: Partial<Record<IpcChannelKey, IpcAuthorizationPolicy>>,
+): Record<IpcChannelKey, IpcAuthorizationPolicy> {
+  const missing = channelKeys.filter((key) => !policy[key]);
+  const unknown = Object.keys(policy).filter(
+    (key) => !channelKeys.includes(key as IpcChannelKey),
+  );
+  if (missing.length || unknown.length) {
+    throw new Error(
+      `IPC authorization policy is incomplete: missing [${missing.join(', ')}], unknown [${unknown.join(', ')}].`,
+    );
+  }
+  return policy as Record<IpcChannelKey, IpcAuthorizationPolicy>;
+}
+
+const BASE_IPC_AUTHORIZATION_POLICY = completeIpcAuthorizationPolicyMap({
+  ...delegatedScopeBaseline,
   systemInfo: { mode: 'trusted' },
   systemBuildProvenance: { mode: 'trusted' },
   authStatus: { mode: 'trusted' },
@@ -40,16 +59,526 @@ const BASE_IPC_AUTHORIZATION_POLICY: Record<
   authLock: { mode: 'trusted' },
   storageListAttachments: {
     mode: 'delegated',
-    reason: 'Attachment resource is resolved from the validated request payload.',
+    reason: 'Attachment resource is resolved from the validated request payload and active company/branch authorization.',
   },
   storageAddAttachment: {
     mode: 'delegated',
-    reason: 'Attachment resource is resolved from the validated request payload.',
+    reason: 'Attachment resource is resolved from the validated request payload and active company/branch authorization.',
   },
   storageExportAttachment: {
     mode: 'delegated',
-    reason: 'Attachment resource is resolved from encrypted metadata.',
+    reason: 'Attachment resource is resolved from encrypted metadata after active company/branch authorization.',
   },
+  storageListRestoreDrills: {
+    mode: 'permission', resource: 'kernel.backup', action: 'read', scope: 'active',
+  },
+  storageRunRestoreDrill: {
+    mode: 'permission', resource: 'kernel.backup', action: 'admin', scope: 'active',
+  },
+  storageRewrapLocalBackups: {
+    mode: 'permission', resource: 'kernel.backup', action: 'admin', scope: 'active',
+  },
+  integrationGetRetailCertificationPack: {
+    mode: 'permission', resource: 'release.control', action: 'read', scope: 'active',
+  },
+  integrationExportRetailCertificationPack: {
+    mode: 'permission', resource: 'release.control', action: 'export', scope: 'active',
+  },
+  integrationVerifyRetailCertificationPack: {
+    mode: 'permission', resource: 'release.control', action: 'read', scope: 'active',
+  },
+  securityRotateArtifactKeyEnvelopes: {
+    mode: 'permission', resource: 'release.control', action: 'admin', scope: 'active',
+  },
+  crmDepthRecordCommunicationDelivery: {
+    mode: 'permission', resource: 'crm.communication', action: 'update', scope: 'revenue-operations-bound',
+  },
+  retailCreateUnifiedOrderPickTasks: {
+    mode: 'permission', resource: 'inventory.execution', action: 'create', scope: 'revenue-operations-bound',
+  },
+  retailCompleteUnifiedOrderPickTasks: {
+    mode: 'permission', resource: 'inventory.execution', action: 'update', scope: 'revenue-operations-bound',
+  },
+  retailCompleteUnifiedOrderShipmentPackage: {
+    mode: 'permission', resource: 'inventory.execution', action: 'update', scope: 'revenue-operations-bound',
+  },
+  retailPrepareUnifiedOrderDispatch: {
+    mode: 'permission', resource: 'inventory.execution', action: 'update', scope: 'revenue-operations-bound',
+  },
+  retailCreateCommissionPayoutBatch: {
+    mode: 'permission', resource: 'finance.payables', action: 'create', scope: 'revenue-operations-bound',
+  },
+  retailDecideCommissionPayoutBatch: {
+    mode: 'permission', resource: 'finance.payables', action: 'approve', scope: 'revenue-operations-bound',
+  },
+  retailReleaseCommissionPayoutBatch: {
+    mode: 'permission', resource: 'finance.payables', action: 'create', scope: 'revenue-operations-bound',
+  },
+  retailCreateInterBranchTransfer: {
+    mode: 'permission', resource: 'inventory.execution', action: 'create', scope: 'revenue-operations-bound',
+  },
+  retailCreateScaleProfile: {
+    mode: 'permission', resource: 'inventory.master', action: 'create', scope: 'revenue-operations-bound',
+  },
+  retailCreatePrinterAdapter: {
+    mode: 'permission', resource: 'inventory.master', action: 'create', scope: 'revenue-operations-bound',
+  },
+  retailTestPrinterAdapter: {
+    mode: 'permission', resource: 'inventory.master', action: 'update', scope: 'revenue-operations-bound',
+  },
+  retailCreateLabelPrintDispatch: {
+    mode: 'permission', resource: 'inventory.master', action: 'create', scope: 'revenue-operations-bound',
+  },
+  retailDecideLabelPrintDispatch: {
+    mode: 'permission', resource: 'inventory.master', action: 'approve', scope: 'revenue-operations-bound',
+  },
+  retailPrepareCatalogBulkEdit: {
+    mode: 'permission', resource: 'inventory.master', action: 'create', scope: 'revenue-operations-bound',
+  },
+  retailApplyCatalogBulkEdit: {
+    mode: 'permission', resource: 'inventory.master', action: 'approve', scope: 'revenue-operations-bound',
+  },
+  retailCreatePurchaseOcrDocument: {
+    mode: 'permission', resource: 'inventory.master', action: 'create', scope: 'revenue-operations-bound',
+  },
+  retailDecidePurchaseOcr: {
+    mode: 'permission', resource: 'inventory.master', action: 'approve', scope: 'revenue-operations-bound',
+  },
+  retailConvertPurchaseOcr: {
+    mode: 'permission', resource: 'inventory.master', action: 'update', scope: 'revenue-operations-bound',
+  },
+  retailCreateCommerceConnector: {
+    mode: 'permission', resource: 'inventory.master', action: 'create', scope: 'revenue-operations-bound',
+  },
+  retailConfigureCommerceCredentials: {
+    mode: 'permission', resource: 'inventory.master', action: 'update', scope: 'revenue-operations-bound',
+  },
+  retailCreateCommerceSyncRun: {
+    mode: 'permission', resource: 'inventory.master', action: 'create', scope: 'revenue-operations-bound',
+  },
+  retailExecuteCommerceSync: {
+    mode: 'permission', resource: 'inventory.master', action: 'approve', scope: 'revenue-operations-bound',
+  },
+  retailRecordCommerceSync: {
+    mode: 'permission', resource: 'inventory.master', action: 'approve', scope: 'revenue-operations-bound',
+  },
+  retailImportCommerceOrder: {
+    mode: 'permission', resource: 'inventory.master', action: 'create', scope: 'revenue-operations-bound',
+  },
+  retailHandoffCommerceOrder: {
+    mode: 'permission', resource: 'inventory.execution', action: 'update', scope: 'revenue-operations-bound',
+  },
+  retailCreateSettlementReconciliation: {
+    mode: 'permission', resource: 'inventory.master', action: 'create', scope: 'revenue-operations-bound',
+  },
+  retailDecideSettlementReconciliation: {
+    mode: 'permission', resource: 'inventory.master', action: 'approve', scope: 'revenue-operations-bound',
+  },
+  retailCreateSettlementAllocationPack: {
+    mode: 'permission', resource: 'finance.receivable', action: 'create', scope: 'revenue-operations-bound',
+  },
+  retailDecideSettlementAllocationPack: {
+    mode: 'permission', resource: 'finance.receivable', action: 'approve', scope: 'revenue-operations-bound',
+  },
+  retailCreateCommerceConflictResolution: {
+    mode: 'permission', resource: 'inventory.execution', action: 'create', scope: 'revenue-operations-bound',
+  },
+  retailDecideCommerceConflictResolution: {
+    mode: 'permission', resource: 'inventory.execution', action: 'approve', scope: 'revenue-operations-bound',
+  },
+  retailCreateSettlementWithholdingEvidence: {
+    mode: 'permission', resource: 'finance.receivable', action: 'create', scope: 'revenue-operations-bound',
+  },
+  retailDecideSettlementWithholdingEvidence: {
+    mode: 'permission', resource: 'finance.receivable', action: 'approve', scope: 'revenue-operations-bound',
+  },
+  retailCreateOcrProviderProfile: {
+    mode: 'permission', resource: 'inventory.master', action: 'create', scope: 'revenue-operations-bound',
+  },
+  retailConfigureOcrProvider: {
+    mode: 'permission', resource: 'inventory.master', action: 'update', scope: 'revenue-operations-bound',
+  },
+  retailExecuteOcr: {
+    mode: 'permission', resource: 'inventory.master', action: 'create', scope: 'revenue-operations-bound',
+  },
+  retailTestOcrProvider: {
+    mode: 'permission', resource: 'inventory.master', action: 'approve', scope: 'revenue-operations-bound',
+  },
+  retailPreparePurchaseOcrMapping: {
+    mode: 'permission', resource: 'inventory.master', action: 'create', scope: 'revenue-operations-bound',
+  },
+  retailApplyPurchaseOcrMapping: {
+    mode: 'permission', resource: 'inventory.master', action: 'approve', scope: 'revenue-operations-bound',
+  },
+  revenueOpsPrepareStatutoryExchange: {
+    mode: 'permission', resource: 'statutory.exchange', action: 'create', scope: 'active',
+  },
+  revenueOpsSubmitStatutoryExchange: {
+    mode: 'permission', resource: 'statutory.exchange', action: 'submit', scope: 'revenue-operations-bound',
+  },
+  revenueOpsRecordStatutoryResponse: {
+    mode: 'permission', resource: 'statutory.exchange', action: 'post', scope: 'revenue-operations-bound',
+  },
+  statutoryConfigureAdapter: {
+    mode: 'permission', resource: 'statutory.adapter', action: 'admin', scope: 'active',
+  },
+  statutoryConfigureCredentials: {
+    mode: 'permission', resource: 'statutory.credential', action: 'admin', scope: 'active',
+  },
+  statutoryPrepareOperation: {
+    mode: 'permission', resource: 'statutory.operation', action: 'create', scope: 'active',
+  },
+  statutorySubmitOperation: {
+    mode: 'permission', resource: 'statutory.operation', action: 'submit', scope: 'revenue-operations-bound',
+  },
+  statutoryRecordOperationResponse: {
+    mode: 'permission', resource: 'statutory.operation', action: 'post', scope: 'revenue-operations-bound',
+  },
+  statutoryPrepareConsolidatedEwb: {
+    mode: 'permission', resource: 'statutory.consolidated-eway-bill', action: 'create', scope: 'active',
+  },
+  statutorySubmitConsolidatedEwb: {
+    mode: 'permission', resource: 'statutory.consolidated-eway-bill', action: 'submit', scope: 'revenue-operations-bound',
+  },
+  statutoryRecordConsolidatedEwbResponse: {
+    mode: 'permission', resource: 'statutory.consolidated-eway-bill', action: 'post', scope: 'revenue-operations-bound',
+  },
+  statutoryVerifySignature: {
+    mode: 'permission', resource: 'statutory.signature', action: 'post', scope: 'active',
+  },
+  statutoryRunPortalReconciliation: {
+    mode: 'permission', resource: 'statutory.portal-reconciliation', action: 'post', scope: 'active',
+  },
+  providerConfigureConnector: {
+    mode: 'permission', resource: 'provider.connector', action: 'admin', scope: 'active',
+  },
+  providerConfigureCredentials: {
+    mode: 'permission', resource: 'provider.credential', action: 'admin', scope: 'active',
+  },
+  providerCreateConformanceCase: {
+    mode: 'permission', resource: 'provider.conformance-case', action: 'create', scope: 'active',
+  },
+  providerPlanConformancePack: {
+    mode: 'permission', resource: 'provider.conformance-case', action: 'create', scope: 'active',
+  },
+  providerExecutePreflight: {
+    mode: 'permission', resource: 'provider.conformance-case', action: 'create', scope: 'active',
+  },
+  providerRecordConformanceResult: {
+    mode: 'permission', resource: 'provider.conformance-case', action: 'update', scope: 'revenue-operations-bound',
+  },
+  providerApproveConnector: {
+    mode: 'permission', resource: 'provider.connector', action: 'approve', scope: 'revenue-operations-bound',
+  },
+  providerPrepareSubmission: {
+    mode: 'permission', resource: 'provider.submission', action: 'create', scope: 'active',
+  },
+  providerHandOffSubmission: {
+    mode: 'permission', resource: 'provider.submission', action: 'post', scope: 'revenue-operations-bound',
+  },
+  providerRecordSubmissionResponse: {
+    mode: 'permission', resource: 'provider.submission', action: 'post', scope: 'revenue-operations-bound',
+  },
+  providerRunReconciliation: {
+    mode: 'permission', resource: 'provider.reconciliation', action: 'post', scope: 'active',
+  },
+  collectionsProposeCreditLimit: {
+    mode: 'permission', resource: 'finance.credit-limit', action: 'submit', scope: 'active',
+  },
+  collectionsDecideCreditLimit: {
+    mode: 'permission', resource: 'finance.credit-limit', action: 'approve', scope: 'revenue-operations-bound',
+  },
+  collectionsRunDunning: {
+    mode: 'permission', resource: 'finance.dunning', action: 'read', scope: 'active',
+  },
+  collectionsRecordActivity: {
+    mode: 'permission', resource: 'finance.collection-activity', action: 'create', scope: 'revenue-operations-bound',
+  },
+  collectionsOpenDispute: {
+    mode: 'permission', resource: 'finance.receivable-dispute', action: 'create', scope: 'active',
+  },
+  collectionsResolveDispute: {
+    mode: 'permission', resource: 'finance.receivable-dispute', action: 'approve', scope: 'revenue-operations-bound',
+  },
+  collectionsRequestWriteOff: {
+    mode: 'permission', resource: 'finance.write-off', action: 'submit', scope: 'active',
+  },
+  collectionsDecideWriteOff: {
+    mode: 'permission', resource: 'finance.write-off', action: 'approve', scope: 'revenue-operations-bound',
+  },
+  financeCreateWithholdingPolicy: {
+    mode: 'permission', resource: 'finance.withholding-policy', action: 'admin', scope: 'active',
+  },
+  financeRecordWithholdingEntry: {
+    mode: 'permission', resource: 'finance.withholding-entry', action: 'create', scope: 'active',
+  },
+  financeTransitionWithholdingEntry: {
+    mode: 'permission', resource: 'finance.withholding-entry', action: 'post', scope: 'active',
+  },
+  financePrepareZeroRatedSupply: {
+    mode: 'permission', resource: 'finance.zero-rated-supply-review', action: 'create', scope: 'active',
+  },
+  financeDecideZeroRatedSupply: {
+    mode: 'permission', resource: 'finance.zero-rated-supply-review', action: 'approve', scope: 'active',
+  },
+  financeCreateBankAccount: {
+    mode: 'permission', resource: 'finance.bank-account', action: 'admin', scope: 'active',
+  },
+  financePreviewBankStatement: {
+    mode: 'permission', resource: 'finance.bank-statement-import', action: 'create', scope: 'active',
+  },
+  financeCommitBankStatement: {
+    mode: 'permission', resource: 'finance.bank-statement-import', action: 'post', scope: 'active',
+  },
+  financeConfirmBankMatch: {
+    mode: 'permission', resource: 'finance.bank-reconciliation', action: 'approve', scope: 'active',
+  },
+  financeExcludeBankLine: {
+    mode: 'permission', resource: 'finance.bank-reconciliation', action: 'approve', scope: 'active',
+  },
+  treasuryRecordPosition: {
+    mode: 'permission', resource: 'treasury.cash-position', action: 'create', scope: 'active',
+  },
+  treasuryRunCashForecast: {
+    mode: 'permission', resource: 'treasury.cash-forecast', action: 'create', scope: 'active',
+  },
+  treasuryCreatePaymentProposal: {
+    mode: 'permission', resource: 'treasury.payment', action: 'submit', scope: 'active',
+  },
+  treasuryDecidePaymentProposal: {
+    mode: 'permission', resource: 'treasury.payment', action: 'approve', scope: 'revenue-operations-bound',
+  },
+  treasuryReleasePaymentProposal: {
+    mode: 'permission', resource: 'treasury.payment', action: 'post', scope: 'revenue-operations-bound',
+  },
+  treasurySettlePaymentProposal: {
+    mode: 'permission', resource: 'treasury.payment', action: 'post', scope: 'revenue-operations-bound',
+  },
+  treasuryRecordBankCharge: {
+    mode: 'permission', resource: 'treasury.bank-charge', action: 'create', scope: 'active',
+  },
+  treasuryReconcileBankCharge: {
+    mode: 'permission', resource: 'treasury.bank-charge', action: 'approve', scope: 'revenue-operations-bound',
+  },
+  treasuryOpenSettlementException: {
+    mode: 'permission', resource: 'treasury.settlement-exception', action: 'create', scope: 'active',
+  },
+  treasuryResolveSettlementException: {
+    mode: 'permission', resource: 'treasury.settlement-exception', action: 'approve', scope: 'revenue-operations-bound',
+  },
+  treasuryCreateLiquiditySweep: {
+    mode: 'permission', resource: 'treasury.liquidity-sweep', action: 'submit', scope: 'active',
+  },
+  treasuryDecideLiquiditySweep: {
+    mode: 'permission', resource: 'treasury.liquidity-sweep', action: 'approve', scope: 'revenue-operations-bound',
+  },
+  treasuryReleaseLiquiditySweep: {
+    mode: 'permission', resource: 'treasury.liquidity-sweep', action: 'post', scope: 'revenue-operations-bound',
+  },
+  treasurySettleLiquiditySweep: {
+    mode: 'permission', resource: 'treasury.liquidity-sweep', action: 'post', scope: 'revenue-operations-bound',
+  },
+  retailEnqueueOfflineSale: {
+    mode: 'permission', resource: 'sales.commercial', action: 'create', scope: 'active',
+  },
+  retailSyncOfflineSale: {
+    mode: 'permission', resource: 'sales.commercial', action: 'create', scope: 'active',
+  },
+  retailSyncOfflineQueue: {
+    mode: 'permission', resource: 'sales.commercial', action: 'create', scope: 'active',
+  },
+  retailResolveOfflineSale: {
+    mode: 'permission', resource: 'sales.commercial', action: 'update', scope: 'active',
+  },
+  retailSendHubStoreEdgeSync: {
+    mode: 'permission', resource: 'sales.commercial', action: 'create', scope: 'active',
+  },
+  retailSyncHubStoreEdgeQueue: {
+    mode: 'permission', resource: 'sales.commercial', action: 'create', scope: 'active',
+  },
+  retailSaveHubStoreEdgeSyncPolicy: {
+    mode: 'permission', resource: 'sales.commercial', action: 'update', scope: 'active',
+  },
+  retailIngestUnifiedOrder: {
+    mode: 'permission', resource: 'sales.commercial', action: 'create', scope: 'active',
+  },
+  retailPrepareUnifiedOrderHandoff: {
+    mode: 'permission', resource: 'sales.commercial', action: 'approve', scope: 'active',
+  },
+  retailPrepareOrderHubHandoff: {
+    mode: 'permission', resource: 'sales.commercial', action: 'create', scope: 'active',
+  },
+  retailRecordOrderHubHandoffResult: {
+    mode: 'permission', resource: 'sales.commercial', action: 'approve', scope: 'active',
+  },
+  retailPrepareOrderFulfilmentHandoff: {
+    mode: 'permission', resource: 'sales.commercial', action: 'create', scope: 'active',
+  },
+  retailDecideOrderFulfilmentHandoff: {
+    mode: 'permission', resource: 'sales.commercial', action: 'approve', scope: 'active',
+  },
+  retailReserveUnifiedOrderStock: {
+    mode: 'permission', resource: 'inventory.execution', action: 'create', scope: 'active',
+  },
+  retailCreateUnifiedOrderShipmentPackage: {
+    mode: 'permission', resource: 'inventory.execution', action: 'create', scope: 'active',
+  },
+  retailDispatchUnifiedOrder: {
+    mode: 'permission', resource: 'inventory.execution', action: 'update', scope: 'active',
+  },
+  retailConfirmUnifiedOrderDelivery: {
+    mode: 'permission', resource: 'inventory.execution', action: 'update', scope: 'active',
+  },
+  retailReconcileUnifiedOrderRto: {
+    mode: 'permission', resource: 'inventory.execution', action: 'update', scope: 'active',
+  },
+  retailReconcileUnifiedOrderCancellation: {
+    mode: 'permission', resource: 'inventory.execution', action: 'update', scope: 'active',
+  },
+  retailReconcileUnifiedOrderReturn: {
+    mode: 'permission', resource: 'inventory.execution', action: 'update', scope: 'active',
+  },
+  retailRecordUnifiedOrderCarrierCallback: {
+    mode: 'permission', resource: 'inventory.execution', action: 'update', scope: 'active',
+  },
+  retailCreateExchange: {
+    mode: 'permission', resource: 'sales.commercial', action: 'create', scope: 'active',
+  },
+  retailDecideExchange: {
+    mode: 'permission', resource: 'sales.commercial', action: 'approve', scope: 'active',
+  },
+  retailPrepareCreditNoteReconciliation: {
+    mode: 'permission', resource: 'finance.receivable', action: 'create', scope: 'active',
+  },
+  retailRecordCreditNotePortalResponse: {
+    mode: 'permission', resource: 'finance.receivable', action: 'approve', scope: 'active',
+  },
+  retailDecideInterBranchTransfer: {
+    mode: 'permission', resource: 'inventory.execution', action: 'approve', scope: 'active',
+  },
+  retailDispatchInterBranchTransfer: {
+    mode: 'permission', resource: 'inventory.execution', action: 'update', scope: 'active',
+  },
+  retailReceiveInterBranchTransfer: {
+    mode: 'permission', resource: 'inventory.execution', action: 'update', scope: 'active',
+  },
+  retailReserveCommerceOrder: {
+    mode: 'permission', resource: 'inventory.execution', action: 'create', scope: 'active',
+  },
+  retailPrepareCommercePushBatch: {
+    mode: 'permission', resource: 'inventory.master', action: 'create', scope: 'active',
+  },
+  retailDecideCommercePushBatch: {
+    mode: 'permission', resource: 'inventory.master', action: 'approve', scope: 'active',
+  },
+  retailExecuteCommercePushBatch: {
+    mode: 'permission', resource: 'inventory.master', action: 'approve', scope: 'active',
+  },
+  retailCreateCommerceCatalogMapping: {
+    mode: 'permission', resource: 'inventory.master', action: 'create', scope: 'active',
+  },
+  retailDecideCommerceCatalogMapping: {
+    mode: 'permission', resource: 'inventory.master', action: 'approve', scope: 'active',
+  },
+  retailDisableCommerceCatalogMapping: {
+    mode: 'permission', resource: 'inventory.master', action: 'approve', scope: 'active',
+  },
+  retailTransitionCommerceOrder: {
+    mode: 'permission', resource: 'inventory.execution', action: 'update', scope: 'active',
+  },
+  retailCreateCommerceConformanceCase: {
+    mode: 'permission', resource: 'inventory.master', action: 'create', scope: 'active',
+  },
+  retailPlanCommerceConformancePack: {
+    mode: 'permission', resource: 'inventory.master', action: 'create', scope: 'active',
+  },
+  retailRecordCommerceConformance: {
+    mode: 'permission', resource: 'inventory.master', action: 'approve', scope: 'active',
+  },
+  retailScanPurchaseExceptions: {
+    mode: 'permission', resource: 'inventory.master', action: 'create', scope: 'active',
+  },
+  retailResolvePurchaseException: {
+    mode: 'permission', resource: 'inventory.master', action: 'approve', scope: 'active',
+  },
+  payrollCreateRegistration: { mode: 'permission', resource: 'payroll.employer-registration', action: 'create', scope: 'active' },
+  payrollDecideRegistration: { mode: 'permission', resource: 'payroll.employer-registration', action: 'approve', scope: 'active' },
+  payrollCreatePolicy: { mode: 'permission', resource: 'payroll.policy', action: 'create', scope: 'active' },
+  payrollDecidePolicy: { mode: 'permission', resource: 'payroll.policy', action: 'approve', scope: 'active' },
+  payrollCreateCompensation: { mode: 'permission', resource: 'payroll.compensation', action: 'create', scope: 'active' },
+  payrollDecideCompensation: { mode: 'permission', resource: 'payroll.compensation', action: 'approve', scope: 'active' },
+  payrollCreateBenefitPlan: { mode: 'permission', resource: 'payroll.benefit-plan', action: 'create', scope: 'active' },
+  payrollDecideBenefitPlan: { mode: 'permission', resource: 'payroll.benefit-plan', action: 'approve', scope: 'active' },
+  payrollCreateBenefitEnrollment: { mode: 'permission', resource: 'payroll.benefit-enrollment', action: 'create', scope: 'active' },
+  payrollDecideBenefitEnrollment: { mode: 'permission', resource: 'payroll.benefit-enrollment', action: 'approve', scope: 'active' },
+  payrollCreateRun: { mode: 'permission', resource: 'payroll.run', action: 'create', scope: 'active' },
+  payrollDecideRun: { mode: 'permission', resource: 'payroll.run', action: 'approve', scope: 'active' },
+  payrollFinalizeRun: { mode: 'permission', resource: 'payroll.run', action: 'post', scope: 'active' },
+  payrollUpdateObligation: { mode: 'permission', resource: 'payroll.obligation', action: 'post', scope: 'active' },
+  payrollCreateExpense: { mode: 'permission', resource: 'payroll.expense-claim', action: 'create', scope: 'active' },
+  payrollDecideExpense: { mode: 'permission', resource: 'payroll.expense-claim', action: 'approve', scope: 'active' },
+  payrollReimburseExpense: { mode: 'permission', resource: 'payroll.expense-claim', action: 'post', scope: 'active' },
+  workforceRecordAttendance: { mode: 'permission', resource: 'workforce.attendance', action: 'create', scope: 'active' },
+  workforceDecideAttendance: { mode: 'permission', resource: 'workforce.attendance', action: 'approve', scope: 'active' },
+  workforceCreateLeaveType: { mode: 'permission', resource: 'workforce.leave-type', action: 'create', scope: 'active' },
+  workforceDecideLeaveType: { mode: 'permission', resource: 'workforce.leave-type', action: 'approve', scope: 'active' },
+  workforceCreateLeaveApplication: { mode: 'permission', resource: 'workforce.leave-application', action: 'create', scope: 'active' },
+  workforceDecideLeaveApplication: { mode: 'permission', resource: 'workforce.leave-application', action: 'approve', scope: 'active' },
+  payrollCreateAdjustment: { mode: 'permission', resource: 'payroll.adjustment', action: 'create', scope: 'active' },
+  payrollDecideAdjustment: { mode: 'permission', resource: 'payroll.adjustment', action: 'approve', scope: 'active' },
+  payrollCreateTaxDeclaration: { mode: 'permission', resource: 'payroll.tax-declaration', action: 'create', scope: 'active' },
+  payrollDecideTaxDeclaration: { mode: 'permission', resource: 'payroll.tax-declaration', action: 'approve', scope: 'active' },
+  payrollPublishPayslip: { mode: 'permission', resource: 'payroll.payslip', action: 'post', scope: 'active' },
+  payrollAcknowledgePayslip: { mode: 'permission', resource: 'payroll.payslip', action: 'update', scope: 'active' },
+  authChangePassword: {
+    mode: 'delegated',
+    reason: 'The authenticated password-change handler is self-bound to the active session token.',
+  },
+  authMfaStatus: {
+    mode: 'delegated',
+    reason: 'The authenticated MFA status handler is self-bound to the active session token.',
+  },
+  authMfaBeginEnrollment: {
+    mode: 'delegated',
+    reason: 'The authenticated MFA enrollment handler is self-bound to the active session token.',
+  },
+  authMfaConfirmEnrollment: {
+    mode: 'delegated',
+    reason: 'The authenticated MFA confirmation handler is self-bound to the active session token.',
+  },
+  authMfaDisable: {
+    mode: 'delegated',
+    reason: 'The authenticated MFA disable handler is self-bound to the active session token.',
+  },
+  revenueOpsCreateStockLocation: { mode: 'permission', resource: 'inventory.execution', action: 'create', scope: 'active' },
+  revenueOpsRecordStockMovement: { mode: 'permission', resource: 'inventory.execution', action: 'create', scope: 'active' },
+  revenueOpsReserveStock: { mode: 'permission', resource: 'inventory.execution', action: 'create', scope: 'active' },
+  revenueOpsReleaseStockReservation: { mode: 'permission', resource: 'inventory.execution', action: 'update', scope: 'active' },
+  revenueOpsCreateShipmentPackage: { mode: 'permission', resource: 'inventory.execution', action: 'create', scope: 'active' },
+  revenueOpsTransitionShipment: { mode: 'permission', resource: 'inventory.execution', action: 'update', scope: 'active' },
+  revenueOpsConfigureCarrierAdapter: { mode: 'permission', resource: 'inventory.execution', action: 'admin', scope: 'active' },
+  revenueOpsCreateReturnAuthorization: { mode: 'permission', resource: 'inventory.execution', action: 'create', scope: 'active' },
+  revenueOpsDecideReturnAuthorization: { mode: 'permission', resource: 'inventory.execution', action: 'approve', scope: 'active' },
+  revenueOpsReceiveReturn: { mode: 'permission', resource: 'inventory.execution', action: 'update', scope: 'active' },
+  revenueOpsInspectReturn: { mode: 'permission', resource: 'inventory.execution', action: 'update', scope: 'active' },
+  procurementUpdateRetailPriceForTargetMargin: { mode: 'permission', resource: 'inventory.price-list', action: 'update', scope: 'active' },
+  financialDecideBillingPlan: { mode: 'permission', resource: 'financial.billing-plan', action: 'approve', scope: 'active' },
+  financialDecideBillingClaim: { mode: 'permission', resource: 'financial.billing-claim', action: 'approve', scope: 'active' },
+  financialDecideClosePeriod: { mode: 'permission', resource: 'financial.close-period', action: 'approve', scope: 'active' },
+  financialReopenClosePeriod: { mode: 'permission', resource: 'financial.close-period', action: 'approve', scope: 'active' },
+  kernelSnapshot: { mode: 'permission', resource: 'kernel.configuration', action: 'admin', scope: 'active' },
+  kernelCreateCompany: { mode: 'permission', resource: 'kernel.company', action: 'admin', scope: 'active' },
+  kernelUpdateCompany: { mode: 'permission', resource: 'kernel.company', action: 'admin', scope: 'active' },
+  kernelCreateBranch: { mode: 'permission', resource: 'kernel.branch', action: 'admin', scope: 'active' },
+  kernelUpdateBranch: { mode: 'permission', resource: 'kernel.branch', action: 'admin', scope: 'active' },
+  kernelCreateUser: { mode: 'permission', resource: 'kernel.user', action: 'admin', scope: 'active' },
+  kernelCreateRole: { mode: 'permission', resource: 'kernel.role', action: 'admin', scope: 'active' },
+  kernelUpdateRolePolicy: { mode: 'permission', resource: 'kernel.role', action: 'admin', scope: 'active' },
+  kernelUpsertFieldAccessRule: { mode: 'permission', resource: 'kernel.field-access', action: 'admin', scope: 'active' },
+  kernelUpdateApprovalPolicy: { mode: 'permission', resource: 'kernel.approval-policy', action: 'admin', scope: 'active' },
+  kernelAssignRole: { mode: 'permission', resource: 'kernel.user', action: 'admin', scope: 'active' },
+  kernelIssueNumber: { mode: 'permission', resource: 'kernel.number-sequence', action: 'admin', scope: 'active' },
+  kernelRegisterCustomField: { mode: 'permission', resource: 'kernel.custom-field', action: 'admin', scope: 'active' },
   storageCreateDatabaseBackup: {
     mode: 'permission', resource: 'kernel.backup', action: 'admin', scope: 'active',
   },
@@ -64,6 +593,51 @@ const BASE_IPC_AUTHORIZATION_POLICY: Record<
   },
   retailWorkspaceApplyDemoReset: {
     mode: 'permission', resource: 'kernel.tenant', action: 'admin', scope: 'active',
+  },
+  revenueOpsListRetailCutoverPlans: {
+    mode: 'permission', resource: 'release.control', action: 'read', scope: 'active',
+  },
+  revenueOpsFetchRetailHubCutoverAssessment: {
+    mode: 'permission', resource: 'release.control', action: 'read', scope: 'active',
+  },
+  revenueOpsFetchRetailHubDeploymentPreflight: {
+    mode: 'permission', resource: 'release.control', action: 'read', scope: 'active',
+  },
+  revenueOpsFetchRetailHubShadowImportPreflight: {
+    mode: 'permission', resource: 'release.control', action: 'read', scope: 'active',
+  },
+  revenueOpsFetchRetailHubShadowImportSourceStatus: {
+    mode: 'permission', resource: 'release.control', action: 'read', scope: 'active',
+  },
+  revenueOpsFetchRetailHubShadowImportPullReceipts: {
+    mode: 'permission', resource: 'release.control', action: 'read', scope: 'active',
+  },
+  revenueOpsFetchRetailHubStoreEdgeWorkerMetrics: {
+    mode: 'permission', resource: 'release.control', action: 'read', scope: 'active',
+  },
+  revenueOpsFetchRetailHubCoverageMap: {
+    mode: 'permission', resource: 'release.control', action: 'read', scope: 'active',
+  },
+  revenueOpsCreateRetailCutoverPlan: {
+    mode: 'permission', resource: 'release.control', action: 'create', scope: 'active',
+  },
+  revenueOpsCreateRetailCutoverPlanFromHubAssessment: {
+    mode: 'permission', resource: 'release.control', action: 'create', scope: 'active',
+  },
+  revenueOpsAdvanceRetailCutover: {
+    mode: 'permission', resource: 'release.control', action: 'approve', scope: 'active',
+  },
+  revenueOpsImportRetailProductPack: {
+    mode: 'permission', resource: 'sales.catalog', action: 'create', scope: 'active',
+  },
+  revenueOpsCreateGstRegistration: {
+    mode: 'permission', resource: 'sales.catalog', action: 'create', scope: 'active',
+  },
+  revenueOpsCreatePlaceOfSupplyReview: {
+    mode: 'permission', resource: 'sales.commercial', action: 'create', scope: 'active',
+  },
+  revenueOpsDecidePlaceOfSupplyReview: {
+    mode: 'permission', resource: 'sales.commercial', action: 'approve', scope: 'active',
   },
   kernelUpdateTenantIdentity: {
     mode: 'permission', resource: 'kernel.tenant', action: 'admin', scope: 'active',
@@ -108,8 +682,7 @@ const BASE_IPC_AUTHORIZATION_POLICY: Record<
     mode: 'permission', resource: 'finance.journal', action: 'update', scope: 'ledger-bound',
   },
   generalLedgerBindCompany: {
-    mode: 'delegated',
-    reason: 'The target company and branch are validated from the binding payload.',
+    mode: 'permission', resource: 'finance.chart-of-accounts', action: 'admin', scope: 'ledger-bound',
   },
   generalLedgerCreateJournal: {
     mode: 'permission', resource: 'finance.journal', action: 'create', scope: 'ledger-bound',
@@ -162,6 +735,12 @@ const BASE_IPC_AUTHORIZATION_POLICY: Record<
   kernelResolveOutboxConflict: {
     mode: 'permission', resource: 'kernel.configuration', action: 'admin', scope: 'active',
   },
+  kernelTransitionWorkflow: {
+    mode: 'permission', resource: 'kernel.workflow', action: 'update', scope: 'active',
+  },
+  kernelDecideApproval: {
+    mode: 'permission', resource: 'kernel.approval', action: 'approve', scope: 'active',
+  },
   integrationListApiKeys: {
     mode: 'permission', resource: 'integration.api-key', action: 'read', scope: 'active',
   },
@@ -176,6 +755,9 @@ const BASE_IPC_AUTHORIZATION_POLICY: Record<
   },
   integrationExportProviderCertification: {
     mode: 'permission', resource: 'release.control', action: 'export', scope: 'active',
+  },
+  integrationVerifyProviderCertification: {
+    mode: 'permission', resource: 'release.control', action: 'read', scope: 'active',
   },
   releaseListGates: {
     mode: 'permission', resource: 'release.control', action: 'read', scope: 'active',
@@ -348,6 +930,54 @@ const BASE_IPC_AUTHORIZATION_POLICY: Record<
   financialCreateBillingClaim: {
     mode: 'permission', resource: 'finance.journal', action: 'create', scope: 'active',
   },
+  financialCreateClosePeriod: {
+    mode: 'permission', resource: 'finance.period', action: 'create', scope: 'active',
+  },
+  financialConsumeEntitlement: {
+    mode: 'permission', resource: 'finance.entitlement', action: 'update', scope: 'active',
+  },
+  commercialCreateExchangeRate: {
+    mode: 'permission', resource: 'commercial.currency', action: 'create', scope: 'active',
+  },
+  commercialDecideExchangeRate: {
+    mode: 'permission', resource: 'commercial.currency', action: 'approve', scope: 'active',
+  },
+  commercialCreateCurrencyProfile: {
+    mode: 'permission', resource: 'commercial.currency', action: 'create', scope: 'active',
+  },
+  commercialDecideCurrencyProfile: {
+    mode: 'permission', resource: 'commercial.currency', action: 'approve', scope: 'active',
+  },
+  commercialCreateVariation: {
+    mode: 'permission', resource: 'commercial.contract', action: 'create', scope: 'active',
+  },
+  commercialDecideVariation: {
+    mode: 'permission', resource: 'commercial.contract', action: 'approve', scope: 'active',
+  },
+  commercialCreateRetainer: {
+    mode: 'permission', resource: 'commercial.retainer', action: 'create', scope: 'active',
+  },
+  commercialDecideRetainer: {
+    mode: 'permission', resource: 'commercial.retainer', action: 'approve', scope: 'active',
+  },
+  commercialCreateDrawdown: {
+    mode: 'permission', resource: 'commercial.retainer', action: 'create', scope: 'active',
+  },
+  commercialDecideDrawdown: {
+    mode: 'permission', resource: 'commercial.retainer', action: 'approve', scope: 'active',
+  },
+  commercialCreateResourcePlan: {
+    mode: 'permission', resource: 'commercial.resource-plan', action: 'create', scope: 'active',
+  },
+  commercialDecideResourcePlan: {
+    mode: 'permission', resource: 'commercial.resource-plan', action: 'approve', scope: 'active',
+  },
+  commercialGenerateMarginReview: {
+    mode: 'permission', resource: 'commercial.margin', action: 'create', scope: 'active',
+  },
+  commercialReviewMargin: {
+    mode: 'permission', resource: 'commercial.margin', action: 'approve', scope: 'active',
+  },
   revenueOpsSnapshot: {
     mode: 'permission', resource: 'operations.workspace', action: 'read', scope: 'revenue-operations-bound',
   },
@@ -433,9 +1063,6 @@ const BASE_IPC_AUTHORIZATION_POLICY: Record<
     mode: 'permission', resource: 'inventory.master', action: 'create', scope: 'active',
   },
   retailRecordDeviceTransport: {
-    mode: 'permission', resource: 'inventory.master', action: 'approve', scope: 'active',
-  },
-  retailRecordNativeDeviceDriverResult: {
     mode: 'permission', resource: 'inventory.master', action: 'approve', scope: 'active',
   },
   retailExecuteDeviceTransport: {
@@ -736,7 +1363,7 @@ const BASE_IPC_AUTHORIZATION_POLICY: Record<
   revenueOpsCreateSegment: {
     mode: 'permission', resource: 'crm.configuration', action: 'create', scope: 'active',
   },
-};
+});
 
 const REVENUE_OPERATIONS_BOUND_PREFIXES = [
   'epic-bos:revenue-ops:',
@@ -778,6 +1405,23 @@ export const IPC_AUTHORIZATION_POLICY: Readonly<
     }),
   ) as Record<IpcChannelKey, IpcAuthorizationPolicy>,
 );
+
+/**
+ * Revenue Operations mutations often return a full snapshot or an envelope
+ * containing one. A handler can be delegated because it resolves the exact
+ * target record itself, but that never permits an unfiltered snapshot to
+ * cross IPC. Keep this rule next to the route classification so new delegated
+ * retail routes cannot bypass the response projection boundary.
+ */
+export function requiresRevenueOperationsResponseProjection(
+  channel: string,
+  policy: IpcAuthorizationPolicy,
+): boolean {
+  const isRevenueOperationsRoute = REVENUE_OPERATIONS_BOUND_PREFIXES.some(
+    (prefix) => channel.startsWith(prefix),
+  );
+  return isRevenueOperationsRoute && policy.mode !== 'trusted';
+}
 
 const channelKeyByName = new Map<string, IpcChannelKey>(
   Object.entries(IPC_CHANNELS).map(([key, name]) => [name, key as IpcChannelKey]),

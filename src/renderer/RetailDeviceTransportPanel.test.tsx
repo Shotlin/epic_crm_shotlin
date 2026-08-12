@@ -187,7 +187,6 @@ function renderPanel(
       activeActorId="operator-2"
       onPrepare={vi.fn().mockResolvedValue(undefined)}
       onRecord={onRecord}
-      onRecordNativeDriverResult={vi.fn().mockResolvedValue(undefined)}
       onExecute={onExecute}
       onRetry={vi.fn().mockResolvedValue(undefined)}
       onPreflight={vi.fn().mockResolvedValue({
@@ -323,9 +322,7 @@ describe('RetailDeviceTransportPanel network command boundary', () => {
     }));
   });
 
-  it('records a profile-bound native bridge result without exposing a fake live activation', async () => {
-    const user = userEvent.setup();
-    const onRecordNativeDriverResult = vi.fn().mockResolvedValue(undefined);
+  it('does not expose a renderer form for native bridge evidence', () => {
     render(
       <RetailDeviceTransportPanel
         revenue={revenueWithDeviceCommands([preparedNativeCommand()], [nativeProfile])}
@@ -333,25 +330,14 @@ describe('RetailDeviceTransportPanel network command boundary', () => {
         activeActorId="operator-2"
         onPrepare={vi.fn().mockResolvedValue(undefined)}
         onRecord={vi.fn().mockResolvedValue(undefined)}
-        onRecordNativeDriverResult={onRecordNativeDriverResult}
         onExecute={vi.fn().mockResolvedValue(undefined)}
         onRetry={vi.fn().mockResolvedValue(undefined)}
         onPreflight={vi.fn().mockResolvedValue({ kind: 'barcode-scanner', connection: 'network', status: 'unsupported', responseReference: 'driver-required:test', responseChecksum: '0'.repeat(64), responseByteLength: 0, elapsedMs: 0 })}
         onRecordPreflight={vi.fn().mockResolvedValue({ kind: 'barcode-scanner', connection: 'usb', status: 'unsupported', responseReference: 'driver-required:web-serial', responseChecksum: '0'.repeat(64), responseByteLength: 0, elapsedMs: 0 })}
       />,
     );
-    await user.type(screen.getByPlaceholderText('NATIVE-DEVICE-ACK-001'), 'NATIVE-ACK-001');
-    await user.type(screen.getByLabelText('Response bytes'), '4');
-    await user.type(screen.getByLabelText('Response SHA-256'), 'a'.repeat(64));
-    await user.click(screen.getByRole('button', { name: 'Record native bridge result' }));
-    expect(onRecordNativeDriverResult).toHaveBeenCalledWith(expect.objectContaining({
-      id: 'device-command-native-1',
-      result: 'acknowledged',
-      driverCode: 'EPIC-HID-BRIDGE',
-      driverVersion: '2.0.0',
-      responseReference: 'NATIVE-ACK-001',
-      responseByteLength: 4,
-      responseChecksum: 'a'.repeat(64),
-    }));
+    expect(screen.getByText('Native bridge result required')).toBeTruthy();
+    expect(screen.getByText(/cannot be acknowledged from the renderer/i)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Record native bridge result' })).toBeNull();
   });
 });

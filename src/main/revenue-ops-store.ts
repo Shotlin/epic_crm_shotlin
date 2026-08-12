@@ -65,6 +65,7 @@ import {
   recordPayment,
   transitionServiceMilestone,
 } from '../domain/order-to-cash';
+import { ingestRetailDeliveryMapSignal } from '../domain/retail-delivery-map';
 import {
   configureCarrierAdapter,
   createGstRegistration,
@@ -136,8 +137,9 @@ import {
   requestRetailCashierShiftClose,
   requestRetailCashierShiftVarianceResolution,
 } from '../domain/retail-pos';
-import { enqueueRetailOfflineSale, resolveRetailOfflineSale, syncRetailOfflineQueue, syncRetailOfflineSale } from '../domain/retail-offline-sync';
-import { completeRetailUnifiedOrderPickTasks, completeRetailUnifiedOrderShipmentPackage, confirmRetailUnifiedOrderDelivery, createRetailUnifiedOrderPickTasks, createRetailUnifiedOrderShipmentPackage, decideRetailOrderFulfilmentHandoff, dispatchRetailUnifiedOrder, ingestRetailOrderSourceEvent, prepareRetailOrderForGovernedHandoff, prepareRetailOrderFulfilmentHandoff, prepareRetailOrderHubHandoff, prepareRetailUnifiedOrderDispatch, recordRetailOrderHubHandoffResult, recordRetailUnifiedOrderCarrierCallback, reconcileRetailUnifiedOrderReturn, reconcileRetailUnifiedOrderRto, reserveRetailUnifiedOrderStock } from '../domain/retail-unified-order-ingestion';
+import { buildRetailHubStoreEdgeSaleEvent, enqueueRetailOfflineSale, resolveRetailOfflineSale, syncRetailOfflineQueue, syncRetailOfflineSale } from '../domain/retail-offline-sync';
+import { sendRetailHubStoreEdgeSync } from './retail-hub-store-edge-sync-client';
+import { completeRetailUnifiedOrderPickTasks, completeRetailUnifiedOrderShipmentPackage, confirmRetailUnifiedOrderDelivery, createRetailUnifiedOrderPickTasks, createRetailUnifiedOrderShipmentPackage, decideRetailOrderFulfilmentHandoff, dispatchRetailUnifiedOrder, ingestRetailOrderSourceEvent, prepareRetailOrderForGovernedHandoff, prepareRetailOrderFulfilmentHandoff, prepareRetailOrderHubHandoff, prepareRetailUnifiedOrderDispatch, recordRetailOrderHubHandoffResult, recordRetailUnifiedOrderCarrierCallback, reconcileRetailUnifiedOrderCancellation, reconcileRetailUnifiedOrderReturn, reconcileRetailUnifiedOrderRto, reserveRetailUnifiedOrderStock } from '../domain/retail-unified-order-ingestion';
 import { prepareRetailDeviceTransport, recordNetworkExecutedRetailDeviceTransport, recordRetailDeviceTransport, recordRetailNativeDeviceDriverResult, retryRetailDeviceTransport } from '../domain/retail-device-transport';
 import { activateRetailDeviceAdapterProfile, approveRetailDeviceAdapterProfile, assertRetailDeviceProfileNetworkEndpoint, createRetailDeviceAdapterProfile, recordRetailDeviceAdapterAcknowledgement, suspendRetailDeviceAdapterProfile } from '../domain/retail-device-profile';
 import { preflightRetailDeviceTransport } from './retail-device-preflight';
@@ -447,7 +449,8 @@ import type {
   RequestRetailReturnSettlementInput,
 } from '../shared/retail-pos-contracts';
 import type { ResolveRetailOfflineSaleInput, SyncRetailOfflineQueueInput, SyncRetailOfflineSaleInput } from '../shared/retail-offline-sync-contracts';
-import type { CompleteRetailUnifiedOrderPickTasksInput, CompleteRetailUnifiedOrderShipmentPackageInput, ConfirmRetailUnifiedOrderDeliveryInput, CreateRetailUnifiedOrderPickTasksInput, CreateRetailUnifiedOrderShipmentPackageInput, DecideRetailOrderFulfilmentHandoffInput, DispatchRetailUnifiedOrderInput, IngestRetailOrderSourceEventInput, PrepareRetailOrderFulfilmentHandoffInput, PrepareRetailOrderGovernedHandoffInput, PrepareRetailOrderHubHandoffInput, PrepareRetailUnifiedOrderDispatchInput, RecordRetailUnifiedOrderCarrierCallbackInput, ReconcileRetailUnifiedOrderReturnInput, ReconcileRetailUnifiedOrderRtoInput, RecordRetailOrderHubHandoffResultInput, ReserveRetailUnifiedOrderStockInput } from '../shared/retail-unified-order-contracts';
+import type { RetailHubStoreEdgeSyncCursor, RetailHubStoreEdgeSyncLocalReceipt, RetailHubStoreEdgeSyncPolicy, RetailHubStoreEdgeSyncRun, SaveRetailHubStoreEdgeSyncPolicyInput, SendRetailHubStoreEdgeSyncInput, SyncRetailHubStoreEdgeQueueInput } from '../shared/retail-hub-store-edge-sync-contracts';
+import type { CompleteRetailUnifiedOrderPickTasksInput, CompleteRetailUnifiedOrderShipmentPackageInput, ConfirmRetailUnifiedOrderDeliveryInput, CreateRetailUnifiedOrderPickTasksInput, CreateRetailUnifiedOrderShipmentPackageInput, DecideRetailOrderFulfilmentHandoffInput, DispatchRetailUnifiedOrderInput, IngestRetailOrderSourceEventInput, PrepareRetailOrderFulfilmentHandoffInput, PrepareRetailOrderGovernedHandoffInput, PrepareRetailOrderHubHandoffInput, PrepareRetailUnifiedOrderDispatchInput, RecordRetailUnifiedOrderCarrierCallbackInput, ReconcileRetailUnifiedOrderCancellationInput, ReconcileRetailUnifiedOrderReturnInput, ReconcileRetailUnifiedOrderRtoInput, RecordRetailOrderHubHandoffResultInput, ReserveRetailUnifiedOrderStockInput } from '../shared/retail-unified-order-contracts';
 import type { ExecuteRetailDeviceTransportInput, PrepareRetailDeviceTransportInput, PreflightRetailDeviceTransportInput, RecordRetailDevicePreflightEvidenceInput, RecordRetailDeviceTransportInput, RecordRetailNativeDeviceDriverResultInput, RetryRetailDeviceTransportInput, RetailDeviceTransportPreflightResult } from '../shared/retail-device-transport-contracts';
 import type { ActivateRetailDeviceAdapterProfileInput, ApproveRetailDeviceAdapterProfileInput, CreateRetailDeviceAdapterProfileInput, RecordRetailDeviceAdapterAcknowledgementInput, SuspendRetailDeviceAdapterProfileInput } from '../shared/retail-device-profile-contracts';
 import type { CreateRetailExchangeInput, DecideRetailExchangeInput } from '../shared/retail-exchange-contracts';
@@ -851,6 +854,7 @@ function withOperatingRecordScopes(state: RevenueOpsState): RevenueOpsState {
     deliveryPromises: state.deliveryPromises.map(scoped),
     codCollectionCases: state.codCollectionCases.map(scoped),
     uoms: state.uoms.map(scoped),
+    retailDeliveryMapSignals: (state.retailDeliveryMapSignals ?? []).map(scoped),
     uomConversions: state.uomConversions.map(scoped),
     inventoryItems: state.inventoryItems.map(scoped),
     itemVariants: state.itemVariants.map(scoped),
@@ -874,7 +878,15 @@ function withOperatingRecordScopes(state: RevenueOpsState): RevenueOpsState {
     retailSales: state.retailSales.map(scoped),
     retailOfflineSaleQueue: (state.retailOfflineSaleQueue ?? []).map(scoped),
     retailOfflineSyncReceipts: (state.retailOfflineSyncReceipts ?? []).map(scoped),
-    retailUnifiedOrderIngestion: state.retailUnifiedOrderIngestion ? { ...state.retailUnifiedOrderIngestion, hubHandoffs: state.retailUnifiedOrderIngestion.hubHandoffs ?? [], fulfilmentHandoffs: state.retailUnifiedOrderIngestion.fulfilmentHandoffs ?? [], stockReservationExecutions: state.retailUnifiedOrderIngestion.stockReservationExecutions ?? [], pickTaskExecutions: state.retailUnifiedOrderIngestion.pickTaskExecutions ?? [], shipmentPackageExecutions: state.retailUnifiedOrderIngestion.shipmentPackageExecutions ?? [], dispatchReadinessExecutions: state.retailUnifiedOrderIngestion.dispatchReadinessExecutions ?? [], carrierDispatchExecutions: state.retailUnifiedOrderIngestion.carrierDispatchExecutions ?? [], deliveryExecutions: state.retailUnifiedOrderIngestion.deliveryExecutions ?? [], rtoReconciliationExecutions: state.retailUnifiedOrderIngestion.rtoReconciliationExecutions ?? [], returnReconciliationExecutions: state.retailUnifiedOrderIngestion.returnReconciliationExecutions ?? [], carrierCallbackEvidence: state.retailUnifiedOrderIngestion.carrierCallbackEvidence ?? [] } : { orders: [], conflicts: [], reservationIntents: [], reconciliationRequirements: [], hubHandoffs: [], fulfilmentHandoffs: [], stockReservationExecutions: [], pickTaskExecutions: [], shipmentPackageExecutions: [], dispatchReadinessExecutions: [], carrierDispatchExecutions: [], deliveryExecutions: [], rtoReconciliationExecutions: [], returnReconciliationExecutions: [], carrierCallbackEvidence: [] },
+    retailHubStoreEdgeSyncReceipts: (state.retailHubStoreEdgeSyncReceipts ?? []).map(scoped),
+    retailHubStoreEdgeSyncRuns: (state.retailHubStoreEdgeSyncRuns ?? []).map(scoped),
+    retailHubStoreEdgeSyncPolicy: state.retailHubStoreEdgeSyncPolicy ? { ...state.retailHubStoreEdgeSyncPolicy, scope: structuredClone(state.retailHubStoreEdgeSyncPolicy.scope) } : undefined,
+    retailHubStoreEdgeSyncCursor: state.retailHubStoreEdgeSyncCursor
+      ? (isRevenueOperationsScope(state.retailHubStoreEdgeSyncCursor.scope)
+        ? state.retailHubStoreEdgeSyncCursor
+        : { ...state.retailHubStoreEdgeSyncCursor, scope: structuredClone(state.scope) })
+      : undefined,
+    retailUnifiedOrderIngestion: state.retailUnifiedOrderIngestion ? { ...state.retailUnifiedOrderIngestion, hubHandoffs: state.retailUnifiedOrderIngestion.hubHandoffs ?? [], fulfilmentHandoffs: state.retailUnifiedOrderIngestion.fulfilmentHandoffs ?? [], stockReservationExecutions: state.retailUnifiedOrderIngestion.stockReservationExecutions ?? [], pickTaskExecutions: state.retailUnifiedOrderIngestion.pickTaskExecutions ?? [], shipmentPackageExecutions: state.retailUnifiedOrderIngestion.shipmentPackageExecutions ?? [], dispatchReadinessExecutions: state.retailUnifiedOrderIngestion.dispatchReadinessExecutions ?? [], carrierDispatchExecutions: state.retailUnifiedOrderIngestion.carrierDispatchExecutions ?? [], deliveryExecutions: state.retailUnifiedOrderIngestion.deliveryExecutions ?? [], rtoReconciliationExecutions: state.retailUnifiedOrderIngestion.rtoReconciliationExecutions ?? [], returnReconciliationExecutions: state.retailUnifiedOrderIngestion.returnReconciliationExecutions ?? [], cancellationReconciliationExecutions: state.retailUnifiedOrderIngestion.cancellationReconciliationExecutions ?? [], carrierCallbackEvidence: state.retailUnifiedOrderIngestion.carrierCallbackEvidence ?? [] } : { orders: [], conflicts: [], reservationIntents: [], reconciliationRequirements: [], hubHandoffs: [], fulfilmentHandoffs: [], stockReservationExecutions: [], pickTaskExecutions: [], shipmentPackageExecutions: [], dispatchReadinessExecutions: [], carrierDispatchExecutions: [], deliveryExecutions: [], rtoReconciliationExecutions: [], returnReconciliationExecutions: [], cancellationReconciliationExecutions: [], carrierCallbackEvidence: [] },
     retailDeviceTransportEvidence: (state.retailDeviceTransportEvidence ?? []).map(scoped),
     retailDevicePreflightEvidence: (state.retailDevicePreflightEvidence ?? []).map(scoped),
     retailDeviceAdapterProfiles: (state.retailDeviceAdapterProfiles ?? []).map(scoped),
@@ -1048,6 +1060,7 @@ function hasUnscopedPhysicalFulfilmentRecords(state: RevenueOpsState): boolean {
     ...state.retailSales,
     ...(state.retailOfflineSaleQueue ?? []),
     ...(state.retailOfflineSyncReceipts ?? []),
+    ...(state.retailHubStoreEdgeSyncReceipts ?? []),
     ...(state.retailDeviceTransportEvidence ?? []),
     ...(state.retailDevicePreflightEvidence ?? []),
     ...(state.retailDeviceAdapterProfiles ?? []),
@@ -1221,6 +1234,7 @@ export function upgradeStoredState(value: unknown): RevenueOpsState | null {
     // or bank events. Legacy workspaces therefore begin with an empty register.
     codCollectionCases: storedVersion >= 40 && Array.isArray(candidate.codCollectionCases) ? candidate.codCollectionCases as RevenueOpsState['codCollectionCases'] : [],
     returnAuthorizations: storedVersion >= 4 ? candidate.returnAuthorizations as RevenueOpsState['returnAuthorizations'] : [],
+    retailDeliveryMapSignals: Array.isArray(candidate.retailDeliveryMapSignals) ? candidate.retailDeliveryMapSignals as NonNullable<RevenueOpsState['retailDeliveryMapSignals']> : [],
     statutoryExchanges: storedVersion >= 4 ? candidate.statutoryExchanges as RevenueOpsState['statutoryExchanges'] : [],
     uoms: storedVersion >= 5 ? candidate.uoms as RevenueOpsState['uoms'] : baseline.uoms,
     uomConversions: storedVersion >= 5 ? candidate.uomConversions as RevenueOpsState['uomConversions'] : [],
@@ -1248,9 +1262,15 @@ export function upgradeStoredState(value: unknown): RevenueOpsState | null {
     retailSales: storedVersion >= 42 && Array.isArray(candidate.retailSales) ? candidate.retailSales as RevenueOpsState['retailSales'] : [],
     retailOfflineSaleQueue: Array.isArray(candidate.retailOfflineSaleQueue) ? candidate.retailOfflineSaleQueue as RevenueOpsState['retailOfflineSaleQueue'] : [],
     retailOfflineSyncReceipts: Array.isArray(candidate.retailOfflineSyncReceipts) ? candidate.retailOfflineSyncReceipts as NonNullable<RevenueOpsState['retailOfflineSyncReceipts']> : [],
+    retailHubStoreEdgeSyncReceipts: Array.isArray(candidate.retailHubStoreEdgeSyncReceipts) ? candidate.retailHubStoreEdgeSyncReceipts as NonNullable<RevenueOpsState['retailHubStoreEdgeSyncReceipts']> : [],
+    retailHubStoreEdgeSyncRuns: Array.isArray(candidate.retailHubStoreEdgeSyncRuns) ? candidate.retailHubStoreEdgeSyncRuns as NonNullable<RevenueOpsState['retailHubStoreEdgeSyncRuns']> : [],
+    retailHubStoreEdgeSyncPolicy: candidate.retailHubStoreEdgeSyncPolicy && typeof candidate.retailHubStoreEdgeSyncPolicy === 'object' ? candidate.retailHubStoreEdgeSyncPolicy as NonNullable<RevenueOpsState['retailHubStoreEdgeSyncPolicy']> : undefined,
+    retailHubStoreEdgeSyncCursor: candidate.retailHubStoreEdgeSyncCursor && typeof candidate.retailHubStoreEdgeSyncCursor === 'object'
+      ? candidate.retailHubStoreEdgeSyncCursor as NonNullable<RevenueOpsState['retailHubStoreEdgeSyncCursor']>
+      : undefined,
     retailUnifiedOrderIngestion: candidate.retailUnifiedOrderIngestion && typeof candidate.retailUnifiedOrderIngestion === 'object'
-      ? { ...(candidate.retailUnifiedOrderIngestion as NonNullable<RevenueOpsState['retailUnifiedOrderIngestion']>), hubHandoffs: Array.isArray((candidate.retailUnifiedOrderIngestion as { hubHandoffs?: unknown }).hubHandoffs) ? (candidate.retailUnifiedOrderIngestion as NonNullable<RevenueOpsState['retailUnifiedOrderIngestion']>).hubHandoffs : [], fulfilmentHandoffs: Array.isArray((candidate.retailUnifiedOrderIngestion as { fulfilmentHandoffs?: unknown }).fulfilmentHandoffs) ? (candidate.retailUnifiedOrderIngestion as NonNullable<RevenueOpsState['retailUnifiedOrderIngestion']>).fulfilmentHandoffs : [], carrierDispatchExecutions: Array.isArray((candidate.retailUnifiedOrderIngestion as { carrierDispatchExecutions?: unknown }).carrierDispatchExecutions) ? (candidate.retailUnifiedOrderIngestion as NonNullable<RevenueOpsState['retailUnifiedOrderIngestion']>).carrierDispatchExecutions : [], deliveryExecutions: Array.isArray((candidate.retailUnifiedOrderIngestion as { deliveryExecutions?: unknown }).deliveryExecutions) ? (candidate.retailUnifiedOrderIngestion as NonNullable<RevenueOpsState['retailUnifiedOrderIngestion']>).deliveryExecutions : [], rtoReconciliationExecutions: Array.isArray((candidate.retailUnifiedOrderIngestion as { rtoReconciliationExecutions?: unknown }).rtoReconciliationExecutions) ? (candidate.retailUnifiedOrderIngestion as NonNullable<RevenueOpsState['retailUnifiedOrderIngestion']>).rtoReconciliationExecutions : [], returnReconciliationExecutions: Array.isArray((candidate.retailUnifiedOrderIngestion as { returnReconciliationExecutions?: unknown }).returnReconciliationExecutions) ? (candidate.retailUnifiedOrderIngestion as NonNullable<RevenueOpsState['retailUnifiedOrderIngestion']>).returnReconciliationExecutions : [], carrierCallbackEvidence: Array.isArray((candidate.retailUnifiedOrderIngestion as { carrierCallbackEvidence?: unknown }).carrierCallbackEvidence) ? (candidate.retailUnifiedOrderIngestion as NonNullable<RevenueOpsState['retailUnifiedOrderIngestion']>).carrierCallbackEvidence : [] }
-      : { orders: [], conflicts: [], reservationIntents: [], reconciliationRequirements: [], hubHandoffs: [], fulfilmentHandoffs: [], stockReservationExecutions: [], pickTaskExecutions: [], shipmentPackageExecutions: [], dispatchReadinessExecutions: [], carrierDispatchExecutions: [], deliveryExecutions: [], rtoReconciliationExecutions: [], returnReconciliationExecutions: [], carrierCallbackEvidence: [] },
+      ? { ...(candidate.retailUnifiedOrderIngestion as NonNullable<RevenueOpsState['retailUnifiedOrderIngestion']>), hubHandoffs: Array.isArray((candidate.retailUnifiedOrderIngestion as { hubHandoffs?: unknown }).hubHandoffs) ? (candidate.retailUnifiedOrderIngestion as NonNullable<RevenueOpsState['retailUnifiedOrderIngestion']>).hubHandoffs : [], fulfilmentHandoffs: Array.isArray((candidate.retailUnifiedOrderIngestion as { fulfilmentHandoffs?: unknown }).fulfilmentHandoffs) ? (candidate.retailUnifiedOrderIngestion as NonNullable<RevenueOpsState['retailUnifiedOrderIngestion']>).fulfilmentHandoffs : [], carrierDispatchExecutions: Array.isArray((candidate.retailUnifiedOrderIngestion as { carrierDispatchExecutions?: unknown }).carrierDispatchExecutions) ? (candidate.retailUnifiedOrderIngestion as NonNullable<RevenueOpsState['retailUnifiedOrderIngestion']>).carrierDispatchExecutions : [], deliveryExecutions: Array.isArray((candidate.retailUnifiedOrderIngestion as { deliveryExecutions?: unknown }).deliveryExecutions) ? (candidate.retailUnifiedOrderIngestion as NonNullable<RevenueOpsState['retailUnifiedOrderIngestion']>).deliveryExecutions : [], rtoReconciliationExecutions: Array.isArray((candidate.retailUnifiedOrderIngestion as { rtoReconciliationExecutions?: unknown }).rtoReconciliationExecutions) ? (candidate.retailUnifiedOrderIngestion as NonNullable<RevenueOpsState['retailUnifiedOrderIngestion']>).rtoReconciliationExecutions : [], returnReconciliationExecutions: Array.isArray((candidate.retailUnifiedOrderIngestion as { returnReconciliationExecutions?: unknown }).returnReconciliationExecutions) ? (candidate.retailUnifiedOrderIngestion as NonNullable<RevenueOpsState['retailUnifiedOrderIngestion']>).returnReconciliationExecutions : [], cancellationReconciliationExecutions: Array.isArray((candidate.retailUnifiedOrderIngestion as { cancellationReconciliationExecutions?: unknown }).cancellationReconciliationExecutions) ? (candidate.retailUnifiedOrderIngestion as NonNullable<RevenueOpsState['retailUnifiedOrderIngestion']>).cancellationReconciliationExecutions : [], carrierCallbackEvidence: Array.isArray((candidate.retailUnifiedOrderIngestion as { carrierCallbackEvidence?: unknown }).carrierCallbackEvidence) ? (candidate.retailUnifiedOrderIngestion as NonNullable<RevenueOpsState['retailUnifiedOrderIngestion']>).carrierCallbackEvidence : [] }
+      : { orders: [], conflicts: [], reservationIntents: [], reconciliationRequirements: [], hubHandoffs: [], fulfilmentHandoffs: [], stockReservationExecutions: [], pickTaskExecutions: [], shipmentPackageExecutions: [], dispatchReadinessExecutions: [], carrierDispatchExecutions: [], deliveryExecutions: [], rtoReconciliationExecutions: [], returnReconciliationExecutions: [], cancellationReconciliationExecutions: [], carrierCallbackEvidence: [] },
     retailDeviceTransportEvidence: Array.isArray(candidate.retailDeviceTransportEvidence) ? candidate.retailDeviceTransportEvidence as RevenueOpsState['retailDeviceTransportEvidence'] : [],
     retailDevicePreflightEvidence: Array.isArray(candidate.retailDevicePreflightEvidence) ? candidate.retailDevicePreflightEvidence as RevenueOpsState['retailDevicePreflightEvidence'] : [],
     retailDeviceAdapterProfiles: Array.isArray(candidate.retailDeviceAdapterProfiles) ? candidate.retailDeviceAdapterProfiles as RevenueOpsState['retailDeviceAdapterProfiles'] : [],
@@ -2309,6 +2329,15 @@ export class RevenueOpsStore {
 
   public addDeliveryEvidence(input: RecordDeliveryEvidenceInput, actorId: string): Promise<RevenueOpsSnapshot> {
     return this.mutate((state) => recordDeliveryEvidence(state, input, actorId));
+  }
+
+  /**
+   * Persists a renderer-safe delivery-map projection received from a governed
+   * Hub/import adapter. Raw provider payloads and credentials never cross this
+   * boundary; the domain normalizer enforces scope, evidence, and coordinates.
+   */
+  public ingestRetailDeliveryMapSignal(input: { signal: unknown; actorId: string; now?: string }): Promise<RevenueOpsSnapshot> {
+    return this.mutate((state) => ingestRetailDeliveryMapSignal(state, input));
   }
 
   public addServiceMilestone(input: CreateServiceMilestoneInput): Promise<RevenueOpsSnapshot> {
@@ -3542,9 +3571,215 @@ export class RevenueOpsStore {
   public syncRetailOfflineSale(input: SyncRetailOfflineSaleInput, actorId: string): Promise<RevenueOpsSnapshot> { return this.mutate((state) => syncRetailOfflineSale(state, input, actorId)); }
   public syncRetailOfflineQueue(input: SyncRetailOfflineQueueInput, actorId: string): Promise<RevenueOpsSnapshot> { return this.mutate((state) => syncRetailOfflineQueue(state, input, actorId)); }
   public resolveRetailOfflineSale(input: ResolveRetailOfflineSaleInput, actorId: string): Promise<RevenueOpsSnapshot> { return this.mutate((state) => resolveRetailOfflineSale(state, input, actorId)); }
+  /**
+   * Sends one completed POS sale to the Retail Hub and persists an immutable
+   * local transport receipt. The Hub response is authoritative; a transport
+   * error is persisted as `failed` and rethrown, so the UI can never show a
+   * false success. The deployment adapter remains credential-free here and is
+   * supplied by the main-process client when real Hub auth is configured.
+   */
+  private async sendRetailHubStoreEdgeSyncWithinQueue(input: SendRetailHubStoreEdgeSyncInput, actorId: string): Promise<RevenueOpsSnapshot> {
+      const event = input.event;
+      const sale = this.state.retailSales.find((candidate) =>
+        candidate.id === event.aggregateId &&
+        candidate.status === 'completed' &&
+        (candidate.scope ?? this.state.scope).companyId === this.state.scope.companyId &&
+        (candidate.scope ?? this.state.scope).branchId === this.state.scope.branchId,
+      );
+      if (!sale) throw new Error('Retail Hub sync requires a completed sale in the active company and branch.');
+      if (event.eventType !== 'retail.sale.completed' || event.transactionKey !== sale.transactionKey) {
+        throw new Error('Retail Hub sync event does not match the completed sale transaction key.');
+      }
+      const expected = buildRetailHubStoreEdgeSaleEvent(sale, event.sequence, event.eventId);
+      if (expected.payloadChecksum !== event.payloadChecksum) {
+        throw new Error('Retail Hub sync event checksum does not match the persisted sale evidence.');
+      }
+
+      const attemptedAt = new Date().toISOString();
+      const previousCursor = this.state.retailHubStoreEdgeSyncCursor;
+      const cursor: RetailHubStoreEdgeSyncCursor = {
+        nextSequence: Math.max(previousCursor?.nextSequence ?? 1, event.sequence + 1),
+        lastAttemptedSequence: event.sequence,
+        ...(previousCursor?.lastAcceptedSequence === undefined ? {} : { lastAcceptedSequence: previousCursor.lastAcceptedSequence }),
+        ...(previousCursor?.lastAcceptedEventId === undefined ? {} : { lastAcceptedEventId: previousCursor.lastAcceptedEventId }),
+        updatedAt: attemptedAt,
+        scope: structuredClone(this.state.scope),
+      };
+
+      try {
+        const result = await sendRetailHubStoreEdgeSync(input);
+        const status: RetailHubStoreEdgeSyncLocalReceipt['status'] = result.outcome === 'recorded'
+          ? 'sent'
+          : result.outcome === 'idempotent'
+            ? 'idempotent'
+            : 'conflicted';
+        const accepted = result.outcome !== 'conflicted';
+        const receipt: RetailHubStoreEdgeSyncLocalReceipt = {
+          id: randomUUID(),
+          eventId: event.eventId,
+          eventType: event.eventType,
+          aggregateId: event.aggregateId,
+          transactionKey: event.transactionKey,
+          sequence: event.sequence,
+          payloadChecksum: event.payloadChecksum,
+          status,
+          httpStatus: result.httpStatus,
+          hubReceiptId: result.receipt.id,
+          actorId,
+          attemptedAt,
+          hubReceivedAt: result.receipt.receivedAt,
+          ...(result.receipt.detail ? { reason: result.receipt.detail } : {}),
+          scope: structuredClone(this.state.scope),
+          version: 1,
+        };
+        this.state = withOperatingRecordScopes({
+          ...this.state,
+          revision: this.state.revision + 1,
+          retailHubStoreEdgeSyncReceipts: [receipt, ...(this.state.retailHubStoreEdgeSyncReceipts ?? [])],
+          retailHubStoreEdgeSyncCursor: {
+            ...cursor,
+            ...(accepted ? { lastAcceptedSequence: event.sequence, lastAcceptedEventId: event.eventId } : {}),
+          },
+        });
+        await this.persist();
+        return this.getSnapshot();
+      } catch (error) {
+        const reason = error instanceof Error ? error.message.slice(0, 500) : 'Retail Hub sync failed.';
+        const receipt: RetailHubStoreEdgeSyncLocalReceipt = {
+          id: randomUUID(),
+          eventId: event.eventId,
+          eventType: event.eventType,
+          aggregateId: event.aggregateId,
+          transactionKey: event.transactionKey,
+          sequence: event.sequence,
+          payloadChecksum: event.payloadChecksum,
+          status: 'failed',
+          actorId,
+          attemptedAt,
+          reason,
+          scope: structuredClone(this.state.scope),
+          version: 1,
+        };
+        this.state = withOperatingRecordScopes({
+          ...this.state,
+          revision: this.state.revision + 1,
+          retailHubStoreEdgeSyncReceipts: [receipt, ...(this.state.retailHubStoreEdgeSyncReceipts ?? [])],
+          retailHubStoreEdgeSyncCursor: cursor,
+        });
+        await this.persist();
+        throw error;
+      }
+  }
+
+  public sendRetailHubStoreEdgeSync(input: SendRetailHubStoreEdgeSyncInput, actorId: string): Promise<RevenueOpsSnapshot> {
+    return this.enqueue(() => this.sendRetailHubStoreEdgeSyncWithinQueue(input, actorId));
+  }
+
+  /**
+   * Saves an explicit, credential-free retry policy. The renderer may use the
+   * policy only after an authenticated operator has enabled it; the policy
+   * stores the Hub origin, never tokens, paths with secrets, or query data.
+   */
+  public saveRetailHubStoreEdgeSyncPolicy(input: SaveRetailHubStoreEdgeSyncPolicyInput, actorId: string): Promise<RevenueOpsSnapshot> {
+    return this.enqueue(async () => {
+      const baseUrl = input.baseUrl.trim();
+      const parsedBaseUrl = new URL(baseUrl);
+      if (parsedBaseUrl.protocol !== 'https:') throw new Error('Retail Hub retry policy requires an HTTPS base URL.');
+      if (parsedBaseUrl.username || parsedBaseUrl.password || parsedBaseUrl.search || parsedBaseUrl.hash) throw new Error('Retail Hub retry policy URL must not contain credentials, query parameters, or fragments.');
+      if (![5, 15, 30, 60].includes(input.intervalMinutes)) throw new Error('Retail Hub retry interval is not supported.');
+      if (!Number.isInteger(input.batchLimit) || input.batchLimit < 1 || input.batchLimit > 50) throw new Error('Retail Hub retry batch limit must be between 1 and 50.');
+      const policy: RetailHubStoreEdgeSyncPolicy = {
+        enabled: input.enabled,
+        baseUrl: parsedBaseUrl.origin,
+        intervalMinutes: input.intervalMinutes,
+        batchLimit: input.batchLimit,
+        updatedAt: new Date().toISOString(),
+        updatedBy: actorId,
+        scope: structuredClone(this.state.scope),
+        version: (this.state.retailHubStoreEdgeSyncPolicy?.version ?? 0) + 1,
+      };
+      this.state = withOperatingRecordScopes({ ...this.state, revision: this.state.revision + 1, retailHubStoreEdgeSyncPolicy: policy });
+      await this.persist();
+      return this.getSnapshot();
+    });
+  }
+
+  /**
+   * Replays a bounded set of completed local sales that do not have an
+   * accepted Hub receipt. Each attempt is isolated: a failed transport is
+   * recorded and the next sale still gets an attempt. Existing event IDs and
+   * sequences are reused for idempotent retry; no new sale payload is minted.
+   */
+  public syncRetailHubStoreEdgeQueue(input: SyncRetailHubStoreEdgeQueueInput, actorId: string): Promise<RevenueOpsSnapshot> {
+    return this.enqueue(async () => {
+      const baseUrl = input.baseUrl.trim();
+      if (!baseUrl) throw new Error('Retail Hub batch sync requires an HTTPS base URL.');
+      if (!Number.isInteger(input.limit) || input.limit < 1 || input.limit > 50) throw new Error('Retail Hub batch sync limit must be between 1 and 50.');
+      const parsedBaseUrl = new URL(baseUrl);
+      if (parsedBaseUrl.protocol !== 'https:') throw new Error('Retail Hub batch sync requires an HTTPS base URL.');
+      if (parsedBaseUrl.username || parsedBaseUrl.password || parsedBaseUrl.search || parsedBaseUrl.hash) throw new Error('Retail Hub batch sync URL must not contain credentials, query parameters, or fragments.');
+      const startedAt = new Date().toISOString();
+      const receipts = this.state.retailHubStoreEdgeSyncReceipts ?? [];
+      const pendingSales = this.state.retailSales
+        .filter((sale) => sale.status === 'completed' && (sale.scope ?? this.state.scope).companyId === this.state.scope.companyId && (sale.scope ?? this.state.scope).branchId === this.state.scope.branchId)
+        .filter((sale) => {
+          const latest = receipts.find((receipt) => receipt.aggregateId === sale.id);
+          return !latest || !['sent', 'idempotent'].includes(latest.status);
+        })
+        .sort((left, right) => (left.completedAt ?? left.saleAt).localeCompare(right.completedAt ?? right.saleAt) || left.id.localeCompare(right.id))
+        .slice(0, input.limit);
+
+      let sent = 0;
+      let idempotent = 0;
+      let conflicted = 0;
+      let failed = 0;
+      for (const sale of pendingSales) {
+        const previous = (this.state.retailHubStoreEdgeSyncReceipts ?? []).find((receipt) => receipt.aggregateId === sale.id);
+        const sequence = previous?.sequence ?? this.state.retailHubStoreEdgeSyncCursor?.nextSequence ?? 1;
+        const event = buildRetailHubStoreEdgeSaleEvent(sale, sequence, previous?.eventId ?? `retail-sale:${sale.id}:v${sale.version}`);
+        try {
+          await this.sendRetailHubStoreEdgeSyncWithinQueue({ baseUrl, event }, actorId);
+          const latest = (this.state.retailHubStoreEdgeSyncReceipts ?? []).find((receipt) => receipt.aggregateId === sale.id);
+          if (latest?.status === 'sent') sent += 1;
+          else if (latest?.status === 'idempotent') idempotent += 1;
+          else if (latest?.status === 'conflicted') conflicted += 1;
+          else failed += 1;
+        } catch {
+          // The per-sale method has already persisted immutable failed evidence.
+          // Continue the bounded batch so one offline/invalid sale never blocks
+          // unrelated store receipts.
+          failed += 1;
+        }
+      }
+      const completedAt = new Date().toISOString();
+      const run: RetailHubStoreEdgeSyncRun = {
+        id: randomUUID(),
+        startedAt,
+        completedAt,
+        actorId,
+        baseUrlOrigin: parsedBaseUrl.origin,
+        limit: input.limit,
+        attempted: pendingSales.length,
+        sent,
+        idempotent,
+        conflicted,
+        failed,
+        status: pendingSales.length === 0 ? 'no-work' : failed || conflicted ? 'completed-with-errors' : 'completed',
+        scope: structuredClone(this.state.scope),
+        version: 1,
+      };
+      this.state = withOperatingRecordScopes({
+        ...this.state,
+        revision: this.state.revision + 1,
+        retailHubStoreEdgeSyncRuns: [run, ...(this.state.retailHubStoreEdgeSyncRuns ?? [])],
+      });
+      await this.persist();
+      return this.getSnapshot();
+    });
+  }
   public ingestRetailUnifiedOrder(input: IngestRetailOrderSourceEventInput, actorId: string): Promise<RevenueOpsSnapshot> {
     return this.mutate((state) => {
-      const current = state.retailUnifiedOrderIngestion ?? { orders: [], conflicts: [], reservationIntents: [], reconciliationRequirements: [], hubHandoffs: [], fulfilmentHandoffs: [], stockReservationExecutions: [], pickTaskExecutions: [], shipmentPackageExecutions: [], dispatchReadinessExecutions: [], carrierDispatchExecutions: [], deliveryExecutions: [], rtoReconciliationExecutions: [], returnReconciliationExecutions: [] };
+      const current = state.retailUnifiedOrderIngestion ?? { orders: [], conflicts: [], reservationIntents: [], reconciliationRequirements: [], hubHandoffs: [], fulfilmentHandoffs: [], stockReservationExecutions: [], pickTaskExecutions: [], shipmentPackageExecutions: [], dispatchReadinessExecutions: [], carrierDispatchExecutions: [], deliveryExecutions: [], rtoReconciliationExecutions: [], returnReconciliationExecutions: [], cancellationReconciliationExecutions: [] };
       const result = ingestRetailOrderSourceEvent(current, input.event, { mode: input.mode, receivedAt: input.receivedAt, actorId });
       return result.outcome === 'idempotent'
         ? state
@@ -3553,21 +3788,21 @@ export class RevenueOpsStore {
   }
   public prepareRetailUnifiedOrderHandoff(input: PrepareRetailOrderGovernedHandoffInput, actorId: string): Promise<RevenueOpsSnapshot> {
     return this.mutate((state) => {
-      const current = state.retailUnifiedOrderIngestion ?? { orders: [], conflicts: [], reservationIntents: [], reconciliationRequirements: [], hubHandoffs: [], fulfilmentHandoffs: [], stockReservationExecutions: [], pickTaskExecutions: [], shipmentPackageExecutions: [], dispatchReadinessExecutions: [], carrierDispatchExecutions: [], deliveryExecutions: [], rtoReconciliationExecutions: [], returnReconciliationExecutions: [] };
+      const current = state.retailUnifiedOrderIngestion ?? { orders: [], conflicts: [], reservationIntents: [], reconciliationRequirements: [], hubHandoffs: [], fulfilmentHandoffs: [], stockReservationExecutions: [], pickTaskExecutions: [], shipmentPackageExecutions: [], dispatchReadinessExecutions: [], carrierDispatchExecutions: [], deliveryExecutions: [], rtoReconciliationExecutions: [], returnReconciliationExecutions: [], cancellationReconciliationExecutions: [] };
       const result = prepareRetailOrderForGovernedHandoff(current, { ...input, approvedBy: actorId });
       return { ...state, revision: state.revision + 1, retailUnifiedOrderIngestion: result.state };
     });
   }
   public prepareRetailOrderHubHandoff(input: PrepareRetailOrderHubHandoffInput, actorId: string): Promise<RevenueOpsSnapshot> {
     return this.mutate((state) => {
-      const current = state.retailUnifiedOrderIngestion ?? { orders: [], conflicts: [], reservationIntents: [], reconciliationRequirements: [], hubHandoffs: [], fulfilmentHandoffs: [], stockReservationExecutions: [], pickTaskExecutions: [], shipmentPackageExecutions: [], dispatchReadinessExecutions: [], carrierDispatchExecutions: [], deliveryExecutions: [], rtoReconciliationExecutions: [], returnReconciliationExecutions: [] };
+      const current = state.retailUnifiedOrderIngestion ?? { orders: [], conflicts: [], reservationIntents: [], reconciliationRequirements: [], hubHandoffs: [], fulfilmentHandoffs: [], stockReservationExecutions: [], pickTaskExecutions: [], shipmentPackageExecutions: [], dispatchReadinessExecutions: [], carrierDispatchExecutions: [], deliveryExecutions: [], rtoReconciliationExecutions: [], returnReconciliationExecutions: [], cancellationReconciliationExecutions: [] };
       const result = prepareRetailOrderHubHandoff(current, input, actorId);
       return { ...state, revision: state.revision + 1, retailUnifiedOrderIngestion: result.state };
     });
   }
   public recordRetailOrderHubHandoffResult(input: RecordRetailOrderHubHandoffResultInput, actorId: string): Promise<RevenueOpsSnapshot> {
     return this.mutate((state) => {
-      const current = state.retailUnifiedOrderIngestion ?? { orders: [], conflicts: [], reservationIntents: [], reconciliationRequirements: [], hubHandoffs: [], fulfilmentHandoffs: [], stockReservationExecutions: [], pickTaskExecutions: [], shipmentPackageExecutions: [], dispatchReadinessExecutions: [], carrierDispatchExecutions: [], deliveryExecutions: [], rtoReconciliationExecutions: [], returnReconciliationExecutions: [] };
+      const current = state.retailUnifiedOrderIngestion ?? { orders: [], conflicts: [], reservationIntents: [], reconciliationRequirements: [], hubHandoffs: [], fulfilmentHandoffs: [], stockReservationExecutions: [], pickTaskExecutions: [], shipmentPackageExecutions: [], dispatchReadinessExecutions: [], carrierDispatchExecutions: [], deliveryExecutions: [], rtoReconciliationExecutions: [], returnReconciliationExecutions: [], cancellationReconciliationExecutions: [] };
       const result = recordRetailOrderHubHandoffResult(current, input, actorId);
       return { ...state, revision: state.revision + 1, retailUnifiedOrderIngestion: result.state };
     });
@@ -3576,14 +3811,14 @@ export class RevenueOpsStore {
     return this.mutate((state) => {
       const salesOrder = state.salesOrders.find((candidate) => candidate.id === input.salesOrderId && (candidate.scope ?? state.scope).companyId === state.scope.companyId && (candidate.scope ?? state.scope).branchId === state.scope.branchId);
       if (!salesOrder) throw new Error('Selected sales order is not available in the current operating scope.');
-      const current = state.retailUnifiedOrderIngestion ?? { orders: [], conflicts: [], reservationIntents: [], reconciliationRequirements: [], hubHandoffs: [], fulfilmentHandoffs: [], stockReservationExecutions: [], pickTaskExecutions: [], shipmentPackageExecutions: [], dispatchReadinessExecutions: [], carrierDispatchExecutions: [], deliveryExecutions: [], rtoReconciliationExecutions: [], returnReconciliationExecutions: [] };
+      const current = state.retailUnifiedOrderIngestion ?? { orders: [], conflicts: [], reservationIntents: [], reconciliationRequirements: [], hubHandoffs: [], fulfilmentHandoffs: [], stockReservationExecutions: [], pickTaskExecutions: [], shipmentPackageExecutions: [], dispatchReadinessExecutions: [], carrierDispatchExecutions: [], deliveryExecutions: [], rtoReconciliationExecutions: [], returnReconciliationExecutions: [], cancellationReconciliationExecutions: [] };
       const result = prepareRetailOrderFulfilmentHandoff(current, input, salesOrder, actorId);
       return { ...state, revision: state.revision + 1, retailUnifiedOrderIngestion: result.state };
     });
   }
   public decideRetailOrderFulfilmentHandoff(input: DecideRetailOrderFulfilmentHandoffInput, actorId: string): Promise<RevenueOpsSnapshot> {
     return this.mutate((state) => {
-      const current = state.retailUnifiedOrderIngestion ?? { orders: [], conflicts: [], reservationIntents: [], reconciliationRequirements: [], hubHandoffs: [], fulfilmentHandoffs: [], stockReservationExecutions: [], pickTaskExecutions: [], shipmentPackageExecutions: [], dispatchReadinessExecutions: [], carrierDispatchExecutions: [], deliveryExecutions: [], rtoReconciliationExecutions: [], returnReconciliationExecutions: [] };
+      const current = state.retailUnifiedOrderIngestion ?? { orders: [], conflicts: [], reservationIntents: [], reconciliationRequirements: [], hubHandoffs: [], fulfilmentHandoffs: [], stockReservationExecutions: [], pickTaskExecutions: [], shipmentPackageExecutions: [], dispatchReadinessExecutions: [], carrierDispatchExecutions: [], deliveryExecutions: [], rtoReconciliationExecutions: [], returnReconciliationExecutions: [], cancellationReconciliationExecutions: [] };
       const result = decideRetailOrderFulfilmentHandoff(current, input, actorId);
       return { ...state, revision: state.revision + 1, retailUnifiedOrderIngestion: result.state };
     });
@@ -3615,6 +3850,9 @@ export class RevenueOpsStore {
   }
   public confirmRetailUnifiedOrderDelivery(input: ConfirmRetailUnifiedOrderDeliveryInput, actorId: string): Promise<RevenueOpsSnapshot> {
     return this.mutate((state) => confirmRetailUnifiedOrderDelivery(state, input, actorId));
+  }
+  public reconcileRetailUnifiedOrderCancellation(input: ReconcileRetailUnifiedOrderCancellationInput, actorId: string): Promise<RevenueOpsSnapshot> {
+    return this.mutate((state) => reconcileRetailUnifiedOrderCancellation(state, input, actorId));
   }
   public reconcileRetailUnifiedOrderRto(input: ReconcileRetailUnifiedOrderRtoInput, actorId: string): Promise<RevenueOpsSnapshot> {
     return this.mutate((state) => reconcileRetailUnifiedOrderRto(state, input, actorId));

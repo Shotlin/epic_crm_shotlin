@@ -1,7 +1,7 @@
 {
   "name": "epic-bos",
   "productName": "Epic BOS",
-  "version": "0.1.77",
+  "version": "0.1.82",
   "description": "The operating system for modern business.",
   "main": ".vite/build/main.js",
   "private": true,
@@ -13,16 +13,23 @@
     "test:watch": "vitest",
     "lint": "eslint --ext .ts,.tsx .",
     "verify": "pnpm typecheck && pnpm test && pnpm lint",
+    "verify:retail-core": "pnpm run verify:capability-registry && pnpm run verify:ipc-policy-alignment && pnpm run verify:renderer-copy && pnpm typecheck && pnpm --dir retail-hub typecheck && pnpm test && pnpm --dir retail-hub test && pnpm lint",
+    "generate:capability-registry": "node scripts/generate-capability-registry.mjs",
+    "verify:capability-registry": "node scripts/generate-capability-registry.mjs --check",
+    "verify:ipc-policy-alignment": "node scripts/verify-ipc-handler-policy-alignment.mjs",
+    "verify:renderer-copy": "node scripts/verify-renderer-copy.mjs",
     "build": "electron-forge package",
     "package": "electron-forge package",
     "make": "electron-forge make",
     "publish": "electron-forge publish",
     "verify:artifact": "node scripts/verify-release-artifact.mjs",
     "verify:artifacts": "node scripts/verify-release-artifacts.mjs",
+    "verify:release-matrix": "node scripts/verify-release-matrix.mjs",
     "smoke:package": "node scripts/smoke-packaged-app.mjs",
     "verify:smoke-evidence": "node scripts/verify-smoke-evidence.mjs",
     "prepare:release-pack": "node scripts/create-release-certification-pack.mjs",
-    "test:e2e:electron": "node scripts/run-electron-e2e.mjs"
+    "test:e2e:electron": "node scripts/run-electron-e2e.mjs",
+    "test:batches": "node scripts/run-test-batches.mjs"
   },
   "keywords": [
     "electron",

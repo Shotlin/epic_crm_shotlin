@@ -127,6 +127,30 @@ export interface RetailCheckoutDatabaseProof {
     totalCredit: number;
     balanced: boolean;
   };
+  shift: {
+    status: string;
+    cashierId: string;
+    closedBy?: string;
+    variance?: number;
+  };
+  returnCase: {
+    status: string;
+    requestedBy: string;
+    inspectedBy?: string;
+    approvedBy?: string;
+    reason: string;
+  };
+  returnLedger: {
+    quantity: number;
+    value: number;
+    reference: string;
+  };
+  returnCostJournal: {
+    id: string;
+    totalDebit: number;
+    totalCredit: number;
+    balanced: boolean;
+  };
 }
 
 function retailState(database: DatabaseSync): RevenueOpsState {
@@ -186,6 +210,23 @@ export function inspectRetailCheckoutDatabase(
       sourceType === 'retail-sale-cost' && sourceId === sale.id,
     );
     if (!costJournal) throw new Error('The completed POS sale is missing its cost journal evidence.');
+    const shift = state.retailCashierShifts.find(({ id }) => id === sale.cashierShiftId);
+    if (!shift) throw new Error('The completed POS sale is missing its cashier-shift evidence.');
+    if (state.retailReturns.length !== 1) {
+      throw new Error(`Expected exactly one packaged counter return, found ${state.retailReturns.length}.`);
+    }
+    const returnCase = state.retailReturns[0];
+    if (!returnCase || returnCase.retailSaleId !== sale.id || returnCase.status !== 'approved') {
+      throw new Error('The expected independently approved counter return was not found.');
+    }
+    const returnLedger = state.inventoryLedger.find(({ type, reference }) => (
+      type === 'return' && reference === returnCase.number
+    ));
+    if (!returnLedger) throw new Error('The approved counter return is missing its physical return ledger evidence.');
+    const returnCostJournal = state.journalDrafts.find(({ sourceType, sourceId }) => (
+      sourceType === 'retail-return-cost' && sourceId === returnCase.id
+    ));
+    if (!returnCostJournal) throw new Error('The approved counter return is missing its COGS reversal journal draft.');
 
     return {
       databasePath,
@@ -228,6 +269,174 @@ export function inspectRetailCheckoutDatabase(
         totalCredit: costJournal.totalCredit,
         balanced: costJournal.totalDebit === costJournal.totalCredit,
       },
+      shift: {
+        status: shift.status,
+        cashierId: shift.cashierId,
+        closedBy: shift.closedBy,
+        variance: shift.variance,
+      },
+      returnCase: {
+        status: returnCase.status,
+        requestedBy: returnCase.requestedBy,
+        inspectedBy: returnCase.inspectedBy,
+        approvedBy: returnCase.approvedBy,
+        reason: returnCase.reason,
+      },
+      returnLedger: {
+        quantity: returnLedger.quantity,
+        value: returnLedger.value,
+        reference: returnLedger.reference,
+      },
+      returnCostJournal: {
+        id: returnCostJournal.id,
+        totalDebit: returnCostJournal.totalDebit,
+        totalCredit: returnCostJournal.totalCredit,
+        balanced: returnCostJournal.totalDebit === returnCostJournal.totalCredit,
+      },
+    };
+  } finally {
+    database.close();
+  }
+}
+
+export interface RetailOfflineRecoveryDatabaseProof {
+  databasePath: string;
+  integrityCheck: string;
+  queue: {
+    status: string;
+    attempts: number;
+    queuedBy: string;
+    syncedSaleId?: string;
+    payloadChecksum: string;
+  };
+  journalStatuses: string[];
+  sale: {
+    id: string;
+    number: string;
+    status: string;
+    cashierId: string;
+    grandTotal: number;
+  };
+  stock: {
+    quantity: number;
+    available: number;
+  };
+}
+
+/**
+ * Read-only proof for the packaged offline-store recovery journey. It checks
+ * the persisted queue and append-only journal rather than trusting a transient
+ * renderer notice.
+ */
+export function inspectRetailOfflineRecoveryDatabase(
+  databasePath: string,
+  fixture: PosCheckoutE2eFixture,
+): RetailOfflineRecoveryDatabaseProof {
+  if (!existsSync(databasePath)) {
+    throw new Error(`Expected Electron SQLite database was not created: ${databasePath}`);
+  }
+  const database = new DatabaseSync(databasePath, { allowExtension: false, readOnly: true });
+  try {
+    const integrity = database.prepare('PRAGMA integrity_check').get() as { integrity_check: string };
+    const state = retailState(database);
+    if (state.retailOfflineSaleQueue.length !== 1) {
+      throw new Error(`Expected exactly one offline queue item, found ${state.retailOfflineSaleQueue.length}.`);
+    }
+    const queue = state.retailOfflineSaleQueue[0];
+    if (!queue || queue.status !== 'synced' || queue.attempts !== 1 || queue.queuedBy !== 'user-avery' || !queue.syncedSaleId) {
+      throw new Error('The offline queue item did not reach the governed synced state.');
+    }
+    const receipts = (state.retailOfflineSyncReceipts ?? []).filter((receipt) => receipt.transactionKey === queue.transactionKey);
+    const journalStatuses = receipts.map((receipt) => receipt.status);
+    for (const expected of ['queued', 'syncing', 'synced']) {
+      if (!journalStatuses.includes(expected)) throw new Error(`Offline recovery journal is missing its ${expected} event.`);
+    }
+    const sale = state.retailSales.find((candidate) => candidate.id === queue.syncedSaleId);
+    if (!sale || sale.status !== 'completed' || sale.cashierId !== 'user-avery' || sale.counterId !== fixture.counterId) {
+      throw new Error('The synchronized offline sale is missing completed receipt evidence.');
+    }
+    const stock = state.binBalances.find(({ binId, itemVariantId }) => binId === fixture.sellFromBinId && itemVariantId === fixture.itemVariantId);
+    if (!stock || stock.quantity !== fixture.stockQuantityAfterCheckout || stock.available !== fixture.stockQuantityAfterCheckout) {
+      throw new Error('The synchronized offline sale did not reconcile the counter-bin stock balance.');
+    }
+    return {
+      databasePath,
+      integrityCheck: integrity.integrity_check,
+      queue: {
+        status: queue.status,
+        attempts: queue.attempts,
+        queuedBy: queue.queuedBy,
+        syncedSaleId: queue.syncedSaleId,
+        payloadChecksum: queue.payloadChecksum,
+      },
+      journalStatuses,
+      sale: {
+        id: sale.id,
+        number: sale.number,
+        status: sale.status,
+        cashierId: sale.cashierId,
+        grandTotal: sale.taxPreview.grandTotal,
+      },
+      stock: { quantity: stock.quantity, available: stock.available },
+    };
+  } finally {
+    database.close();
+  }
+}
+
+export interface RetailOfflineConflictDatabaseProof {
+  databasePath: string;
+  integrityCheck: string;
+  queue: {
+    status: string;
+    attempts: number;
+    queuedBy: string;
+    resolvedBy?: string;
+    resolutionEvidenceReference?: string;
+    conflictReason?: string;
+  };
+  journalStatuses: string[];
+  saleCount: number;
+}
+
+/**
+ * Read-only proof for a packaged checksum-conflict recovery. A discarded
+ * queue item must have an independent actor and evidence while producing no
+ * sale, stock movement, payment, or refund side effect.
+ */
+export function inspectRetailOfflineConflictDatabase(databasePath: string): RetailOfflineConflictDatabaseProof {
+  if (!existsSync(databasePath)) {
+    throw new Error(`Expected Electron SQLite database was not created: ${databasePath}`);
+  }
+  const database = new DatabaseSync(databasePath, { allowExtension: false, readOnly: true });
+  try {
+    const integrity = database.prepare('PRAGMA integrity_check').get() as { integrity_check: string };
+    const state = retailState(database);
+    if (state.retailOfflineSaleQueue.length !== 1) {
+      throw new Error(`Expected exactly one offline queue item, found ${state.retailOfflineSaleQueue.length}.`);
+    }
+    const queue = state.retailOfflineSaleQueue[0];
+    if (!queue || queue.status !== 'discarded' || queue.attempts !== 1 || queue.queuedBy !== 'user-avery' || queue.resolvedBy !== 'user-priya' || queue.resolutionEvidenceReference !== 'POWER-FAIL-STORE-001') {
+      throw new Error('The offline conflict did not reach the independently evidenced discarded state.');
+    }
+    const receipts = (state.retailOfflineSyncReceipts ?? []).filter((receipt) => receipt.transactionKey === queue.transactionKey);
+    const journalStatuses = receipts.map((receipt) => receipt.status);
+    for (const expected of ['queued', 'syncing', 'conflict', 'discarded']) {
+      if (!journalStatuses.includes(expected)) throw new Error(`Offline conflict journal is missing its ${expected} event.`);
+    }
+    return {
+      databasePath,
+      integrityCheck: integrity.integrity_check,
+      queue: {
+        status: queue.status,
+        attempts: queue.attempts,
+        queuedBy: queue.queuedBy,
+        resolvedBy: queue.resolvedBy,
+        resolutionEvidenceReference: queue.resolutionEvidenceReference,
+        conflictReason: queue.conflictReason,
+      },
+      journalStatuses,
+      saleCount: state.retailSales.length,
     };
   } finally {
     database.close();

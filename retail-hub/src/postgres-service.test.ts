@@ -190,4 +190,82 @@ describe('durable Retail Hub HTTP service', () => {
     expect((response.body as { assessment: { blockers: string[] } }).assessment.blockers.join(' ')).toMatch(/missing reconciliation|missing identity|customers/i);
     expect(await decisionService.handle({ method: 'POST', url: '/v1/shadow-imports/cutover', body: {} })).toMatchObject({ status: 405, body: { error: 'read_only_boundary' } });
   });
+
+  it('exposes a fail-closed shadow-import preflight for a batch without authorizing write-back', async () => {
+    const plan = verifiedPlan(7);
+    const repository: ShadowImportPostgresRepository = { listPlans: vi.fn(async () => [plan]), getPlan: vi.fn(async () => plan), replacePlan: vi.fn() };
+    const service = createPostgresRetailHubService({
+      repository,
+      resolveScope: () => scope,
+      resolveShadowImportCredentialRevision: () => 7,
+      deploymentConfig: {
+        environment: 'production',
+        publicOrigin: 'https://hub.bakaloo.in',
+        allowedOrigins: ['https://admin.bakaloo.in'],
+        databaseUrl: 'postgresql://hub:secret@db.internal:5432/retail_hub',
+        databaseRlsContextConfigured: true,
+        redisUrl: 'rediss://redis.internal:6380',
+        authMode: 'oidc',
+        tlsEnabled: true,
+        credentialVaultConfigured: true,
+        observabilityConfigured: true,
+        backupConfigured: true,
+        storeEdgeWorkerConfigured: true,
+        storeEdgeAtomicInboxConfigured: true,
+        storeEdgeMetricsConfigured: true,
+        storeEdgeRecoveryConfigured: true,
+        sourceMode: 'shadow-read-only',
+      },
+    });
+    const response = await service.handle({ method: 'GET', url: '/v1/shadow-imports/preflight?batchId=batch-1' });
+    expect(response).toMatchObject({ status: 200, body: { preflight: { status: 'ready-for-review', writeBackAllowed: false, blockers: [] } } });
+    const deployment = await service.handle({ method: 'GET', url: '/v1/deployment/preflight' });
+    expect(deployment).toMatchObject({ status: 200, body: { preflight: { status: 'ready', writeBackAllowed: false, blockers: [] } } });
+  });
+
+  it('serves the coverage map only through explicit permission and trusted scope', async () => {
+    const repository: ShadowImportPostgresRepository = { listPlans: vi.fn(async () => []), getPlan: vi.fn(), replacePlan: vi.fn() };
+    const shopId = '11111111-1111-4111-8111-111111111111';
+    const projection = {
+      schema: 'epic-bos-retail-hub-coverage-map.v1' as const,
+      source: 'bakaloo' as const,
+      writeBackAllowed: false as const,
+      projectionChecksum: 'a'.repeat(64),
+      observedAt: '2026-08-10T12:00:00.000Z',
+      scope,
+      shop: { id: shopId, name: 'Bakaloo', lat: 22.58, lng: 88.41, city: 'Kolkata', state: 'West Bengal', pincode: '700091', isActive: true },
+      serviceablePincodes: ['700091'], uncoveredPincodes: [], customers: [], boundaries: [], totalCustomers: 0,
+    };
+    const resolver = vi.fn(async () => projection);
+    const denied = createPostgresRetailHubService({
+      repository,
+      resolveScope: () => scope,
+      resolveAuthorization: () => ({ actorId: 'cashier-1', scope, permissions: [] }),
+      resolveCoverageMap: resolver,
+    });
+    expect(await denied.handle({ method: 'GET', url: `/v1/admin/coverage-map/${shopId}` })).toMatchObject({ status: 403, body: { error: 'permission_required' } });
+    expect(resolver).not.toHaveBeenCalled();
+
+    const allowedScope = { tenantId: 'trusted-tenant', companyId: 'trusted-company', branchId: 'trusted-branch' };
+    const allowed = createPostgresRetailHubService({
+      repository,
+      resolveScope: () => scope,
+      resolveAuthorization: () => ({ actorId: 'manager-1', scope: allowedScope, permissions: ['coverage-map:read'] }),
+      resolveCoverageMap: async (requestedScope, requestedShopId) => ({ ...projection, scope: requestedScope, shop: { ...projection.shop, id: requestedShopId } }),
+    });
+    const response = await allowed.handle({ method: 'GET', url: `/v1/admin/coverage-map/${shopId}`, scope });
+    expect(response).toMatchObject({ status: 200, body: { success: true, data: { scope: allowedScope, shop: { id: shopId }, writeBackAllowed: false } } });
+    expect(repository.listPlans).not.toHaveBeenCalled();
+  });
+
+  it('returns a truthful unavailable response when coverage transport is not configured', async () => {
+    const repository: ShadowImportPostgresRepository = { listPlans: vi.fn(async () => []), getPlan: vi.fn(), replacePlan: vi.fn() };
+    const shopId = '11111111-1111-4111-8111-111111111111';
+    const service = createPostgresRetailHubService({
+      repository,
+      resolveScope: () => scope,
+      resolveAuthorization: () => ({ actorId: 'manager-1', scope, permissions: ['coverage-map:read'] }),
+    });
+    expect(await service.handle({ method: 'GET', url: `/v1/admin/coverage-map/${shopId}` })).toMatchObject({ status: 503, body: { error: 'coverage_map_unavailable' } });
+  });
 });

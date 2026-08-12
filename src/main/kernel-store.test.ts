@@ -110,7 +110,7 @@ describe('KernelStore authorization foundation', () => {
     await firstStore.initialize();
 
     const migrated = database.loadState<KernelState>('kernel');
-    expect(migrated?.revision).toBe(legacy.revision + 26);
+    expect(migrated?.revision).toBe(legacy.revision + 27);
     expect(
       migrated?.payload.audit.filter(
         ({ action }) => action === 'authorization.foundation-migrated',
@@ -173,6 +173,7 @@ describe('KernelStore authorization foundation', () => {
     expect(migrated?.payload.audit.filter(({ action }) => action === 'authorization.asset-componentization-migrated')).toHaveLength(1);
     expect(migrated?.payload.audit.filter(({ action }) => action === 'authorization.asset-component-allocation-migrated')).toHaveLength(1);
     expect(migrated?.payload.audit.filter(({ action }) => action === 'authorization.procurement-requisition-migrated')).toHaveLength(1);
+    expect(migrated?.payload.audit.filter(({ action }) => action === 'authorization.workspace-owner-runtime-migrated')).toHaveLength(1);
     expect(migrated?.payload.audit.at(-1)?.actorId).toBe('system:migration');
     expect(() =>
       firstStore.assertAuthorized('user-avery', 'payroll.run', 'post'),
@@ -190,8 +191,55 @@ describe('KernelStore authorization foundation', () => {
       firstStore.assertAuthorized('user-avery', 'crm.opportunity', 'create'),
     ).not.toThrow();
     expect(() =>
+      firstStore.assertAuthorized('user-avery', 'crm.opportunity', 'read'),
+    ).not.toThrow();
+    expect(() =>
       firstStore.assertAuthorized('user-lee', 'crm.opportunity', 'create'),
     ).toThrow('defaults to deny');
+    expect(() =>
+      firstStore.assertAuthorized('user-lee', 'crm.opportunity', 'read'),
+    ).toThrow('defaults to deny');
+    const activeScope = firstStore.getSnapshot().context;
+    // The dynamic attachment IPC channels use this same scoped decision for
+    // their client-selected resource. A valid role may read in its active
+    // company/branch, while a role without the grant or a different tenant or
+    // branch is denied before the vault is consulted.
+    expect(() =>
+      firstStore.assertAuthorizedInScope(
+        'user-avery',
+        activeScope.companyId,
+        activeScope.branchId,
+        'crm.opportunity',
+        'read',
+      ),
+    ).not.toThrow();
+    expect(() =>
+      firstStore.assertAuthorizedInScope(
+        'user-lee',
+        activeScope.companyId,
+        activeScope.branchId,
+        'crm.opportunity',
+        'read',
+      ),
+    ).toThrow('defaults to deny');
+    expect(() =>
+      firstStore.assertAuthorizedInScope(
+        'user-avery',
+        'company-not-owned',
+        activeScope.branchId,
+        'crm.opportunity',
+        'read',
+      ),
+    ).toThrow();
+    expect(() =>
+      firstStore.assertAuthorizedInScope(
+        'user-avery',
+        activeScope.companyId,
+        'branch-not-owned',
+        'crm.opportunity',
+        'read',
+      ),
+    ).toThrow();
     expect(() =>
       firstStore.assertAuthorized('user-avery', 'crm.party', 'update'),
     ).not.toThrow();
@@ -280,6 +328,7 @@ describe('KernelStore authorization foundation', () => {
         ({ action }) => action === 'authorization.foundation-migrated',
       ),
     ).toHaveLength(1);
+    expect(restarted?.payload.audit.filter(({ action }) => action === 'authorization.workspace-owner-runtime-migrated')).toHaveLength(1);
     expect(
       restarted?.payload.audit.filter(
         ({ action }) => action === 'authorization.general-ledger-migrated',

@@ -12,7 +12,7 @@ if (evidence.platform !== expectedPlatform) fail(`Smoke evidence platform is ${e
 if (evidence.version !== expectedVersion) fail(`Smoke evidence version is ${evidence.version}, not ${expectedVersion}.`);
 if (evidence.status !== 'passed' || evidence.marker !== 'EPIC_BOS_SMOKE_OK') fail('Smoke evidence does not record a passed packaged launch.');
 if (evidence.isolatedProfile !== true) fail('Smoke evidence does not prove an isolated profile.');
-if (typeof evidence.buildRevision !== 'string' || !/^ci-[A-Za-z0-9._-]+$/u.test(evidence.buildRevision)) fail('Smoke evidence build revision is not immutable.');
+if (typeof evidence.buildRevision !== 'string' || !/^(?:[a-f0-9]{7,64}|ci-[a-z0-9][a-z0-9._-]{1,127})$/iu.test(evidence.buildRevision)) fail('Smoke evidence build revision is not immutable.');
 if (typeof evidence.outputSha256 !== 'string' || !/^[a-f0-9]{64}$/iu.test(evidence.outputSha256)) fail('Smoke evidence output checksum is invalid.');
 if (!Number.isFinite(Date.parse(evidence.recordedAt))) fail('Smoke evidence timestamp is invalid.');
 

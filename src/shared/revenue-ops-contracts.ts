@@ -40,8 +40,10 @@ import type { RetailCommissionPayoutBatch, RetailCustomerVisit, RetailSalesCommi
 import type { RetailPromotionRedemption } from './retail-promotion-contracts';
 import type { RetailCommerceCatalogMapping, RetailCommerceConflictResolution, RetailCommerceConformanceCase, RetailCommerceConnector, RetailCommerceOrder, RetailCommercePushBatch, RetailCommerceSyncRun, RetailOcrProviderProfile, RetailPurchaseException, RetailPurchaseOcrDocument, RetailPurchaseOcrMapping, RetailSettlementAllocationPack, RetailSettlementReconciliation, RetailSettlementWithholdingEvidence } from './retail-commerce-contracts';
 import type { RetailOfflineSaleQueueItem, RetailOfflineSyncReceipt } from './retail-offline-sync-contracts';
+import type { RetailHubStoreEdgeSyncCursor, RetailHubStoreEdgeSyncLocalReceipt, RetailHubStoreEdgeSyncPolicy, RetailHubStoreEdgeSyncRun } from './retail-hub-store-edge-sync-contracts';
 import type { RetailDeviceTransportEvidence, RetailDeviceTransportPreflightResult } from './retail-device-transport-contracts';
 import type { RetailDeviceAdapterProfile } from './retail-device-profile-contracts';
+import type { RetailDeliveryMapSignal } from './retail-delivery-map-contracts';
 import type { RetailOrderIngestionState } from './retail-unified-order-contracts';
 import type {
   ConsolidatedEwayBill,
@@ -1154,6 +1156,8 @@ export interface RevenueOpsState {
   deliveryPromises: DeliveryPromise[];
   codCollectionCases: CodCollectionCase[];
   returnAuthorizations: ReturnAuthorization[];
+  /** Verified rider/location projections only; empty until a governed signal is imported. */
+  retailDeliveryMapSignals?: RetailDeliveryMapSignal[];
   statutoryExchanges: StatutoryExchange[];
   uoms: UnitOfMeasure[];
   uomConversions: UomConversion[];
@@ -1180,6 +1184,14 @@ export interface RevenueOpsState {
   retailOfflineSaleQueue: RetailOfflineSaleQueueItem[];
   /** Append-only local recovery journal; absent on legacy snapshots. */
   retailOfflineSyncReceipts?: RetailOfflineSyncReceipt[];
+  /** Append-only Store Edge → Hub transport evidence; absent on legacy snapshots. */
+  retailHubStoreEdgeSyncReceipts?: RetailHubStoreEdgeSyncLocalReceipt[];
+  /** Append-only summary of bounded Store Edge replay invocations. */
+  retailHubStoreEdgeSyncRuns?: RetailHubStoreEdgeSyncRun[];
+  /** Opt-in, local retry policy; no credentials are stored here. */
+  retailHubStoreEdgeSyncPolicy?: RetailHubStoreEdgeSyncPolicy;
+  /** Durable branch-local sequence cursor for Hub event replay. */
+  retailHubStoreEdgeSyncCursor?: RetailHubStoreEdgeSyncCursor;
   /** Source-neutral POS/web/app/WhatsApp/ONDC/marketplace order evidence. */
   retailUnifiedOrderIngestion?: RetailOrderIngestionState;
   retailDeviceTransportEvidence: RetailDeviceTransportEvidence[];
@@ -1594,6 +1606,8 @@ export interface RevenueOpsSnapshot {
   deliveryPromises: DeliveryPromise[];
   codCollectionCases: CodCollectionCase[];
   returnAuthorizations: ReturnAuthorization[];
+  /** Verified rider/location projections only; empty until a governed signal is imported. */
+  retailDeliveryMapSignals?: RetailDeliveryMapSignal[];
   statutoryExchanges: StatutoryExchange[];
   uoms: UnitOfMeasure[];
   uomConversions: UomConversion[];
@@ -1620,6 +1634,14 @@ export interface RevenueOpsSnapshot {
   retailOfflineSaleQueue: RetailOfflineSaleQueueItem[];
   /** Append-only local recovery journal; absent on legacy snapshots. */
   retailOfflineSyncReceipts?: RetailOfflineSyncReceipt[];
+  /** Append-only Store Edge → Hub transport evidence; absent on legacy snapshots. */
+  retailHubStoreEdgeSyncReceipts?: RetailHubStoreEdgeSyncLocalReceipt[];
+  /** Append-only summary of bounded Store Edge replay invocations. */
+  retailHubStoreEdgeSyncRuns?: RetailHubStoreEdgeSyncRun[];
+  /** Opt-in, local retry policy; no credentials are stored here. */
+  retailHubStoreEdgeSyncPolicy?: RetailHubStoreEdgeSyncPolicy;
+  /** Durable branch-local sequence cursor for Hub event replay. */
+  retailHubStoreEdgeSyncCursor?: RetailHubStoreEdgeSyncCursor;
   /** Source-neutral POS/web/app/WhatsApp/ONDC/marketplace order evidence. */
   retailUnifiedOrderIngestion?: RetailOrderIngestionState;
   retailDeviceTransportEvidence: RetailDeviceTransportEvidence[];

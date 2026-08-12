@@ -18,6 +18,7 @@ import {
   hasHeading,
 } from './support/packaged-app';
 import { inspectOwnerBootstrapDatabase } from './support/sqlite-proof';
+import { materializeProtectedE2eDatabase } from './support/protected-database-proof';
 
 const SCENARIO = 'owner-bootstrap-restart';
 const OWNER = {
@@ -75,7 +76,8 @@ describe('packaged Electron owner bootstrap and restart', () => {
       await closePackagedElectronApp(first);
       first = null;
 
-      const durableState = inspectOwnerBootstrapDatabase(databasePath, OWNER.email);
+      const proofDatabasePath = await materializeProtectedE2eDatabase(databasePath);
+      const durableState = inspectOwnerBootstrapDatabase(proofDatabasePath, OWNER.email);
       expect(durableState.integrityCheck).toBe('ok');
       expect(durableState.migrationCount).toBeGreaterThan(0);
       expect(durableState.credentialEmail).toBe(OWNER.email);

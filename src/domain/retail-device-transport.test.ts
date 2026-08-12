@@ -1,7 +1,38 @@
+import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { createInitialRevenueOpsState } from './revenue-ops';
 import { activateRetailDeviceAdapterProfile, approveRetailDeviceAdapterProfile, createRetailDeviceAdapterProfile, recordRetailDeviceAdapterAcknowledgement } from './retail-device-profile';
-import { prepareRetailDeviceTransport, recordNetworkExecutedRetailDeviceTransport, recordRetailDeviceTransport, recordRetailNativeDeviceDriverResult, retryRetailDeviceTransport } from './retail-device-transport';
+import { buildRetailNativeDeviceAttestationMessage, prepareRetailDeviceTransport, recordNetworkExecutedRetailDeviceTransport, recordRetailDeviceTransport, recordRetailNativeDeviceDriverResult, retryRetailDeviceTransport } from './retail-device-transport';
+import type { RecordRetailNativeDeviceDriverResultInput, RetailDeviceTransportEvidence } from '../shared/retail-device-transport-contracts';
+
+const nativeKeyPair = generateKeyPairSync('ed25519');
+const nativePublicKeyPem = nativeKeyPair.publicKey.export({ format: 'pem', type: 'spki' }).toString();
+const nativeKeyFingerprint = createHash('sha256').update(nativeKeyPair.publicKey.export({ format: 'der', type: 'spki' })).digest('hex');
+
+function attestNativeResult(
+  record: RetailDeviceTransportEvidence,
+  input: Omit<RecordRetailNativeDeviceDriverResultInput, 'attestation'>,
+  signedAt: string,
+  nonce: string,
+): RecordRetailNativeDeviceDriverResultInput {
+  const unsigned = {
+    ...input,
+    attestation: {
+      algorithm: 'ed25519' as const,
+      keyFingerprint: nativeKeyFingerprint,
+      signature: '',
+      signedAt,
+      nonce,
+    },
+  };
+  return {
+    ...unsigned,
+    attestation: {
+      ...unsigned.attestation,
+      signature: sign(null, Buffer.from(buildRetailNativeDeviceAttestationMessage(record, unsigned), 'utf8'), nativeKeyPair.privateKey).toString('base64'),
+    },
+  };
+}
 
 describe('retail physical-device transport evidence', () => {
   it('prepares a command with a deterministic payload checksum and device-specific command gate', () => {
@@ -179,17 +210,26 @@ describe('retail physical-device transport evidence', () => {
       kind: 'barcode-scanner',
       deviceCode: 'SCAN-NATIVE-01',
       connection: 'usb',
-      driver: { code: 'EPIC-HID-BRIDGE', version: '0.1.0', boundary: 'native-driver-required' },
+      driver: { code: 'EPIC-HID-BRIDGE', version: '0.1.0', boundary: 'native-driver-required', attestationPublicKeyPem: nativePublicKeyPem },
       capabilities: ['barcode-input', 'status-read'],
       configuration: { connection: 'usb', vendorId: '1A2B', productId: '3C4D' },
     }, 'maker-1', '2026-08-04T10:00:00.000Z', 'native-profile-1');
     state = approveRetailDeviceAdapterProfile(state, { id: 'native-profile-1', evidenceReference: 'NATIVE-PROFILE-APPROVAL-001', expectedVersion: 1 }, 'approver-1', '2026-08-04T10:01:00.000Z');
     state = prepareRetailDeviceTransport(state, { profileId: 'native-profile-1', kind: 'barcode-scanner', deviceCode: 'SCAN-NATIVE-01', connection: 'usb', command: 'scan', payload: 'SCAN' }, 'cashier-1', '2026-08-04T10:02:00.000Z', 'native-job-1');
-    state = recordRetailNativeDeviceDriverResult(state, { id: 'native-job-1', result: 'acknowledged', driverCode: 'EPIC-HID-BRIDGE', driverVersion: '0.1.0', responseReference: 'native://scan/1', responseProtocol: 'barcode-scanner-status-v1', responseChecksum: 'e'.repeat(64), responseByteLength: 16, expectedVersion: 1 }, 'checker-1', '2026-08-04T10:03:00.000Z');
-    expect(state.retailDeviceTransportEvidence[0]).toMatchObject({ status: 'acknowledged', nativeDriverStatus: 'acknowledged', nativeDriverCode: 'EPIC-HID-BRIDGE', nativeDriverVersion: '0.1.0' });
+    expect(() => recordRetailDeviceTransport(state, { id: 'native-job-1', result: 'acknowledged', responseReference: 'renderer-forged', responseProtocol: 'barcode-scanner-status-v1', responseChecksum: 'f'.repeat(64), responseByteLength: 16, expectedVersion: 1 }, 'checker-1', '2026-08-04T10:02:30.000Z')).toThrow(/main-process bridge/i);
+    const firstNativeRecord = state.retailDeviceTransportEvidence.find((record) => record.id === 'native-job-1');
+    if (!firstNativeRecord) throw new Error('Native command fixture was not created.');
+    const firstNativeInput = attestNativeResult(firstNativeRecord, { id: 'native-job-1', result: 'acknowledged', driverCode: 'EPIC-HID-BRIDGE', driverVersion: '0.1.0', responseReference: 'native://scan/1', responseProtocol: 'barcode-scanner-status-v1', responseChecksum: 'e'.repeat(64), responseByteLength: 16, expectedVersion: 1 }, '2026-08-04T10:03:00.000Z', 'native-nonce-000001');
+    expect(() => recordRetailNativeDeviceDriverResult(state, { ...firstNativeInput, responseReference: 'native://tampered' }, 'checker-1', '2026-08-04T10:03:00.000Z')).toThrow(/signature/i);
+    state = recordRetailNativeDeviceDriverResult(state, firstNativeInput, 'checker-1', '2026-08-04T10:03:00.000Z');
+    expect(state.retailDeviceTransportEvidence[0]).toMatchObject({ status: 'acknowledged', acknowledgementSource: 'native-driver-attestation', nativeDriverStatus: 'acknowledged', nativeDriverCode: 'EPIC-HID-BRIDGE', nativeDriverVersion: '0.1.0', nativeAttestationKeyFingerprint: nativeKeyFingerprint, nativeAttestationNonce: 'native-nonce-000001' });
 
     state = prepareRetailDeviceTransport(state, { profileId: 'native-profile-1', kind: 'barcode-scanner', deviceCode: 'SCAN-NATIVE-01', connection: 'usb', command: 'scan', payload: 'SCAN-2' }, 'cashier-1', '2026-08-04T10:04:00.000Z', 'native-job-2');
-    state = recordRetailNativeDeviceDriverResult(state, { id: 'native-job-2', result: 'unsupported', driverCode: 'EPIC-HID-BRIDGE', driverVersion: '0.1.0', responseReference: 'native://scan/unsupported', responseProtocol: 'barcode-scanner-status-v1', errorMessage: 'Driver returned no HID device.', expectedVersion: 1 }, 'checker-1', '2026-08-04T10:05:00.000Z');
+    const secondNativeRecord = state.retailDeviceTransportEvidence.find((record) => record.id === 'native-job-2');
+    if (!secondNativeRecord) throw new Error('Second native command fixture was not created.');
+    const replayedNativeInput = attestNativeResult(secondNativeRecord, { id: 'native-job-2', result: 'acknowledged', driverCode: 'EPIC-HID-BRIDGE', driverVersion: '0.1.0', responseReference: 'native://scan/replay', responseProtocol: 'barcode-scanner-status-v1', responseChecksum: 'd'.repeat(64), responseByteLength: 16, expectedVersion: 1 }, '2026-08-04T10:05:00.000Z', 'native-nonce-000001');
+    expect(() => recordRetailNativeDeviceDriverResult(state, replayedNativeInput, 'checker-1', '2026-08-04T10:05:00.000Z')).toThrow(/already been used|replay/i);
+    state = recordRetailNativeDeviceDriverResult(state, attestNativeResult(secondNativeRecord, { id: 'native-job-2', result: 'unsupported', driverCode: 'EPIC-HID-BRIDGE', driverVersion: '0.1.0', responseReference: 'native://scan/unsupported', responseProtocol: 'barcode-scanner-status-v1', errorMessage: 'Driver returned no HID device.', expectedVersion: 1 }, '2026-08-04T10:05:00.000Z', 'native-nonce-000002'), 'checker-1', '2026-08-04T10:05:00.000Z');
     expect(state.retailDeviceTransportEvidence[0]).toMatchObject({ status: 'failed', nativeDriverStatus: 'unsupported', failureReason: 'Native driver unsupported: Driver returned no HID device.' });
   });
 });

@@ -13,6 +13,7 @@ describe('Bakaloo vault-backed durable shadow pull runtime', () => {
       listPlans: async () => [...stored.values()],
       getPlan: async (_scope, batchId) => stored.get(batchId),
       registerPlan: async (_scope, plan) => { if (stored.has(plan.batch.id)) throw new Error('duplicate'); stored.set(plan.batch.id, structuredClone(plan)); },
+      registerPlanAndPullReceipt: async (_scope, plan) => { if (stored.has(plan.batch.id)) throw new Error('duplicate'); stored.set(plan.batch.id, structuredClone(plan)); },
       replacePlan: async (_scope, plan) => { stored.set(plan.batch.id, structuredClone(plan)); },
     };
     const result = await pullAndRegisterBakalooShadowImportFromVault({
@@ -38,7 +39,7 @@ describe('Bakaloo vault-backed durable shadow pull runtime', () => {
   it('refuses a duplicate before the vault transport is contacted', async () => {
     let vaultCalls = 0;
     const existing = { batch: { id: 'already-there' } } as ShadowImportPlan;
-    const repository: ShadowImportPostgresRepository = { listPlans: async () => [existing], getPlan: async () => existing, registerPlan: async () => { throw new Error('must not register'); }, replacePlan: async () => undefined };
+    const repository: ShadowImportPostgresRepository = { listPlans: async () => [existing], getPlan: async () => existing, registerPlan: async () => { throw new Error('must not register'); }, registerPlanAndPullReceipt: async () => { throw new Error('must not register'); }, replacePlan: async () => undefined };
     await expect(pullAndRegisterBakalooShadowImportFromVault({
       source: {
         scope, credentialRef: 'bakaloo-prod-shadow', baseUrl: 'https://bakaloo.example.in', pagePath: '/v1/export',

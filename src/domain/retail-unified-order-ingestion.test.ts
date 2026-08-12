@@ -16,6 +16,7 @@ import {
   prepareRetailUnifiedOrderDispatch,
   dispatchRetailUnifiedOrder,
   confirmRetailUnifiedOrderDelivery,
+  reconcileRetailUnifiedOrderCancellation,
   reconcileRetailUnifiedOrderRto,
   reconcileRetailUnifiedOrderReturn,
   recordRetailUnifiedOrderCarrierCallback,
@@ -129,6 +130,37 @@ describe('retail unified order ingestion', () => {
     expect(returned.state.reconciliationRequirements[0]).toMatchObject({ kind: 'return', status: 'required', actions: ['inspect-and-receive-stock', 'reconcile-credit-note-or-refund'] });
     expect(rto.state.reconciliationRequirements[0]).toMatchObject({ kind: 'rto', status: 'required', actions: ['confirm-returned-custody', 'reconcile-carrier-and-payment'] });
     expect([...cancelled.state.reservationIntents, ...returned.state.reservationIntents, ...rto.state.reservationIntents]).toEqual([]);
+  });
+
+  it('reconciles an authoritative cancellation with independent stock and payment evidence, idempotently', () => {
+    const observed = ingestRetailOrderSourceEvent(
+      createRetailOrderIngestionState(),
+      event({ externalOrderId: 'order-cancel-1001', externalEventId: 'event-cancel-1001', status: 'cancelled' }),
+      { mode: 'shadow', actorId: 'cancellation-observer' },
+    );
+    const order = observed.state.orders[0]!;
+    const base = createInitialRevenueOpsState();
+    const state = { ...base, retailUnifiedOrderIngestion: observed.state };
+    const before = { stock: structuredClone(state.stockReservations), payments: structuredClone(state.paymentReceipts), tax: structuredClone(state.creditDebitNotes) };
+    const input = {
+      orderId: order.id,
+      expectedSourceDigest: order.sourceDigest,
+      stockEvidenceReference: 'stock-release-review-cancel-1001',
+      paymentEvidenceReference: 'upi-wallet-reversal-review-cancel-1001',
+    };
+    const reconciled = reconcileRetailUnifiedOrderCancellation(state, input, 'cancellation-reviewer', '2026-08-03T09:00:00.000Z');
+
+    expect(reconciled.retailUnifiedOrderIngestion?.cancellationReconciliationExecutions[0]).toMatchObject({
+      status: 'reconciled',
+      stockEvidenceReference: input.stockEvidenceReference,
+      paymentEvidenceReference: input.paymentEvidenceReference,
+      reconciledBy: 'cancellation-reviewer',
+    });
+    expect(reconciled.retailUnifiedOrderIngestion?.orders[0]).toMatchObject({ handlingState: 'cancelled-reconciled' });
+    expect({ stock: reconciled.stockReservations, payments: reconciled.paymentReceipts, tax: reconciled.creditDebitNotes }).toEqual(before);
+    expect(reconcileRetailUnifiedOrderCancellation(reconciled, { ...input, stockEvidenceReference: 'ignored-replay', paymentEvidenceReference: 'ignored-replay' }, 'cancellation-reviewer')).toBe(reconciled);
+    expect(() => reconcileRetailUnifiedOrderCancellation(state, input, 'cancellation-observer')).toThrow(/independent reviewer/i);
+    expect(() => reconcileRetailUnifiedOrderCancellation(state, { ...input, expectedSourceDigest: 'b'.repeat(64) }, 'cancellation-reviewer')).toThrow(/stale/i);
   });
 
   it('closes an authoritative RTO with four evidence references only, without stock, payment, or tax mutation', () => {

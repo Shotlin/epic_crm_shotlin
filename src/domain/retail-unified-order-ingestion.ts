@@ -21,7 +21,7 @@ const moneyValue = (value: number): number => Math.round(value * 100) / 100;
 export type RetailOrderChannel = 'pos' | 'website' | 'app' | 'whatsapp' | 'ondc' | 'marketplace';
 export type RetailExternalOrderStatus = 'received' | 'accepted' | 'picking' | 'packed' | 'fulfilled' | 'cancelled' | 'return-requested' | 'returned' | 'rto';
 export type RetailOrderIngestionMode = 'shadow' | 'governed';
-export type RetailOrderHandlingState = 'shadow-observed' | 'awaiting-local-handoff' | 'awaiting-stock-reservation' | 'awaiting-stock-mapping' | 'awaiting-pick-completion' | 'awaiting-pack' | 'awaiting-dispatch' | 'awaiting-carrier-dispatch' | 'awaiting-delivery' | 'delivered' | 'reconciliation-required' | 'rto-reconciled' | 'return-reconciled';
+export type RetailOrderHandlingState = 'shadow-observed' | 'awaiting-local-handoff' | 'awaiting-stock-reservation' | 'awaiting-stock-mapping' | 'awaiting-pick-completion' | 'awaiting-pack' | 'awaiting-dispatch' | 'awaiting-carrier-dispatch' | 'awaiting-delivery' | 'delivered' | 'reconciliation-required' | 'cancelled-reconciled' | 'rto-reconciled' | 'return-reconciled';
 export type RetailOrderIngestionOutcome = 'recorded' | 'idempotent' | 'conflicted';
 export type RetailOrderConflictKind = 'source-event-digest-mismatch' | 'invalid-status-transition' | 'unmapped-stock-line' | 'stale-governed-handoff';
 export type RetailOrderReconciliationKind = 'cancellation' | 'return' | 'rto';
@@ -156,6 +156,7 @@ export interface RetailOrderIngestionState {
   deliveryExecutions: RetailOrderDeliveryExecution[];
   rtoReconciliationExecutions: RetailOrderRtoReconciliationExecution[];
   returnReconciliationExecutions: RetailOrderReturnReconciliationExecution[];
+  cancellationReconciliationExecutions: RetailOrderCancellationReconciliationExecution[];
   /** Optional for legacy snapshots upgraded before provider callback evidence was introduced. */
   carrierCallbackEvidence?: RetailOrderCarrierCallbackEvidence[];
 }
@@ -414,6 +415,26 @@ export interface ReconcileRetailUnifiedOrderRtoInput {
   inventoryEvidenceReference: string;
   paymentEvidenceReference: string;
   taxEvidenceReference: string;
+}
+
+export interface RetailOrderCancellationReconciliationExecution {
+  id: string;
+  orderId: string;
+  sourceDigest: string;
+  salesOrderId?: string;
+  status: 'reconciled';
+  stockEvidenceReference: string;
+  paymentEvidenceReference: string;
+  reconciledBy: string;
+  reconciledAt: string;
+  version: number;
+}
+
+export interface ReconcileRetailUnifiedOrderCancellationInput {
+  orderId: string;
+  expectedSourceDigest: string;
+  stockEvidenceReference: string;
+  paymentEvidenceReference: string;
 }
 
 export interface RetailOrderReturnReconciliationExecution {
@@ -738,6 +759,7 @@ export function createRetailOrderIngestionState(): RetailOrderIngestionState {
     deliveryExecutions: [],
     rtoReconciliationExecutions: [],
     returnReconciliationExecutions: [],
+    cancellationReconciliationExecutions: [],
     carrierCallbackEvidence: [],
   };
 }
@@ -1636,6 +1658,58 @@ export function confirmRetailUnifiedOrderDelivery(
   const execution: RetailOrderDeliveryExecution = { id: deliveryExecutionId, orderId: order.id, sourceDigest: order.sourceDigest, salesOrderId: fulfilment.salesOrderId, shipmentPackageId: shipment.id, status: 'delivered', proofOfDeliveryReference, recipientName, deliveryNotes, deliveredBy: actor, deliveredAt: at, version: 1 };
   const current = withEvidence.retailUnifiedOrderIngestion ?? ingestion;
   return { ...withEvidence, revision: withEvidence.revision + 1, retailUnifiedOrderIngestion: { ...current, deliveryExecutions: [execution, ...(current.deliveryExecutions ?? [])], orders: current.orders.map((item) => item.id === order.id ? { ...item, handlingState: 'delivered' as const } : item) } };
+}
+
+/**
+ * Reconciles an externally observed cancellation using evidence references
+ * only. It proves that stock was released (or never reserved) and that the
+ * payment/wallet reversal was handled by its owning workflow. It never mutates
+ * stock, payment, wallet, tax, or the source platform.
+ */
+export function reconcileRetailUnifiedOrderCancellation(
+  state: RevenueOpsState,
+  input: ReconcileRetailUnifiedOrderCancellationInput,
+  actorId: string,
+  reconciledAt = new Date().toISOString(),
+): RevenueOpsState {
+  const ingestion = state.retailUnifiedOrderIngestion ?? createRetailOrderIngestionState();
+  const order = ingestion.orders.find((item) => item.id === input.orderId);
+  if (!order) throw new Error('Retail order is unavailable for cancellation reconciliation.');
+  const expectedSourceDigest = requiredText(input.expectedSourceDigest, 'Expected source digest', 64, 64).toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(expectedSourceDigest) || order.sourceDigest !== expectedSourceDigest) throw new Error('Cancellation source evidence is stale; refresh the order first.');
+  if (order.observedStatus !== 'cancelled') throw new Error('The source must authoritatively report cancellation before reconciliation.');
+  if (ingestion.conflicts.some((item) => item.orderId === order.id && item.status === 'open')) throw new Error('Resolve the open order conflict before cancellation reconciliation.');
+  if (!ingestion.reconciliationRequirements.some((item) => item.orderId === order.id && item.sourceDigest === order.sourceDigest && item.kind === 'cancellation')) throw new Error('A cancellation reconciliation requirement is missing for this source digest.');
+  const existing = ingestion.cancellationReconciliationExecutions.find((item) => item.orderId === order.id && item.sourceDigest === order.sourceDigest && item.status === 'reconciled');
+  if (existing) return state;
+  const actor = requiredText(actorId, 'Cancellation reconciliation actor', 2, 160);
+  const makers = new Set([order.observedBy, order.governedHandoff?.approvedBy].filter((value): value is string => Boolean(value)));
+  if (makers.has(actor)) throw new Error('Cancellation reconciliation requires an independent reviewer.');
+  const stockEvidenceReference = requiredText(input.stockEvidenceReference, 'Stock cancellation evidence reference', 4, 240);
+  const paymentEvidenceReference = requiredText(input.paymentEvidenceReference, 'Payment cancellation evidence reference', 4, 240);
+  const at = validIso(reconciledAt, 'Cancellation reconciliation time');
+  const fulfilment = ingestion.fulfilmentHandoffs.find((item) => item.orderId === order.id && item.sourceDigest === order.sourceDigest && item.status === 'approved');
+  const execution: RetailOrderCancellationReconciliationExecution = {
+    id: idFor('retail-order-cancellation-reconciliation', { orderId: order.id, sourceDigest: order.sourceDigest }),
+    orderId: order.id,
+    sourceDigest: order.sourceDigest,
+    ...(fulfilment ? { salesOrderId: fulfilment.salesOrderId } : {}),
+    status: 'reconciled',
+    stockEvidenceReference,
+    paymentEvidenceReference,
+    reconciledBy: actor,
+    reconciledAt: at,
+    version: 1,
+  };
+  return {
+    ...state,
+    revision: state.revision + 1,
+    retailUnifiedOrderIngestion: {
+      ...ingestion,
+      cancellationReconciliationExecutions: [execution, ...(ingestion.cancellationReconciliationExecutions ?? [])],
+      orders: ingestion.orders.map((item) => item.id === order.id ? { ...item, handlingState: 'cancelled-reconciled' as const } : item),
+    },
+  };
 }
 
 /**

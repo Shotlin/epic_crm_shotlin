@@ -2,7 +2,7 @@
 
 **Started:** 2026-08-04  
 **Scope:** sell-to-return and stock-to-cash controls in the Epic BOS Electron application.  
-**Status:** automated source gates and two packaged Electron journeys passed; critical role-based retail acceptance is still required.
+**Status:** automated source gates and three packaged Electron journeys passed; critical role-based retail acceptance is still required.
 
 ## What this phase certifies
 
@@ -44,7 +44,7 @@ The type checker, renderer interaction tests, and ESLint also passed in this del
 
 ## Latest verification expansion
 
-The current tree has also passed `pnpm.cmd typecheck`, `pnpm.cmd lint`, and the full **234-suite / 982-test** regression gate. The `pnpm.cmd test:e2e:electron` command packages a real Windows Electron build and passes both an owner-enrollment -> clean-workspace -> close -> SQLite-proof -> restart -> sign-in journey and a rendered POS checkout -> SQLite stock/receipt proof -> fresh-process restart journey.
+The current tree has also passed `pnpm.cmd typecheck`, `pnpm.cmd lint`, `git diff --check`, and the full **239-suite / 1,011-test** regression gate. The packaged Electron evidence now includes owner enrollment/restart, rendered POS checkout/restart, and retailer navigation through all eight plain-language workspaces and all **31** retail submodule actions. The navigation journey also verifies the actual `.main-content` scroll owner, Ctrl/Cmd-K command-palette focus, narrow-width horizontal overflow, mobile rail open/close semantics, visible-button accessible names, and renderer error capture.
 
 The owner E2E journey verifies the real preload, registered IPC, atomic owner provisioning, persistence, and reauthentication seam. The POS E2E journey completes a real INR 118 cash sale, confirms stock movement from 20 to 19, checks receipt and balanced local accounting evidence, and verifies it after a fresh Electron process starts. Those checks do **not** yet substitute for a human cashier sale, return/exchange, cash-close, offline recovery, or role-specific acceptance journey; those remain Phase 1 requirements.
 

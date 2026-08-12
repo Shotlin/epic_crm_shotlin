@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, createPublicKey, randomUUID } from 'node:crypto';
 import type { RevenueOpsState } from '../shared/revenue-ops-contracts';
 import {
   RETAIL_DEVICE_PRIMARY_CAPABILITY,
@@ -49,10 +49,22 @@ const allowedBoundaries: Readonly<Record<CreateRetailDeviceAdapterProfileInput['
 };
 
 function normalizeDriver(connection: CreateRetailDeviceAdapterProfileInput['connection'], driver: RetailDeviceDriverDescriptor): RetailDeviceDriverDescriptor {
+  const attestationPublicKeyPem = driver.attestationPublicKeyPem?.trim();
+  let normalizedAttestationPublicKey: string | undefined;
+  if (attestationPublicKeyPem) {
+    try {
+      const publicKey = createPublicKey(attestationPublicKeyPem);
+      if (publicKey.asymmetricKeyType !== 'ed25519') throw new Error('The attestation key must be Ed25519.');
+      normalizedAttestationPublicKey = publicKey.export({ format: 'pem', type: 'spki' }).toString();
+    } catch (error) {
+      throw new Error(`Device attestation public key is invalid: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
   const normalized: RetailDeviceDriverDescriptor = {
     code: code(driver.code, 'Device driver code'),
     version: clean(driver.version, 'Device driver version', 1, 40),
     boundary: driver.boundary,
+    ...(normalizedAttestationPublicKey ? { attestationPublicKeyPem: normalizedAttestationPublicKey } : {}),
   };
   if (!allowedBoundaries[connection].includes(normalized.boundary)) {
     throw new Error(`The ${connection} transport cannot use the ${normalized.boundary} driver boundary.`);

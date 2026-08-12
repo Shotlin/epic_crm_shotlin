@@ -10,6 +10,20 @@ permissions:
   contents: read
 
 jobs:
+  secret-history-scan:
+    name: Redacted secret and history scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out complete repository history
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Scan tracked files and Git history
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   package-and-verify:
     name: ${{ matrix.platform }} / unsigned package verification
     strategy:
@@ -25,12 +39,22 @@ jobs:
             arch: x64
             target: '@electron-forge/maker-zip'
           - platform: darwin
-            runner: macos-13
+            # The artifact target is x64; use the explicit Intel image rather
+            # than the retired macOS 13 label.
+            runner: macos-15-intel
             arch: x64
             target: '@electron-forge/maker-zip'
     runs-on: ${{ matrix.runner }}
+    needs: secret-history-scan
     env:
-      EPIC_BOS_BUILD_REVISION: ci-${{ github.sha }}-${{ matrix.platform }}
+      # One source revision must bind every platform artifact to the same
+      # release line. Platform remains in the full build-provenance record;
+      # appending it here would make matrix-integrity reject a valid release.
+      EPIC_BOS_BUILD_REVISION: ci-${{ github.sha }}
+      # Every matrix runner is native for its target. Cross-builds may still
+      # be produced locally for inspection, but they must not enter this gate.
+      EPIC_BOS_NATIVE_BUILD: 'true'
+      NODE_OPTIONS: --max-old-space-size=4096
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -50,7 +74,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Verify source
-        run: pnpm verify
+        run: pnpm run verify:retail-core
 
       - name: Read package version
         id: package-version
@@ -83,3 +107,31 @@ jobs:
       # Signing, macOS notarisation, and provider/device certification are
       # intentionally separate controlled steps. No secret or unverified
       # signature is manufactured by this workflow.
+
+  matrix-integrity:
+    name: Cross-platform artifact identity integrity
+    runs-on: ubuntu-latest
+    needs: package-and-verify
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.x
+
+      - name: Download every native artifact
+        uses: actions/download-artifact@v4
+        with:
+          pattern: epic-bos-*
+          merge-multiple: true
+          path: out/make
+
+      - name: Read package version
+        id: package-version
+        shell: bash
+        run: echo "version=$(node -p \"require('./package.json').version\")" >> "$GITHUB_OUTPUT"
+
+      - name: Verify one coherent release matrix
+        run: node scripts/verify-release-matrix.mjs out/make "${{ steps.package-version.outputs.version }}"

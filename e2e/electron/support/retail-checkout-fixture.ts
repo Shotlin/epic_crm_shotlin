@@ -1,6 +1,6 @@
 import { createCatalogProduct, createGstTaxCode, createPriceList, createPriceListEntry } from '../../../src/domain/commercial';
+import { WORKSPACE_OWNER_ID, createRole, createUser } from '../../../src/domain/kernel';
 import { createStockLocation } from '../../../src/domain/fulfilment-control';
-import { WORKSPACE_OWNER_ID } from '../../../src/domain/kernel';
 import {
   createInventoryItem,
   createItemVariant,
@@ -15,7 +15,9 @@ import { createAccount, createCleanPartyState } from '../../../src/domain/party'
 import { createRetailCounter } from '../../../src/domain/retail-pos';
 import { createCleanRevenueOpsState } from '../../../src/domain/revenue-ops';
 import { BusinessDatabase } from '../../../src/main/database';
+import { AuthService } from '../../../src/main/auth-service';
 import type { PartyState } from '../../../src/shared/party-contracts';
+import type { KernelState } from '../../../src/shared/kernel-contracts';
 import type { RevenueOpsState } from '../../../src/shared/revenue-ops-contracts';
 
 /**
@@ -36,6 +38,7 @@ export const POS_CHECKOUT_E2E_FIXTURE = {
   grandTotal: 118,
   stockQuantityBeforeCheckout: 20,
   stockQuantityAfterCheckout: 19,
+  stockQuantityAfterApprovedReturn: 20,
   cashTenderReference: 'E2E-CASH-0001',
 } as const;
 
@@ -260,6 +263,70 @@ export async function seedIsolatedRetailCheckoutFixture(
     database.saveState('party', party.schemaVersion, party.revision, party);
     database.saveState('revenue-ops-india', revenue.schemaVersion, revenue.revision, revenue);
     return POS_CHECKOUT_E2E_FIXTURE;
+  } finally {
+    database.close();
+  }
+}
+
+/**
+ * Creates only the protected credential needed to prove independent shift
+ * review. The clean workspace already contains the finance-approver identity
+ * in its kernel state; this helper never changes production data and never
+ * stores a raw password in the business state.
+ */
+export async function provisionIsolatedCashReviewer(databasePath: string): Promise<{
+  email: string;
+  temporaryPassword: string;
+  newPassword: string;
+}> {
+  const database = new BusinessDatabase(databasePath);
+  await database.initialize();
+  const email = 'e2e.cash.reviewer@epic-bos.invalid';
+  const temporaryPassword = 'EpicE2E#2026!CashTemp';
+  const newPassword = 'EpicE2E#2026!CashReview';
+  try {
+    const kernel = database.loadState<KernelState>('kernel');
+    if (!kernel) throw new Error('The clean kernel fixture is missing its kernel state.');
+    let kernelState = kernel.payload;
+    const reviewerRoleId = 'role-e2e-cash-reviewer';
+    if (!kernelState.roles.some(({ id }) => id === reviewerRoleId)) {
+      kernelState = createRole(kernelState, {
+        name: 'E2E cash reviewer',
+        description: 'Isolated packaged-test role for independent cash-close approval.',
+        grantIds: [
+          'grant-kernel-admin',
+          'grant-crm-read',
+          'grant-party-master',
+          'grant-crm-configuration-governance',
+          'grant-workspace-read',
+          'grant-sales-commercial-operator',
+          'grant-sales-commercial-approver',
+          'grant-inventory-execution-governance',
+        ],
+      }, reviewerRoleId, '2026-08-06T08:00:00.000Z');
+      database.saveState('kernel', kernel.schemaVersion, kernel.revision, kernelState);
+    }
+    const reviewerUser = kernelState.users.find((user) => user.id === 'user-priya');
+    if (!reviewerUser) {
+      kernelState = createUser(kernelState, {
+        email,
+        displayName: 'E2E Cash Reviewer',
+        roleIds: [reviewerRoleId, 'role-finance-approver'],
+        companyIds: [kernelState.context.companyId],
+        branchIds: [kernelState.context.branchId],
+      }, 'user-priya', '2026-08-06T08:00:00.000Z');
+      database.saveState('kernel', kernelState.schemaVersion, kernelState.revision, kernelState);
+    } else {
+      const requiredRoles = [reviewerRoleId, 'role-finance-approver'];
+      const nextRoleIds = [...new Set([...reviewerUser.roleIds, ...requiredRoles])];
+      if (nextRoleIds.length !== reviewerUser.roleIds.length) {
+        reviewerUser.roleIds = nextRoleIds;
+        reviewerUser.version += 1;
+        database.saveState('kernel', kernel.schemaVersion, kernel.revision, kernelState);
+      }
+    }
+    await new AuthService(database).provisionUser('user-priya', email, 'E2E Cash Reviewer', temporaryPassword);
+    return { email, temporaryPassword, newPassword };
   } finally {
     database.close();
   }
