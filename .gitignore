@@ -24,3 +24,7 @@ electron-builder-cache/
 .DS_Store
 *.exe
 .aider*
+
+# Local reference and integration checkouts (independent repositories)
+_bakaloo_ref/
+shotlinXchat/
