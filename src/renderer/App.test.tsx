@@ -1018,6 +1018,16 @@ describe('Epic BOS renderer', () => {
     expect(screen.queryByTestId('bharat-workbench')).toBeNull();
   });
 
+  it('keeps Delivery control in the compact dispatch workspace', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openCrmHome();
+    await user.click(screen.getByRole('button', { name: 'Deliver' }));
+    await user.click(screen.getByRole('button', { name: 'Open Delivery control' }));
+    expect(await screen.findByTestId('retail-delivery-overview')).toBeTruthy();
+    expect(screen.queryByTestId('bharat-workbench')).toBeNull();
+  });
+
   it('collapses and restores the Bakaloo sidebar without removing keyboard navigation', async () => {
     const user = userEvent.setup();
     render(<App />);

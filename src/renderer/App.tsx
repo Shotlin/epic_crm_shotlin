@@ -6631,17 +6631,16 @@ function AppShell({
       setNavigationMessage(`${submodule.label} is open. ${submodule.description}`);
       return;
     }
-    if (key === 'deliver:queue') {
+    if (key === 'deliver:queue' || key === 'deliver:dispatch') {
       navigateRetailWorkspace(route);
       setNavigationMessage(`${submodule.label} is open. ${submodule.description}`);
       return;
     }
 
-    const destinations: Record<Exclude<RetailWorkspaceSubmoduleKey, 'home:attention' | 'home:overview' | 'home:store-pulse' | 'sell:orders' | 'stock:products' | 'stock:control' | 'stock:replenishment' | 'stock:purchasing' | 'deliver:queue' | 'insights:executive'>, WorkspaceDestination> = {
+    const destinations: Record<Exclude<RetailWorkspaceSubmoduleKey, 'home:attention' | 'home:overview' | 'home:store-pulse' | 'sell:orders' | 'stock:products' | 'stock:control' | 'stock:replenishment' | 'stock:purchasing' | 'deliver:queue' | 'deliver:dispatch' | 'insights:executive'>, WorkspaceDestination> = {
       'sell:pos': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'pos' },
       'sell:returns': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'returns' },
       'sell:pricing': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'pricing' },
-      'deliver:dispatch': { kind: 'bharat', tab: 'delivery', workspace: 'service' },
       'deliver:branches': { kind: 'bharat', tab: 'fulfilment', workspace: 'operations' },
       'deliver:returns': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'returns' },
       'customers:customer-360': { kind: 'crm-surface', surface: 'party' },
