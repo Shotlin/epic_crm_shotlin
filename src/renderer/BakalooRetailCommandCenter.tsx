@@ -171,8 +171,17 @@ export function BakalooRetailCommandCenter({
 
   const stockoutCount = command.totalStockoutCount;
   const stockAttentionCount = stockoutCount + command.totalExpiryRiskItemsCount;
-  const loyaltyMembers = revenue.retailLoyaltyAccounts.length;
-  const loyaltyPoints = revenue.retailLoyaltyAccounts.reduce((sum, account) => sum + account.pointsBalance, 0);
+  const completedSales = revenue.retailSales.filter((sale) => sale.status === 'completed');
+  const totalRevenue = completedSales.reduce((sum, sale) => sum + sale.taxPreview.grandTotal, 0);
+  const customerCount = new Set(completedSales.map((sale) => sale.customerAccountId).filter(Boolean)).size;
+  const totalOrders = completedSales.length + revenue.retailCommerceOrders.length;
+  const activeRiders = revenue.retailDeliveryMapSignals
+    ? new Set(revenue.retailDeliveryMapSignals.filter((signal) => signal.status === 'live-evidence').map((signal) => signal.riderId)).size
+    : undefined;
+  const collectedCod = revenue.codCollectionCases
+    .filter((caseFile) => ['carrier-collected', 'remitted', 'bank-matched'].includes(caseFile.status))
+    .reduce((sum, caseFile) => sum + caseFile.expectedAmount, 0);
+  const averageOrderValue = completedSales.length ? totalRevenue / completedSales.length : undefined;
 
   const salesTrend = useMemo(() => {
     const daily = new Map<string, number>();
@@ -225,9 +234,9 @@ export function BakalooRetailCommandCenter({
     <section className="bakaloo-command bakaloo-command--retail-front" aria-labelledby="bakaloo-command-title" data-testid="bakaloo-retail-command-center">
       <header className="bakaloo-command__header bakaloo-command__header--retail-front">
         <div className="bakaloo-command__header-copy">
-          <span className="bakaloo-command__eyebrow">Store command centre</span>
-          <h1 id="bakaloo-command-title" className="retail-front-door__title">Your store, made simple.</h1>
-          <p>See sales, orders, stock, cash and customers in one place. Start with the item that needs attention.</p>
+          <span className="bakaloo-command__eyebrow">Store performance</span>
+          <h1 id="bakaloo-command-title" className="retail-front-door__title">Dashboard</h1>
+          <p>Overview of your store performance</p>
         </div>
         <div className="bakaloo-command__scope" aria-label="Current retail workspace status">
           <Store size={18} aria-hidden="true" />
@@ -236,76 +245,91 @@ export function BakalooRetailCommandCenter({
         </div>
       </header>
 
-      <section className="bakaloo-command__metrics" aria-label="Today at a glance">
+      <section className="bakaloo-command__metrics bakaloo-command__metrics--ten" aria-label="Store performance metrics">
         <MetricCard
           icon={IndianRupee}
-          label="Net sales today"
-          value={inrFormatter.format(todaySales.total)}
-          detail={todaySales.count
-            ? `${numberFormatter.format(todaySales.count)} completed sale${todaySales.count === 1 ? '' : 's'} recorded today.`
-            : 'No completed sales recorded today.'}
-          actionLabel="Open POS"
+          label="Total revenue"
+          value={inrFormatter.format(totalRevenue)}
+          detail={`${numberFormatter.format(completedSales.length)} completed counter receipt${completedSales.length === 1 ? '' : 's'} in this local projection.`}
+          actionLabel="Open sales"
           onOpen={onPos}
-          tone={todaySales.count ? 'positive' : undefined}
+          tone={completedSales.length ? 'positive' : undefined}
         />
         <MetricCard
           icon={ShoppingBag}
-          label="Orders to review"
-          value={numberFormatter.format(command.onlinePendingOrdersCount)}
-          detail={command.onlinePendingOrdersCount
-            ? `${inrFormatter.format(command.onlinePendingOrderValue)} awaiting confirmation or fulfilment.`
-            : 'No online order needs review.'}
+          label="Total orders"
+          value={numberFormatter.format(totalOrders)}
+          detail={`${numberFormatter.format(completedSales.length)} counter receipts · ${numberFormatter.format(revenue.retailCommerceOrders.length)} imported channel order${revenue.retailCommerceOrders.length === 1 ? '' : 's'}.`}
           actionLabel="Open orders"
+          onOpen={onOrders}
+        />
+        <MetricCard
+          icon={Boxes}
+          label="Products"
+          value={numberFormatter.format(revenue.itemVariants.length)}
+          detail={`${numberFormatter.format(revenue.inventoryItems.length)} governed inventory item${revenue.inventoryItems.length === 1 ? '' : 's'} in the active scope.`}
+          actionLabel="Open products"
+          onOpen={onStock}
+        />
+        <MetricCard
+          icon={Users}
+          label="Customers"
+          value={numberFormatter.format(customerCount)}
+          detail={customerCount ? 'Unique customer accounts on completed local receipts.' : 'No customer is linked to a completed local receipt.'}
+          actionLabel="Open customers"
+          onOpen={onCustomers}
+        />
+        <MetricCard
+          icon={PackageCheck}
+          label="Pending orders"
+          value={numberFormatter.format(command.onlinePendingOrdersCount)}
+          detail={command.onlinePendingOrdersCount ? `${inrFormatter.format(command.onlinePendingOrderValue)} awaiting confirmation or fulfilment.` : 'No online order needs review.'}
+          actionLabel="Review orders"
           onOpen={onOrders}
           tone={command.onlinePendingOrdersCount ? 'attention' : undefined}
         />
         <MetricCard
-          icon={Boxes}
-          label="Stock exceptions"
+          icon={AlertTriangle}
+          label="Low stock items"
           value={numberFormatter.format(stockAttentionCount)}
-          detail={stockAttentionCount
-            ? `${stockoutCount} stockout${stockoutCount === 1 ? '' : 's'} and ${command.totalExpiryRiskItemsCount} expiry risk${command.totalExpiryRiskItemsCount === 1 ? '' : 's'} recorded.`
-            : 'No stock exception is recorded.'}
+          detail={stockAttentionCount ? `${stockoutCount} stockout${stockoutCount === 1 ? '' : 's'} and ${command.totalExpiryRiskItemsCount} expiry risk${command.totalExpiryRiskItemsCount === 1 ? '' : 's'} recorded.` : 'No stock exception is recorded.'}
           actionLabel="Review stock"
           onOpen={onStock}
           tone={stockAttentionCount ? 'attention' : undefined}
         />
         <MetricCard
           icon={Truck}
-          label="On-time delivery"
-          value={delivery.active.length ? `${numberFormatter.format(delivery.active.length - delivery.overdue.length)} / ${numberFormatter.format(delivery.active.length)}` : '—'}
-          detail={delivery.overdue.length
-            ? `${numberFormatter.format(delivery.overdue.length)} delivery promise${delivery.overdue.length === 1 ? '' : 's'} need review.`
-            : delivery.active.length
-              ? 'No active promise is past its recorded date.'
-              : 'No active delivery promise is recorded.'}
+          label="Online riders"
+          value={activeRiders === undefined ? 'Unavailable' : numberFormatter.format(activeRiders)}
+          detail={activeRiders === undefined ? 'No authenticated rider-location projection is connected.' : 'Only fresh, verified rider device signals are counted.'}
           actionLabel="Open delivery"
           onOpen={onDelivery}
-          tone={delivery.overdue.length ? 'attention' : delivery.active.length ? 'positive' : undefined}
+          tone={activeRiders ? 'positive' : undefined}
+        />
+        <MetricCard
+          icon={IndianRupee}
+          label="Today’s revenue"
+          value={inrFormatter.format(todaySales.total)}
+          detail={todaySales.count ? `${numberFormatter.format(todaySales.count)} completed sale${todaySales.count === 1 ? '' : 's'} recorded today.` : 'No completed sales recorded today.'}
+          actionLabel="Open POS"
+          onOpen={onPos}
+          tone={todaySales.count ? 'positive' : undefined}
+        />
+        <MetricCard
+          icon={ShoppingBag}
+          label="Average order value"
+          value={averageOrderValue === undefined ? '—' : inrFormatter.format(averageOrderValue)}
+          detail={averageOrderValue === undefined ? 'Available after the first completed local receipt.' : 'Completed local receipt average; channel orders are not mixed in.'}
+          actionLabel="Open sales"
+          onOpen={onPos}
         />
         <MetricCard
           icon={Banknote}
-          label="Cash to close"
-          value={numberFormatter.format(command.activeCashierShiftsCount)}
-          detail={command.unresolvedVarianceCount
-            ? `${numberFormatter.format(command.unresolvedVarianceCount)} unresolved variance${command.unresolvedVarianceCount === 1 ? '' : 's'} need review.`
-            : command.activeCashierShiftsCount
-              ? 'Open cash shifts require a governed close.'
-              : 'No cash shift is open.'}
-          actionLabel="Close cash"
+          label="COD collections"
+          value={inrFormatter.format(collectedCod)}
+          detail={`${numberFormatter.format(revenue.codCollectionCases.filter((caseFile) => ['carrier-collected', 'remitted', 'bank-matched'].includes(caseFile.status)).length)} recorded collection case${revenue.codCollectionCases.length === 1 ? '' : 's'} across carrier, remittance or bank evidence.`}
+          actionLabel="Review cash"
           onOpen={onCash}
-          tone={command.unresolvedVarianceCount ? 'danger' : undefined}
-        />
-        <MetricCard
-          icon={Users}
-          label="Loyalty members"
-          value={numberFormatter.format(loyaltyMembers)}
-          detail={loyaltyMembers
-            ? `${numberFormatter.format(loyaltyPoints)} points are held in the customer ledger.`
-            : 'No loyalty member is recorded yet.'}
-          actionLabel="Open customers"
-          onOpen={onCustomers}
-          tone={loyaltyMembers ? 'positive' : undefined}
         />
       </section>
 

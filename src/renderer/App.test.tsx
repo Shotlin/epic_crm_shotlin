@@ -906,7 +906,7 @@ describe('Epic BOS renderer', () => {
   it('starts the retail workspace owner at the simple Bakaloo command centre', async () => {
     render(<App />);
 
-    expect(await screen.findByRole('heading', { name: 'Your store, made simple.' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeTruthy();
     expect(screen.getByTestId('bakaloo-retail-command-center')).toBeTruthy();
     expect(screen.getAllByText('Legacy sample isolated').length).toBeGreaterThan(0);
     expect(screen.getByText(/Build 0\.1\.0 \/ Legacy sample cleanup required/)).toBeTruthy();

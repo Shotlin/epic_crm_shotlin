@@ -77,7 +77,12 @@ describe('BakalooRetailCommandCenter', () => {
 
     const commandCenter = screen.getByTestId('bakaloo-retail-command-center');
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
-    expect(screen.getByRole('heading', { level: 1, name: 'Your store, made simple.' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: 'Dashboard' })).toBeTruthy();
+    expect(commandCenter.textContent).toContain('Overview of your store performance');
+    [
+      'Total revenue', 'Total orders', 'Products', 'Customers', 'Pending orders',
+      'Low stock items', 'Online riders', 'Today’s revenue', 'Average order value', 'COD collections',
+    ].forEach((label) => expect(screen.getByRole('heading', { level: 3, name: label })).toBeTruthy());
     expect(commandCenter.textContent).toContain('No completed sales recorded today.');
     expect(commandCenter.textContent).toContain('No online order needs review.');
     expect(commandCenter.textContent).toContain('No recorded exception needs a decision.');

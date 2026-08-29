@@ -217,6 +217,21 @@ body {
 .workspace-canvas--retail-front-door { padding-top: 0; }
 .workspace-rail { border-color: var(--bakaloo-border); border-radius: var(--bakaloo-radius); box-shadow: var(--bakaloo-shadow-xs); }
 
+/* The pinned Bakaloo dashboard uses ten compact KPIs: two columns on small
+   screens, three at medium width and five on a wide store/HQ desktop. */
+.workspace-canvas--retail-front-door .bakaloo-command__metrics--ten {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.workspace-canvas--retail-front-door .bakaloo-command__metrics--ten .bakaloo-command__metric {
+  min-height: 0;
+}
+@media (max-width: 1240px) {
+  .workspace-canvas--retail-front-door .bakaloo-command__metrics--ten { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 767px) {
+  .workspace-canvas--retail-front-door .bakaloo-command__metrics--ten { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 .workspace-canvas :is(.panel, .bharat-panel, .governance-panel, .tower-panel, .ledger-panel, .statutory-console, .foundry-panel, .asset-register, .india-pulse, .retail-insights-overview__chart, .retail-insights-overview__attention, .retail-sell-overview__recent, .retail-sell-overview__guide, .retail-stock-overview__channel-truth, .retail-cash-overview__detail, .bakaloo-command__sheet, .bakaloo-delivery__panel) {
   border-color: var(--bakaloo-border) !important;
   border-radius: var(--bakaloo-radius) !important;
