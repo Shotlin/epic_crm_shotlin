@@ -17,4 +17,30 @@ describe('RetailDeliveryOverviewPanel', () => {
     expect(screen.getByText(/No verified coordinates available/i)).toBeTruthy();
     expect(screen.getByText(/No rider-device observation is recorded/i)).toBeTruthy();
   });
+
+  it('keeps malformed legacy rider timestamps visible without crashing the dispatch workspace', () => {
+    render(<RetailDeliveryOverviewPanel
+      revenue={{
+        ...base,
+        retailDeliveryMapSignals: [{ id: 'legacy-signal', riderId: 'rider-legacy', status: 'stale', observedAt: 'not-a-date', blockers: [], recordedAt: '2026-08-04T10:00:00.000Z', version: 1 }],
+      } as unknown as RevenueOpsSnapshot}
+      onOpenAdvanced={vi.fn()}
+    />);
+
+    expect(screen.getByText('rider-legacy')).toBeTruthy();
+    expect(screen.getByText(/recorded observation.*time unavailable/i)).toBeTruthy();
+  });
+
+  it('does not calculate an on-time rate from an invalid active promise', () => {
+    render(<RetailDeliveryOverviewPanel
+      revenue={{
+        ...base,
+        deliveryPromises: [{ id: 'bad-promise', salesOrderId: 'order-1', deliveryTo: 'invalid-time', paymentMode: 'cod', status: 'active' }],
+      } as unknown as RevenueOpsSnapshot}
+      onOpenAdvanced={vi.fn()}
+    />);
+
+    expect(screen.getByText('No valid promise time')).toBeTruthy();
+    expect(document.body.textContent).toContain('invalid delivery time');
+  });
 });

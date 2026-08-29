@@ -22,4 +22,17 @@ describe('retail delivery overview', () => {
     expect(report.summary.codOpen).toBe(0);
     expect(report.attention).toEqual([]);
   });
+
+  it('quarantines an active promise with an invalid delivery time instead of silently scheduling it', () => {
+    const report = computeRetailDeliveryOverview({
+      now: '2026-08-04T10:00:00.000Z',
+      deliveryPromises: [{ id: 'p-bad', salesOrderId: 'so-bad', deliveryTo: 'not-a-timestamp', paymentMode: 'cod', status: 'active' } as never],
+      fulfilmentTasks: [], shipmentPackages: [], codCollectionCases: [], returnAuthorizations: [], pincodeServiceabilityRules: [], salesOrders: [],
+    });
+
+    expect(report.summary.activePromises).toBe(1);
+    expect(report.summary.invalidPromiseCount).toBe(1);
+    expect(report.promiseRows).toEqual([]);
+    expect(report.attention).toContain('1 active delivery promise has an invalid delivery time');
+  });
 });

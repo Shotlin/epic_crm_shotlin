@@ -9,6 +9,12 @@ import type { RetailHubCoverageMap } from '../shared/retail-hub-coverage-map-con
 const dateFormatter = new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', timeZone: 'Asia/Kolkata' });
 const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
 
+function formatEvidenceDate(value: string | undefined): string {
+  if (!value) return 'time unavailable';
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? 'time unavailable' : dateFormatter.format(parsed);
+}
+
 export interface RetailDeliveryOverviewPanelProps {
   revenue: RevenueOpsSnapshot;
   onOpenAdvanced: () => void;
@@ -34,8 +40,9 @@ export function RetailDeliveryOverviewPanel({
   const [hubBaseUrl, setHubBaseUrl] = useState('');
   const [shopId, setShopId] = useState('');
   const report = useMemo(() => computeRetailDeliveryOverview({ ...revenue, now: revenue.generatedAt }), [revenue]);
-  const onTimeRate = report.summary.activePromises > 0
-    ? Math.round(((report.summary.activePromises - report.summary.overduePromises) / report.summary.activePromises) * 1000) / 10
+  const validPromiseCount = report.summary.activePromises - report.summary.invalidPromiseCount;
+  const onTimeRate = validPromiseCount > 0
+    ? Math.round(((validPromiseCount - report.summary.overduePromises) / validPromiseCount) * 1000) / 10
     : undefined;
   const codCustody = revenue.codCollectionCases
     .filter((item) => item.status !== 'bank-matched' && item.status !== 'cancelled')
@@ -64,7 +71,7 @@ export function RetailDeliveryOverviewPanel({
   const cards = [
     { label: 'Awaiting dispatch', value: report.summary.dispatchBacklog.toLocaleString('en-IN'), detail: report.summary.dispatchBacklog ? 'Packed or ready to leave' : 'No package waiting', Icon: PackageCheck, tone: 'amber' },
     { label: 'In transit', value: report.summary.inTransit.toLocaleString('en-IN'), detail: report.summary.inTransit ? 'Shipment evidence open' : 'No active shipment', Icon: Truck, tone: 'blue' },
-    { label: 'On-time promise', value: onTimeRate === undefined ? '—' : `${onTimeRate}%`, detail: onTimeRate === undefined ? 'No active promises yet' : `${report.summary.overduePromises} overdue`, Icon: Clock3, tone: onTimeRate !== undefined && onTimeRate < 90 ? 'amber' : 'green' },
+    { label: 'On-time promise', value: onTimeRate === undefined ? '—' : `${onTimeRate}%`, detail: onTimeRate === undefined ? (report.summary.invalidPromiseCount ? 'No valid promise time' : 'No active promises yet') : `${report.summary.overduePromises} overdue`, Icon: Clock3, tone: onTimeRate !== undefined && onTimeRate < 90 ? 'amber' : 'green' },
     { label: 'Returns / RTO', value: report.summary.returnsAttention.toLocaleString('en-IN'), detail: report.summary.returnsAttention ? 'Need review' : 'No return exception', Icon: RotateCcw, tone: report.summary.returnsAttention ? 'red' : 'green' },
     { label: 'COD custody', value: inr.format(codCustody), detail: `${report.summary.codOpen} open case${report.summary.codOpen === 1 ? '' : 's'}`, Icon: ShieldCheck, tone: report.summary.codAttention ? 'amber' : 'blue' },
   ] as const;
@@ -101,7 +108,7 @@ export function RetailDeliveryOverviewPanel({
         {queue.length ? <div className="retail-delivery-overview__queue" role="list" style={{ display: 'grid', gap: 8 }}>
           {queue.map((row) => <article key={row.id} role="listitem" data-state={row.state} style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr) auto', alignItems: 'center', gap: 9, padding: '10px 0', borderTop: '1px solid var(--line)' }}>
             <span>{row.state === 'overdue' ? <AlertTriangle size={14} aria-hidden="true" /> : <MapPin size={14} aria-hidden="true" />}</span>
-            <div><strong>{row.orderNumber}</strong><small>{row.paymentMode === 'cod' ? 'COD' : 'Prepaid'} · deliver by {dateFormatter.format(new Date(row.deliveryTo))}</small></div>
+            <div><strong>{row.orderNumber}</strong><small>{row.paymentMode === 'cod' ? 'COD' : 'Prepaid'} · deliver by {formatEvidenceDate(row.deliveryTo)}</small></div>
             <em>{row.state.replace('-', ' ')}</em>
           </article>)}
         </div> : <p className="bharat-empty"><PackageCheck size={18} aria-hidden="true" />No active delivery promises are recorded.</p>}
@@ -114,7 +121,7 @@ export function RetailDeliveryOverviewPanel({
         <header><div><span className="eyebrow">Rider workload</span><h3>Signal freshness by rider</h3></div><span>{riderRows.length} rider{riderRows.length === 1 ? '' : 's'}</span></header>
         {riderRows.length ? <div className="retail-delivery-overview__promise" role="list" style={{ display: 'grid' }}>
           {riderRows.slice(0, 6).map((rider) => <div className="retail-delivery-overview__promise" key={rider.riderId} role="listitem" data-state={rider.state === 'blocked' ? 'overdue' : undefined}>
-            <span><Radio size={14} aria-hidden="true" /></span><div><strong>{rider.riderId}</strong><small>{rider.observations} recorded observation{rider.observations === 1 ? '' : 's'}{rider.observedAt ? ` · ${dateFormatter.format(new Date(rider.observedAt))}` : ''}</small></div><em>{rider.state}</em>
+            <span><Radio size={14} aria-hidden="true" /></span><div><strong>{rider.riderId}</strong><small>{rider.observations} recorded observation{rider.observations === 1 ? '' : 's'} · {formatEvidenceDate(rider.observedAt)}</small></div><em>{rider.state}</em>
           </div>)}
         </div> : <p className="bharat-empty"><Radio size={18} aria-hidden="true" />No rider-device observation is recorded.</p>}
       </div>

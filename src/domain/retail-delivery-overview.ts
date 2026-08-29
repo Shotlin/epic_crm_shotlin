@@ -27,6 +27,8 @@ export interface RetailDeliveryOverview {
   generatedAt: string;
   summary: {
     activePromises: number;
+    /** Legacy/corrupt records excluded from scheduling until repaired. */
+    invalidPromiseCount: number;
     overduePromises: number;
     dueTodayPromises: number;
     dispatchBacklog: number;
@@ -52,12 +54,18 @@ function safeNow(value?: string): string {
   return Number.isNaN(parsed) ? new Date().toISOString() : new Date(parsed).toISOString();
 }
 
+function validTimestamp(value: string): boolean {
+  return !Number.isNaN(Date.parse(value));
+}
+
 /** Read-only delivery readiness; it never infers carrier location or ETA. */
 export function computeRetailDeliveryOverview(input: RetailDeliveryOverviewInput): RetailDeliveryOverview {
   const generatedAt = safeNow(input.now);
   const today = day(generatedAt);
   const activePromises = input.deliveryPromises.filter(({ status }) => status === 'active');
-  const promiseRows = activePromises
+  const validPromises = activePromises.filter((promise) => validTimestamp(promise.deliveryTo));
+  const invalidPromiseCount = activePromises.length - validPromises.length;
+  const promiseRows = validPromises
     .map((promise) => {
       const state = promise.deliveryTo < generatedAt ? 'overdue' : day(promise.deliveryTo) === today ? 'due-today' : 'scheduled';
       return {
@@ -85,13 +93,14 @@ export function computeRetailDeliveryOverview(input: RetailDeliveryOverviewInput
   const serviceablePincodes = input.pincodeServiceabilityRules.filter(({ status, serviceable }) => status === 'active' && serviceable).length;
   const attention: string[] = [];
   if (overduePromises) attention.push(`${overduePromises} delivery promise${overduePromises === 1 ? '' : 's'} overdue`);
+  if (invalidPromiseCount) attention.push(`${invalidPromiseCount} active delivery promise${invalidPromiseCount === 1 ? ' has' : 's have'} an invalid delivery time`);
   if (overdueTasks) attention.push(`${overdueTasks} fulfilment task${overdueTasks === 1 ? '' : 's'} past due`);
   if (codAttention) attention.push(`${codAttention} COD custody case${codAttention === 1 ? '' : 's'} need evidence`);
   if (returnsAttention) attention.push(`${returnsAttention} return / RTO record${returnsAttention === 1 ? '' : 's'} need review`);
   if (!serviceablePincodes && activePromises.length) attention.push('No active serviceability policy is available');
   return {
     generatedAt,
-    summary: { activePromises: activePromises.length, overduePromises, dueTodayPromises, dispatchBacklog, inTransit, codOpen: codOpenCases.length, codAttention, returnsAttention, serviceablePincodes, overdueTasks },
+    summary: { activePromises: activePromises.length, invalidPromiseCount, overduePromises, dueTodayPromises, dispatchBacklog, inTransit, codOpen: codOpenCases.length, codAttention, returnsAttention, serviceablePincodes, overdueTasks },
     promiseRows,
     attention,
   };
