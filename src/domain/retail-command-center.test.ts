@@ -187,4 +187,20 @@ describe('retail-command-center domain', () => {
     expect(cc.attentionQueue[1]).toMatchObject({ severity: 'critical', amount: 200, action: expect.stringContaining('margin') });
     expect(cc.attentionQueue[3]).toMatchObject({ amount: 850, count: 1 });
   });
+
+  it('only counts released batches with valid India business-date evidence inside the explicit risk window', () => {
+    const state = mockState();
+    state.inventoryBatches = [
+      { id: 'batch-near', itemVariantId: 'var-1', batchNumber: 'NEAR', status: 'released', expiresAt: '2026-08-31', version: 1 },
+      { id: 'batch-expired', itemVariantId: 'var-1', batchNumber: 'OLD', status: 'released', expiresAt: '2026-08-01', version: 1 },
+      { id: 'batch-invalid', itemVariantId: 'var-1', batchNumber: 'BAD', status: 'released', expiresAt: '2026-02-31', version: 1 },
+      { id: 'batch-future', itemVariantId: 'var-1', batchNumber: 'FAR', status: 'released', expiresAt: '2026-10-01', version: 1 },
+      { id: 'batch-held', itemVariantId: 'var-1', batchNumber: 'HOLD', status: 'quarantined', expiresAt: '2026-08-31', version: 1 },
+    ];
+
+    const cc = computeRetailCommandCenter(state, 'Today', new Date('2026-08-15T10:00:00.000Z'));
+
+    expect(cc.totalExpiryRiskItemsCount).toBe(1);
+    expect(cc.attentionItems).toContain('1 released batch expires within 30 days.');
+  });
 });

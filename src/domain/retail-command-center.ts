@@ -16,9 +16,28 @@
 
 import type { RevenueOpsState } from '../shared/revenue-ops-contracts';
 import type { RetailCommerceChannel } from '../shared/retail-commerce-contracts';
+import { toIndiaBusinessDate } from '../shared/india-business-date';
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+/**
+ * Inventory batches are persisted as India business dates, rather than elapsed
+ * timestamps.  Parse them strictly: JavaScript otherwise normalises values
+ * such as 2026-02-31 and can turn corrupt evidence into a stock alert.
+ */
+function parseBusinessDate(value: string | undefined): Date | undefined {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(year!, month! - 1, day!));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month! - 1 && date.getUTCDate() === day ? date : undefined;
+}
+
+function addBusinessDays(date: Date, days: number): Date {
+  const result = new Date(date.getTime());
+  result.setUTCDate(result.getUTCDate() + days);
+  return result;
 }
 
 export interface StorePerformanceMetric {
@@ -100,6 +119,7 @@ type RetailCommandCenterSource = Pick<RevenueOpsState, 'retailSales' | 'retailCa
 export function computeRetailCommandCenter(
   revenue: RetailCommandCenterSource,
   period = 'Today',
+  now: Date = new Date(),
 ): RetailCommandCenterSnapshot {
   const sales = revenue.retailSales ?? [];
   const shifts = revenue.retailCashierShifts ?? [];
@@ -140,11 +160,17 @@ export function computeRetailCommandCenter(
   // Expiry risk: use InventoryBatch records. InventoryBatch.expiresAt is the expiry field.
   // BinBalance.available is used as the quantity proxy for whether stock is actually on hand.
   const batches = revenue.inventoryBatches;
-  const todayDate = new Date();
-  const thirtyDaysLater = new Date(todayDate.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const expiryRiskItemsCount = batches.filter(
-    (b) => b.expiresAt !== undefined && b.expiresAt <= thirtyDaysLater && b.status === 'released',
-  ).length;
+  const todayDate = parseBusinessDate(toIndiaBusinessDate(now.toISOString()));
+  const thirtyDaysLater = todayDate ? addBusinessDays(todayDate, 30) : undefined;
+  const expiryRiskItemsCount = batches.filter((batch) => {
+    const expiresAt = parseBusinessDate(batch.expiresAt);
+    return batch.status === 'released'
+      && expiresAt !== undefined
+      && todayDate !== undefined
+      && thirtyDaysLater !== undefined
+      && expiresAt >= todayDate
+      && expiresAt <= thirtyDaysLater;
+  }).length;
 
   // Store performance grouping by counter
   const storePerformance: StorePerformanceMetric[] = counters.map((counter) => {
@@ -233,7 +259,7 @@ export function computeRetailCommandCenter(
     addAttention({ id: 'command-stockout', kind: 'stockout', severity: 'high', priorityScore: 60 + Math.min(20, stockoutItemsCount), count: stockoutItemsCount, amount: 0, summary: `${stockoutItemsCount} item${stockoutItemsCount === 1 ? '' : 's'} are out of stock at a counter bin.`, action: 'Open replenishment planning and reserve an approved purchase quantity.' });
   }
   if (expiryRiskItemsCount > 0) {
-    addAttention({ id: 'command-expiry', kind: 'expiry', severity: 'high', priorityScore: 55 + Math.min(20, expiryRiskItemsCount), count: expiryRiskItemsCount, amount: 0, summary: `${expiryRiskItemsCount} released batch${expiryRiskItemsCount === 1 ? '' : 'es'} expire within 30 days.`, action: 'Prioritise FEFO clearance or a governed markdown before expiry.' });
+    addAttention({ id: 'command-expiry', kind: 'expiry', severity: 'high', priorityScore: 55 + Math.min(20, expiryRiskItemsCount), count: expiryRiskItemsCount, amount: 0, summary: expiryRiskItemsCount === 1 ? '1 released batch expires within 30 days.' : `${expiryRiskItemsCount} released batches expire within 30 days.`, action: 'Prioritise FEFO clearance or a governed markdown before expiry.' });
   }
   if (onlinePendingOrdersCount > 0) {
     addAttention({ id: 'command-omnichannel', kind: 'omnichannel', severity: 'medium', priorityScore: 40 + Math.min(20, onlinePendingOrdersCount), count: onlinePendingOrdersCount, amount: onlinePendingOrderValue, summary: `${onlinePendingOrdersCount} online order${onlinePendingOrdersCount === 1 ? '' : 's'} await confirmation or fulfilment.`, action: 'Open the unified order desk and reserve stock before accepting more demand.' });
