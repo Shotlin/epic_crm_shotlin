@@ -6636,12 +6636,18 @@ function AppShell({
       setNavigationMessage(`${submodule.label} is open. ${submodule.description}`);
       return;
     }
+    if (key === 'deliver:branches') {
+      setRetailOverviewOpen(true);
+      setRetailStockTab('transfers');
+      navigateTo({ kind: 'bharat', tab: 'warehouse', workspace: 'operations' });
+      setNavigationMessage(`${submodule.label} is open. ${submodule.description}`);
+      return;
+    }
 
-    const destinations: Record<Exclude<RetailWorkspaceSubmoduleKey, 'home:attention' | 'home:overview' | 'home:store-pulse' | 'sell:orders' | 'stock:products' | 'stock:control' | 'stock:replenishment' | 'stock:purchasing' | 'deliver:queue' | 'deliver:dispatch' | 'insights:executive'>, WorkspaceDestination> = {
+    const destinations: Record<Exclude<RetailWorkspaceSubmoduleKey, 'home:attention' | 'home:overview' | 'home:store-pulse' | 'sell:orders' | 'stock:products' | 'stock:control' | 'stock:replenishment' | 'stock:purchasing' | 'deliver:queue' | 'deliver:dispatch' | 'deliver:branches' | 'insights:executive'>, WorkspaceDestination> = {
       'sell:pos': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'pos' },
       'sell:returns': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'returns' },
       'sell:pricing': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'pricing' },
-      'deliver:branches': { kind: 'bharat', tab: 'fulfilment', workspace: 'operations' },
       'deliver:returns': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'returns' },
       'customers:customer-360': { kind: 'crm-surface', surface: 'party' },
       'customers:loyalty': { kind: 'crm-surface', surface: 'party' },

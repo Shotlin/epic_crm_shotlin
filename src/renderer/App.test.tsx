@@ -1028,6 +1028,16 @@ describe('Epic BOS renderer', () => {
     expect(screen.queryByTestId('bharat-workbench')).toBeNull();
   });
 
+  it('opens Delivery branch transfers on the Stock Transfers tab', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openCrmHome();
+    await user.click(screen.getByRole('button', { name: 'Deliver' }));
+    await user.click(screen.getByRole('button', { name: 'Open Branch transfers' }));
+    expect(await screen.findByRole('heading', { name: 'Transfers' })).toBeTruthy();
+    expect(screen.queryByTestId('bharat-workbench')).toBeNull();
+  });
+
   it('collapses and restores the Bakaloo sidebar without removing keyboard navigation', async () => {
     const user = userEvent.setup();
     render(<App />);
