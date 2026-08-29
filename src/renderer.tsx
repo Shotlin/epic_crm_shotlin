@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client';
 import './index.css';
 import './shell.css';
 import './epic-design-system.css';
+import './bakaloo-design-system.css';
 
 const root = document.getElementById('root');
 

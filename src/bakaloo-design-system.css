@@ -1,0 +1,209 @@
+/*
+ * Bakaloo visual foundation
+ *
+ * The values in this file are ported from the pinned Bakaloo dashboard
+ * globals. It loads last so governed Epic workbenches inherit its production
+ * language while retaining their existing domain and access-control logic.
+ */
+:root {
+  --bakaloo-background: hsl(210 20% 98%);
+  --bakaloo-foreground: hsl(220 14% 10%);
+  --bakaloo-card: #fff;
+  --bakaloo-primary: hsl(148 66% 29%);
+  --bakaloo-brand-50: #e8f5e9;
+  --bakaloo-brand-100: #c8e6c9;
+  --bakaloo-brand-200: #a5d6a7;
+  --bakaloo-brand-300: #81c784;
+  --bakaloo-brand-400: #66bb6a;
+  --bakaloo-brand-500: #1a7a3c;
+  --bakaloo-brand-600: #158034;
+  --bakaloo-brand-700: #10602a;
+  --bakaloo-brand-800: #0b4020;
+  --bakaloo-brand-900: #062010;
+  --bakaloo-success: #10b981;
+  --bakaloo-warning: #f59e0b;
+  --bakaloo-danger: #ef4444;
+  --bakaloo-info: #3b82f6;
+  --bakaloo-purple: #8b5cf6;
+  --bakaloo-surface: #f0f4f8;
+  --bakaloo-border: hsl(218 13% 90%);
+  --bakaloo-muted: hsl(215 16% 47%);
+  --bakaloo-radius: .5rem;
+  --bakaloo-shadow-xs: 0 1px 2px rgb(15 23 42 / .04);
+  --bakaloo-shadow-sm: 0 1px 3px rgb(15 23 42 / .07), 0 1px 2px rgb(15 23 42 / .04);
+  --bakaloo-shadow-md: 0 4px 6px -1px rgb(15 23 42 / .08), 0 2px 4px -2px rgb(15 23 42 / .05);
+  --bakaloo-sidebar-width: 260px;
+  --bakaloo-sidebar-collapsed-width: 72px;
+  --bakaloo-header-height: 64px;
+  --bakaloo-page-padding: 24px;
+
+  /* Compatibility aliases: legacy workbench classes receive the Bakaloo
+     semantic language during their route-by-route migration. */
+  --ui-bg: var(--bakaloo-background);
+  --ui-surface: var(--bakaloo-card);
+  --ui-surface-muted: var(--bakaloo-surface);
+  --ui-ink: var(--bakaloo-foreground);
+  --ui-muted: var(--bakaloo-muted);
+  --ui-border: var(--bakaloo-border);
+  --ui-border-strong: hsl(216 18% 82%);
+  --ui-primary: var(--bakaloo-brand-500);
+  --ui-primary-deep: var(--bakaloo-brand-600);
+  --ui-success: var(--bakaloo-success);
+  --ui-warning: #b45309;
+  --ui-danger: #dc2626;
+  --ui-radius-sm: var(--bakaloo-radius);
+  --ui-radius-md: .75rem;
+  --ui-radius-lg: 1rem;
+  --ui-shadow-sm: var(--bakaloo-shadow-sm);
+  --ui-shadow-md: var(--bakaloo-shadow-md);
+  --epic-rail-width: var(--bakaloo-sidebar-width);
+  --epic-topbar-height: var(--bakaloo-header-height);
+  --epic-page-gutter: var(--bakaloo-page-padding);
+  --epic-frame-border: var(--bakaloo-border);
+}
+
+:root[data-theme='dark'] {
+  --bakaloo-background: hsl(222 28% 10%);
+  --bakaloo-foreground: hsl(210 20% 96%);
+  --bakaloo-card: hsl(222 24% 14%);
+  --bakaloo-surface: hsl(222 22% 17%);
+  --bakaloo-border: hsl(220 16% 25%);
+  --bakaloo-muted: hsl(216 15% 72%);
+  --ui-border-strong: hsl(220 16% 32%);
+}
+
+body {
+  background: var(--bakaloo-background) !important;
+  color: var(--bakaloo-foreground);
+  font-family: Geist, 'Geist Sans', 'IBM Plex Sans Variable', Inter, system-ui, sans-serif;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+}
+
+/* The Electron frame is deliberately simple: one sidebar, one sticky header,
+   and one page scroll owner. There is no grid-paper background or second
+   application rail behind daily retail routes. */
+.app-shell {
+  grid-template-columns: var(--bakaloo-sidebar-width) minmax(0, 1fr) !important;
+  background: var(--bakaloo-background);
+}
+
+.sidebar {
+  padding: 16px 12px 12px;
+  border-right: 1px solid var(--bakaloo-border);
+  background: var(--bakaloo-card) !important;
+  color: var(--bakaloo-foreground);
+  box-shadow: none;
+}
+
+.brand {
+  min-height: 52px;
+  padding: 0 12px 14px;
+  border-bottom-color: var(--bakaloo-border);
+  color: var(--bakaloo-foreground);
+}
+.brand strong { color: var(--bakaloo-foreground); font-size: 1.125rem; letter-spacing: -.03em; }
+.brand small { color: var(--bakaloo-muted); font-size: .625rem; text-transform: uppercase; letter-spacing: .08em; }
+.brand__mark { background: var(--bakaloo-brand-500); box-shadow: none; }
+.brand__mark span { background: #fff; }
+
+.sidebar .retail-workspace-navigation { padding: 14px 0 10px; overflow-y: auto; scrollbar-width: thin; }
+.sidebar .retail-workspace-navigation__heading { padding: 6px 12px 10px; }
+.sidebar .retail-workspace-navigation__heading > span { color: var(--bakaloo-muted); }
+.sidebar .retail-workspace-navigation__heading > strong { color: var(--bakaloo-foreground); }
+.sidebar .retail-workspace-navigation__items { gap: 2px; }
+.sidebar .retail-workspace-navigation__item {
+  min-height: 42px;
+  grid-template-columns: 30px minmax(0, 1fr) 16px;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--bakaloo-radius);
+  color: hsl(217 17% 36%);
+}
+.sidebar .retail-workspace-navigation__icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  color: hsl(215 17% 45%);
+  background: hsl(210 18% 96%);
+}
+.sidebar .retail-workspace-navigation__icon > svg { width: 17px; height: 17px; }
+.sidebar .retail-workspace-navigation__copy > strong { color: inherit; font-size: .825rem; font-weight: 600; }
+.sidebar .retail-workspace-navigation__copy > small { display: none; }
+.sidebar .retail-workspace-navigation__item:hover { border-color: var(--bakaloo-brand-100); color: var(--bakaloo-brand-700); background: var(--bakaloo-brand-50); }
+.sidebar .retail-workspace-navigation__item[data-active='true'] {
+  border-color: var(--bakaloo-brand-200);
+  color: var(--bakaloo-brand-700);
+  background: var(--bakaloo-brand-50);
+  box-shadow: inset 3px 0 var(--bakaloo-brand-500);
+}
+.sidebar .retail-workspace-navigation__item[data-active='true'] .retail-workspace-navigation__icon { color: #fff; background: var(--bakaloo-brand-500); }
+.retail-workspace-navigation__chevron { color: var(--bakaloo-muted); }
+.retail-workspace-navigation__subitems { margin-left: 22px; padding-left: 12px; border-left-color: var(--bakaloo-border); }
+.retail-workspace-navigation__subitem { min-height: 36px; color: hsl(216 15% 40%); }
+.retail-workspace-navigation__subitem > svg { color: var(--bakaloo-brand-500); }
+.retail-workspace-navigation__subitem:hover { color: var(--bakaloo-brand-700); background: var(--bakaloo-brand-50); }
+.retail-workspace-navigation__advanced { border-top-color: var(--bakaloo-border); }
+.retail-workspace-navigation__advanced-toggle,
+.retail-workspace-navigation__advanced-item { color: hsl(216 15% 40%); }
+.retail-workspace-navigation__advanced-toggle:hover,
+.retail-workspace-navigation__advanced-item:hover { color: var(--bakaloo-brand-700); background: var(--bakaloo-brand-50); }
+
+.sidebar__bottom { border-top-color: var(--bakaloo-border); }
+.sidebar__bottom .nav-item { color: hsl(216 15% 40%); }
+.sidebar__bottom .nav-item:hover { color: var(--bakaloo-brand-700); background: var(--bakaloo-brand-50); }
+.system-signal, .profile { border-color: var(--bakaloo-border); background: var(--bakaloo-surface); }
+.system-signal strong, .profile strong { color: var(--bakaloo-foreground); }
+.system-signal small, .profile small { color: var(--bakaloo-muted); }
+
+.topbar {
+  min-height: var(--bakaloo-header-height);
+  height: var(--bakaloo-header-height);
+  flex-basis: var(--bakaloo-header-height);
+  grid-template-columns: minmax(180px, .72fr) minmax(320px, 560px) minmax(92px, 1fr);
+  gap: 20px;
+  padding-inline: var(--bakaloo-page-padding);
+  border-bottom-color: var(--bakaloo-border);
+  background: color-mix(in srgb, var(--bakaloo-card) 96%, transparent);
+  box-shadow: var(--bakaloo-shadow-xs);
+}
+.company-switcher { color: var(--bakaloo-foreground); }
+.company-switcher__icon { color: var(--bakaloo-brand-600); background: var(--bakaloo-brand-50); }
+.company-switcher strong { color: var(--bakaloo-foreground); }
+.company-switcher small { color: var(--bakaloo-muted); }
+.global-search { min-height: 40px; border-color: var(--bakaloo-border); border-radius: var(--bakaloo-radius); background: var(--bakaloo-surface); color: var(--bakaloo-muted); box-shadow: none; }
+.global-search:hover { border-color: var(--bakaloo-brand-300); background: #fff; }
+.global-search kbd { border-color: var(--bakaloo-border); background: #fff; color: var(--bakaloo-muted); }
+.icon-button { min-width: 40px; min-height: 40px; border-color: var(--bakaloo-border); border-radius: var(--bakaloo-radius); color: hsl(217 17% 35%); background: #fff; }
+.icon-button:hover { color: var(--bakaloo-brand-700); background: var(--bakaloo-brand-50); }
+
+.main-content {
+  padding: 24px var(--bakaloo-page-padding) 56px;
+  background: var(--bakaloo-background) !important;
+}
+.main-content::before { display: none; }
+.workspace-canvas { width: min(100%, 1600px); }
+.workspace-canvas--retail-front-door { padding-top: 0; }
+.workspace-rail { border-color: var(--bakaloo-border); border-radius: var(--bakaloo-radius); box-shadow: var(--bakaloo-shadow-xs); }
+
+.workspace-canvas :is(.panel, .bharat-panel, .governance-panel, .tower-panel, .ledger-panel, .statutory-console, .foundry-panel, .asset-register, .india-pulse, .retail-insights-overview__chart, .retail-insights-overview__attention, .retail-sell-overview__recent, .retail-sell-overview__guide, .retail-stock-overview__channel-truth, .retail-cash-overview__detail, .bakaloo-command__sheet, .bakaloo-delivery__panel) {
+  border-color: var(--bakaloo-border) !important;
+  border-radius: var(--bakaloo-radius) !important;
+  box-shadow: var(--bakaloo-shadow-sm) !important;
+}
+.workspace-canvas :is(.button--primary, .button--accent) { background: var(--bakaloo-brand-500); border-color: var(--bakaloo-brand-500); }
+.workspace-canvas :is(.button--primary, .button--accent):hover { background: var(--bakaloo-brand-600); border-color: var(--bakaloo-brand-600); }
+.workspace-canvas :is(button, .button):focus-visible, .sidebar button:focus-visible, .topbar button:focus-visible { outline-color: color-mix(in srgb, var(--bakaloo-brand-500) 45%, transparent); }
+
+@media (max-width: 767px) {
+  .app-shell { grid-template-columns: 1fr !important; }
+  .topbar { grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; padding-inline: 16px; }
+  .company-switcher > div { display: none; }
+  .global-search > span { font-size: .78rem; }
+  .topbar__actions { gap: 6px; }
+  .main-content { padding: 16px 16px 40px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar *, .topbar *, .workspace-canvas * { transition-duration: .01ms !important; animation-duration: .01ms !important; }
+}
