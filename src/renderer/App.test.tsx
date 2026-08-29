@@ -994,6 +994,18 @@ describe('Epic BOS renderer', () => {
     expect(screen.queryByTestId('bharat-workbench')).toBeNull();
   });
 
+  it('opens Purchasing on the simple purchase-plan tab before governed procurement controls', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openCrmHome();
+
+    await user.click(screen.getByRole('button', { name: 'Stock' }));
+    await user.click(screen.getByRole('button', { name: 'Open Purchasing' }));
+
+    expect(await screen.findByRole('heading', { name: 'Purchase plan' })).toBeTruthy();
+    expect(screen.queryByTestId('bharat-workbench')).toBeNull();
+  });
+
   it('collapses and restores the Bakaloo sidebar without removing keyboard navigation', async () => {
     const user = userEvent.setup();
     render(<App />);

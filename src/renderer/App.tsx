@@ -6625,12 +6625,17 @@ function AppShell({
       setNavigationMessage(`${submodule.label} is open. ${submodule.description}`);
       return;
     }
+    if (key === 'stock:purchasing') {
+      navigateRetailWorkspace(route);
+      setRetailStockTab('purchase');
+      setNavigationMessage(`${submodule.label} is open. ${submodule.description}`);
+      return;
+    }
 
-    const destinations: Record<Exclude<RetailWorkspaceSubmoduleKey, 'home:attention' | 'home:overview' | 'home:store-pulse' | 'sell:orders' | 'stock:products' | 'stock:control' | 'stock:replenishment' | 'insights:executive'>, WorkspaceDestination> = {
+    const destinations: Record<Exclude<RetailWorkspaceSubmoduleKey, 'home:attention' | 'home:overview' | 'home:store-pulse' | 'sell:orders' | 'stock:products' | 'stock:control' | 'stock:replenishment' | 'stock:purchasing' | 'insights:executive'>, WorkspaceDestination> = {
       'sell:pos': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'pos' },
       'sell:returns': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'returns' },
       'sell:pricing': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'pricing' },
-      'stock:purchasing': { kind: 'bharat', tab: 'procurement', workspace: 'operations' },
       'deliver:queue': { kind: 'bharat', tab: 'fulfilment', workspace: 'operations' },
       'deliver:dispatch': { kind: 'bharat', tab: 'delivery', workspace: 'service' },
       'deliver:branches': { kind: 'bharat', tab: 'fulfilment', workspace: 'operations' },
