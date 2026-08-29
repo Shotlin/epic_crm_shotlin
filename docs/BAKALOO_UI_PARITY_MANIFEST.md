@@ -5,7 +5,7 @@ Status legend: **Captured** = live read-only behaviour inspected; **Source** = p
 | Bakaloo route | Captured | Source | Epic destination | Current state |
 | --- | ---: | ---: | --- | --- |
 | Dashboard | Yes | Yes | Home/dashboard | In progress — Bakaloo shell, reporting-period selector, ten governed KPIs, cart-recovery unconfigured state, ordered decision visuals, low-stock alerts and evidence-only rider map are implemented. Live cart import, full visual capture comparison and role/empty/error certification remain. |
-| Orders | Yes | Yes | Orders + unified order inbox | Partial |
+| Orders | Yes | Yes | Orders + unified order inbox | In progress — the Sell rail now opens a compact, read-only unified order queue using governed channel, handoff, reservation and exception projections. Lifecycle writes remain in the accountable commerce/fulfilment workbench; visual capture, role/error certification and real Hub import remain. |
 | Settings / Fees | Yes | Yes | Setup / commercial policy | Planned parity |
 | Settings / Tip Presets | Yes | Yes | Setup / checkout policy | Planned parity |
 | Settings / Payment Offers | Yes | Yes | Money / payment offers | Planned parity |
