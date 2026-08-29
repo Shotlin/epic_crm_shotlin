@@ -6,11 +6,12 @@ import {
   CirclePlus,
   PackageOpen,
   ReceiptIndianRupee,
+  Search,
   ShoppingCart,
   Store,
   WalletCards,
 } from 'lucide-react';
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { computeRetailSellOverview } from '../domain/retail-sell-overview';
 import type { RevenueOpsSnapshot } from '../shared/revenue-ops-contracts';
 import type { RetailCashierShift, RetailCounter, RetailSale } from '../shared/retail-pos-contracts';
@@ -19,6 +20,8 @@ export interface RetailSellCatalogPreview {
   id: string;
   label: string;
   sku: string;
+  /** Present only when governed merchandising maps the item to an active category. */
+  category?: string;
   availableUnits: number;
   /** A price is shown only when an active counter price book supplies it. */
   unitPrice?: number;
@@ -65,6 +68,8 @@ export function RetailSellOverviewPanel({
   onOpenAdvanced,
   onOpenDestination,
 }: RetailSellOverviewPanelProps): ReactNode {
+  const [searchText, setSearchText] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('All');
   const report = useMemo(
     () => computeRetailSellOverview({ counters: [...counters], shifts: [...shifts], sales: [...sales], offlineQueue }),
     [counters, offlineQueue, sales, shifts],
@@ -81,6 +86,18 @@ export function RetailSellOverviewPanel({
     }
     onOpenAdvanced?.();
   };
+  const categories = useMemo(
+    () => ['All', ...new Set(catalogProducts.map((product) => product.category?.trim()).filter((category): category is string => Boolean(category)))],
+    [catalogProducts],
+  );
+  const filteredCatalogProducts = useMemo(() => {
+    const normalizedSearch = searchText.trim().toLocaleLowerCase('en-IN');
+    return catalogProducts.filter((product) => {
+      const matchesCategory = selectedCategory === 'All' || product.category === selectedCategory;
+      const matchesSearch = !normalizedSearch || `${product.label} ${product.sku}`.toLocaleLowerCase('en-IN').includes(normalizedSearch);
+      return matchesCategory && matchesSearch;
+    });
+  }, [catalogProducts, searchText, selectedCategory]);
 
   return (
     <section className="retail-sell-overview retail-sell-overview--retail-front" data-testid="retail-sell-overview" aria-labelledby="retail-sell-overview-title">
@@ -128,20 +145,43 @@ export function RetailSellOverviewPanel({
             </div>
           </header>
           {catalogProducts.length ? (
-            <div className="retail-sell-overview__product-grid" role="list" aria-label="Price-ready products">
-              {catalogProducts.map((product) => (
-                <div key={product.id} role="listitem">
-                  <button type="button" className="retail-sell-overview__product" onClick={() => openDestination('pos')} aria-label={`Open ${product.label} in POS`}>
-                    <span className="retail-sell-overview__product-icon"><Barcode size={16} aria-hidden="true" /></span>
-                    <strong>{product.label}</strong>
-                    <small>{product.sku}</small>
-                    <span className="retail-sell-overview__product-meta">
-                      <b>{product.unitPrice === undefined ? 'Price unavailable' : inr.format(product.unitPrice)}</b>
-                      <em>{product.availableUnits.toLocaleString('en-IN')} available</em>
-                    </span>
-                  </button>
+            <div className="retail-sell-overview__catalog-content">
+              <div className="retail-sell-overview__catalog-tools">
+                <label className="retail-sell-overview__catalog-search">
+                  <Search size={16} aria-hidden="true" />
+                  <span className="sr-only">Search price-ready products</span>
+                  <input type="search" aria-label="Search price-ready products" value={searchText} onChange={(event) => setSearchText(event.target.value)} placeholder="Scan barcode or search by name / SKU" />
+                </label>
+                {categories.length > 1 ? (
+                  <div className="retail-sell-overview__category-tabs" role="group" aria-label="Price-ready product categories">
+                    {categories.map((category) => <button key={category} type="button" aria-pressed={selectedCategory === category} onClick={() => setSelectedCategory(category)}>{category}</button>)}
+                  </div>
+                ) : null}
+              </div>
+              {filteredCatalogProducts.length ? (
+                <div className="retail-sell-overview__product-grid" role="list" aria-label="Price-ready products">
+                  {filteredCatalogProducts.map((product) => (
+                    <div key={product.id} role="listitem">
+                      <button type="button" className="retail-sell-overview__product" onClick={() => openDestination('pos')} aria-label={`Open ${product.label} in POS`}>
+                        <span className="retail-sell-overview__product-icon"><Barcode size={16} aria-hidden="true" /></span>
+                        <strong>{product.label}</strong>
+                        <small>{product.sku}</small>
+                        <span className="retail-sell-overview__product-meta">
+                          <b>{product.unitPrice === undefined ? 'Price unavailable' : inr.format(product.unitPrice)}</b>
+                          <em>{product.availableUnits.toLocaleString('en-IN')} available</em>
+                        </span>
+                      </button>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              ) : (
+                <div className="bharat-empty retail-sell-overview__catalog-empty" role="status">
+                  <PackageOpen size={22} aria-hidden="true" />
+                  <strong>No price-ready product matches this search.</strong>
+                  <span>Change the category or scan a different product barcode.</span>
+                  <button type="button" className="button button--quiet" onClick={() => { setSearchText(''); setSelectedCategory('All'); }}>Clear product filters</button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="bharat-empty retail-sell-overview__catalog-empty">
@@ -225,11 +265,14 @@ function priceReadyCatalogPreview(revenue: RevenueOpsSnapshot): RetailSellCatalo
   }
   const itemById = new Map(revenue.inventoryItems.map((item) => [item.id, item]));
   const productById = new Map(revenue.products.map((product) => [product.id, product]));
+  const profileByItemId = new Map(revenue.retailMerchandisingProfiles.map((profile) => [profile.itemId, profile]));
+  const categoryById = new Map(revenue.retailCatalogCategories.filter((category) => category.active).map((category) => [category.id, category]));
   return revenue.itemVariants
     .filter((variant) => variant.active && (availableByVariant.get(variant.id) ?? 0) > 0)
     .map((variant): RetailSellCatalogPreview | undefined => {
       const item = itemById.get(variant.itemId);
       const product = item ? productById.get(item.productId) : undefined;
+      const category = item ? categoryById.get(profileByItemId.get(item.id)?.categoryId ?? '') : undefined;
       if (!item?.active || !product?.active || product.kind !== 'goods') return undefined;
       const price = revenue.priceListEntries
         .filter((entry) => entry.priceListId === selectedCounter.priceListId && entry.productId === product.id && entry.minimumQuantity <= 1 && entry.effectiveFrom <= today && (!entry.effectiveTo || entry.effectiveTo >= today))
@@ -238,6 +281,7 @@ function priceReadyCatalogPreview(revenue: RevenueOpsSnapshot): RetailSellCatalo
         id: variant.id,
         label: variant.name || item.name || product.name,
         sku: variant.sku || item.code,
+        category: category?.name,
         availableUnits: availableByVariant.get(variant.id) ?? 0,
         unitPrice: price?.unitPrice,
       };

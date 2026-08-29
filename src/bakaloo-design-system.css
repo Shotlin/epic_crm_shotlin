@@ -276,6 +276,18 @@ body {
 .workspace-canvas--retail-front-door .bakaloo-command__comparison-empty { display: grid; min-height: 150px; place-items: center; border: 1px dashed var(--bakaloo-border); border-radius: var(--bakaloo-radius); color: var(--bakaloo-muted); font-size: .78rem; }
 .workspace-canvas--retail-front-door .bakaloo-command__sheet--map .retail-delivery-map { margin: 0; box-shadow: none; }
 
+/* Sell catalogue: filters never invent items; they only narrow the governed,
+   price-ready projection already supplied to the counter. */
+.workspace-canvas--retail-front-door .retail-sell-overview__catalog-content { display: grid; gap: 14px; min-width: 0; }
+.workspace-canvas--retail-front-door .retail-sell-overview__catalog-tools { display: grid; gap: 10px; }
+.workspace-canvas--retail-front-door .retail-sell-overview__catalog-search { display: flex; align-items: center; gap: 9px; min-height: 42px; padding: 0 12px; border: 1px solid var(--bakaloo-border); border-radius: var(--bakaloo-radius); background: var(--bakaloo-surface); color: var(--bakaloo-muted); }
+.workspace-canvas--retail-front-door .retail-sell-overview__catalog-search:focus-within { border-color: var(--bakaloo-brand-300); box-shadow: 0 0 0 3px color-mix(in srgb, var(--bakaloo-brand-200) 44%, transparent); }
+.workspace-canvas--retail-front-door .retail-sell-overview__catalog-search input { min-width: 0; flex: 1; border: 0; outline: 0; color: var(--bakaloo-foreground); background: transparent; font: inherit; font-size: .76rem; }
+.workspace-canvas--retail-front-door .retail-sell-overview__catalog-search input::placeholder { color: var(--bakaloo-muted); opacity: 1; }
+.workspace-canvas--retail-front-door .retail-sell-overview__category-tabs { display: flex; gap: 7px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: thin; }
+.workspace-canvas--retail-front-door .retail-sell-overview__category-tabs button { min-height: 34px; flex: 0 0 auto; padding: 0 12px; border: 1px solid var(--bakaloo-border); border-radius: var(--bakaloo-radius); color: var(--bakaloo-muted); background: var(--bakaloo-card); font-size: .68rem; font-weight: 700; }
+.workspace-canvas--retail-front-door .retail-sell-overview__category-tabs button[aria-pressed='true'] { border-color: var(--bakaloo-brand-200); color: var(--bakaloo-brand-700); background: var(--bakaloo-brand-50); }
+
 @media (max-width: 900px) {
   .workspace-canvas--retail-front-door .bakaloo-command__visual-grid { grid-template-columns: 1fr; }
 }

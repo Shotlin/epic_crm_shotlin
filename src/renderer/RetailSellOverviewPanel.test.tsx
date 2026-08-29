@@ -1,4 +1,5 @@
 import { cleanup, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { RetailCashierShift, RetailCounter, RetailSale } from '../shared/retail-pos-contracts';
 import { RetailSellOverviewPanel } from './RetailSellOverviewPanel';
@@ -40,5 +41,26 @@ describe('RetailSellOverviewPanel', () => {
     expect(product.textContent).toContain('340');
     product.click();
     expect(onOpenAdvanced).toHaveBeenCalledTimes(1);
+  });
+
+  it('filters only supplied price-ready products by controlled category and search text', async () => {
+    const user = userEvent.setup();
+    render(<RetailSellOverviewPanel
+      counters={[counter]}
+      shifts={[shift]}
+      sales={[]}
+      catalogProducts={[
+        { id: 'sku-rice', label: 'Rice 5 kg', sku: 'RICE-5', category: 'Staples', availableUnits: 8, unitPrice: 340 },
+        { id: 'sku-milk', label: 'Milk 1 L', sku: 'MILK-1', category: 'Dairy', availableUnits: 12, unitPrice: 65 },
+      ]}
+      onOpenAdvanced={vi.fn()}
+    />);
+
+    await user.click(screen.getByRole('button', { name: 'Dairy' }));
+    expect(screen.getByRole('button', { name: 'Open Milk 1 L in POS' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Open Rice 5 kg in POS' })).toBeNull();
+    await user.clear(screen.getByRole('searchbox', { name: 'Search price-ready products' }));
+    await user.type(screen.getByRole('searchbox', { name: 'Search price-ready products' }), 'rice');
+    expect(screen.getByText('No price-ready product matches this search.')).toBeTruthy();
   });
 });
