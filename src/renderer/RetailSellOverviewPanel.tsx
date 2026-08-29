@@ -11,7 +11,7 @@ import {
   Store,
   WalletCards,
 } from 'lucide-react';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { computeRetailSellOverview } from '../domain/retail-sell-overview';
 import type { RevenueOpsSnapshot } from '../shared/revenue-ops-contracts';
 import type { RetailCashierShift, RetailCounter, RetailSale } from '../shared/retail-pos-contracts';
@@ -90,6 +90,9 @@ export function RetailSellOverviewPanel({
     () => ['All', ...new Set(catalogProducts.map((product) => product.category?.trim()).filter((category): category is string => Boolean(category)))],
     [catalogProducts],
   );
+  useEffect(() => {
+    if (!categories.includes(selectedCategory)) setSelectedCategory('All');
+  }, [categories, selectedCategory]);
   const filteredCatalogProducts = useMemo(() => {
     const normalizedSearch = searchText.trim().toLocaleLowerCase('en-IN');
     return catalogProducts.filter((product) => {

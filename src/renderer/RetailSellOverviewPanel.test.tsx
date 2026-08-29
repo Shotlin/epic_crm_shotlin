@@ -63,4 +63,21 @@ describe('RetailSellOverviewPanel', () => {
     await user.type(screen.getByRole('searchbox', { name: 'Search price-ready products' }), 'rice');
     expect(screen.getByText('No price-ready product matches this search.')).toBeTruthy();
   });
+
+  it('returns to all categories when a live catalog refresh removes the selected category', async () => {
+    const user = userEvent.setup();
+    const props = { counters: [counter], shifts: [shift], sales: [], onOpenAdvanced: vi.fn() };
+    const { rerender } = render(<RetailSellOverviewPanel {...props} catalogProducts={[
+      { id: 'sku-rice', label: 'Rice 5 kg', sku: 'RICE-5', category: 'Staples', availableUnits: 8, unitPrice: 340 },
+      { id: 'sku-milk', label: 'Milk 1 L', sku: 'MILK-1', category: 'Dairy', availableUnits: 12, unitPrice: 65 },
+    ]} />);
+
+    await user.click(screen.getByRole('button', { name: 'Dairy' }));
+    rerender(<RetailSellOverviewPanel {...props} catalogProducts={[
+      { id: 'sku-rice', label: 'Rice 5 kg', sku: 'RICE-5', category: 'Staples', availableUnits: 8, unitPrice: 340 },
+    ]} />);
+
+    expect(screen.getByRole('button', { name: 'Open Rice 5 kg in POS' })).toBeTruthy();
+    expect(screen.queryByText('No price-ready product matches this search.')).toBeNull();
+  });
 });
