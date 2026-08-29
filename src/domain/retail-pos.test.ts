@@ -333,6 +333,32 @@ describe('retail POS checkout', () => {
     });
   });
 
+  it('treats each line cost as an immutable line total and posts multi-unit COGS exactly once', () => {
+    const counter = readyCounter();
+    const oneLine = checkoutInput(counter, [{ method: 'cash', amount: 354, reference: 'CASH-COGS-MULTILINE' }]);
+    const completed = checkoutRetailSale(counter.state, {
+      ...oneLine,
+      transactionKey: 'counter-01-20260715-cogs-multiunit',
+      lines: [{ ...oneLine.lines[0]!, quantity: 2 }],
+    }, 'cashier-ava', SALE_AT);
+
+    const sale = completed.retailSales[0]!;
+    const receiptCost = sale.lines.reduce((total, line) => total + line.lineCostTotal, 0);
+    const stockIssueCost = completed.inventoryLedger
+      .filter(({ type }) => type === 'retail-sale' && type !== 'return')
+      .reduce((total, entry) => total + Math.abs(entry.value), 0);
+    const cogsJournal = completed.journalDrafts.find(({ sourceType }) => sourceType === 'retail-sale-cost');
+
+    expect(sale.lines).toHaveLength(1);
+    expect(sale.lines.map(({ quantity, lineCostTotal }) => ({ quantity, lineCostTotal }))).toEqual([
+      { quantity: 2, lineCostTotal: 200 },
+    ]);
+    expect(sale.costTotal).toBe(200);
+    expect(receiptCost).toBe(200);
+    expect(stockIssueCost).toBe(200);
+    expect(cogsJournal).toMatchObject({ totalDebit: 200, totalCredit: 200 });
+  });
+
   it('captures a registered B2B counter invoice and switches to inter-state IGST', () => {
     const counter = readyCounter();
     const input = {

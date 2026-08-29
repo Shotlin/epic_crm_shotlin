@@ -934,6 +934,21 @@ describe('Epic BOS renderer', () => {
     }
   });
 
+  it('collapses and restores the Bakaloo sidebar without removing keyboard navigation', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const shell = await screen.findByTestId('app-shell');
+    expect(shell.getAttribute('data-sidebar-collapsed')).toBe('false');
+
+    await user.click(screen.getByRole('button', { name: 'Collapse navigation' }));
+    expect(shell.getAttribute('data-sidebar-collapsed')).toBe('true');
+    expect(screen.getByTestId('retail-workspace-navigation')).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: 'Expand navigation' }));
+    expect(shell.getAttribute('data-sidebar-collapsed')).toBe('false');
+  });
+
   it('isolates an old sample workspace instead of rendering its demo task panels', async () => {
     render(<App />);
 

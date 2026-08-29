@@ -31,6 +31,8 @@ import {
   Moon,
   Paperclip,
   PackageCheck,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   Search,
   RadioTower,
@@ -6442,6 +6444,7 @@ function AppShell({
   const [retailCustomerTab, setRetailCustomerTab] = useState<RetailCustomerTab>('overview');
   const [attentionOpen, setAttentionOpen] = useState(false);
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const mobileNavigationToggleRef = useRef<HTMLButtonElement>(null);
   const mobileNavigationCloseRef = useRef<HTMLButtonElement>(null);
   const attentionToggleRef = useRef<HTMLButtonElement>(null);
@@ -6804,10 +6807,17 @@ function AppShell({
   const isRetailFrontDoor = retailOverviewOpen;
 
   return (
-    <div className={`app-shell app-shell--${responsiveLayout.viewport}`} data-viewport={responsiveLayout.viewport} data-navigation-mode={responsiveLayout.navigation} data-action-density={responsiveLayout.actionDensity}>
+    <div
+      className={`app-shell app-shell--${responsiveLayout.viewport}${sidebarCollapsed ? ' app-shell--sidebar-collapsed' : ''}`}
+      data-testid="app-shell"
+      data-viewport={responsiveLayout.viewport}
+      data-navigation-mode={responsiveLayout.navigation}
+      data-action-density={responsiveLayout.actionDensity}
+      data-sidebar-collapsed={sidebarCollapsed ? 'true' : 'false'}
+    >
       <a className="skip-link" href="#workspace-canvas">Skip to workspace</a>
       {mobileNavigationOpen ? <button type="button" className="mobile-nav-scrim" aria-label="Close workspace navigation" onClick={() => setMobileNavigationOpen(false)} /> : null}
-      <aside className={mobileNavigationOpen ? 'sidebar sidebar--mobile-open' : 'sidebar'} aria-label="Primary navigation" aria-modal={mobileNavigationOpen ? 'true' : undefined} id="primary-navigation">
+      <aside className={`${mobileNavigationOpen ? 'sidebar sidebar--mobile-open' : 'sidebar'}${sidebarCollapsed ? ' sidebar--collapsed' : ''}`} aria-label="Primary navigation" aria-modal={mobileNavigationOpen ? 'true' : undefined} id="primary-navigation">
         <div className="brand">
           <span className="brand__mark" aria-hidden="true">
             <span />
@@ -6818,6 +6828,16 @@ function AppShell({
             <strong>EPIC</strong>
             <small>Business OS</small>
           </div>
+          <button
+            type="button"
+            className="sidebar-collapse-toggle"
+            aria-label={sidebarCollapsed ? 'Expand navigation' : 'Collapse navigation'}
+            aria-pressed={sidebarCollapsed}
+            title={sidebarCollapsed ? 'Expand navigation' : 'Collapse navigation'}
+            onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
+          >
+            {sidebarCollapsed ? <PanelLeftOpen size={17} aria-hidden="true" /> : <PanelLeftClose size={17} aria-hidden="true" />}
+          </button>
           <button ref={mobileNavigationCloseRef} type="button" className="mobile-nav-close" aria-label="Close workspace navigation" onClick={() => setMobileNavigationOpen(false)}>
             <X size={18} />
           </button>
