@@ -89,6 +89,7 @@ import { RetailStockOverviewFromRevenue, type RetailStockDestination } from './R
 import { RetailCashOverviewFromRevenue } from './RetailCashOverviewPanel';
 import { RetailInsightsOverviewPanel } from './RetailInsightsOverviewPanel';
 import { RetailSellOverviewFromRevenue } from './RetailSellOverviewPanel';
+import { RetailOrderQueueFromRevenue } from './RetailOrderQueuePanel';
 import { RetailSetupOverviewPanel, type RetailSetupDestination } from './RetailSetupOverviewPanel';
 import { RetailCutoverGuardPanel } from './RetailCutoverGuardPanel';
 import { CreditPolicySimulationPanel } from './CreditPolicySimulationPanel';
@@ -6559,6 +6560,7 @@ function AppShell({
    */
   function navigateRetailWorkspace(route: RetailWorkspaceRoute): void {
     setRetailOverviewOpen(true);
+    if (route.id === 'sell') setActiveCommerceSurface('overview');
     if (route.id === 'customers') setRetailCustomerTab('overview');
     const { target } = route.adapter;
     const handoff = `${route.label} is ready. ${route.description}`;
@@ -6601,6 +6603,12 @@ function AppShell({
       setRetailOverviewOpen(true);
       setRetailCustomerTab(key === 'customers:loyalty' ? 'loyalty' : 'overview');
       navigateTo({ kind: 'crm-surface', surface: 'party' });
+      setNavigationMessage(`${submodule.label} is open. ${submodule.description}`);
+      return;
+    }
+    if (key === 'sell:orders') {
+      setRetailOverviewOpen(true);
+      navigateTo({ kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'orders' });
       setNavigationMessage(`${submodule.label} is open. ${submodule.description}`);
       return;
     }
@@ -7129,7 +7137,10 @@ function AppShell({
               onFetchCoverageMap={onFetchRetailHubCoverageMap}
               onOpenAdvanced={() => openAdvancedRetailWorkbench({ kind: 'bharat', tab: 'fulfilment', workspace: 'operations', handoff: 'Fulfilment controls are open. Review delivery evidence before writing.' })}
             />
-          : retailOverviewOpen && activeRetailRoute === 'sell' ? <RetailSellOverviewFromRevenue
+          : retailOverviewOpen && activeRetailRoute === 'sell' && activeCommerceSurface === 'orders' ? <RetailOrderQueueFromRevenue
+            revenue={revenueOpsSnapshot}
+            onOpenAdvanced={() => openAdvancedRetailWorkbench({ kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'orders', handoff: 'Detailed order controls are open. Review source, handoff, reservation and custody evidence before writing.' })}
+          /> : retailOverviewOpen && activeRetailRoute === 'sell' ? <RetailSellOverviewFromRevenue
             revenue={revenueOpsSnapshot}
             onOpenDestination={(destination) => {
               if (destination === 'returns') {
