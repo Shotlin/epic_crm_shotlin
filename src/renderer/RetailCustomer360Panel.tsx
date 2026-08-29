@@ -33,6 +33,12 @@ function saleDate(sale: RetailSale): string | undefined {
   return sale.completedAt ?? sale.saleAt;
 }
 
+function formatEvidenceDate(value: string | undefined): string {
+  if (!value) return 'Date unavailable';
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? 'Date unavailable' : dateFormatter.format(parsed);
+}
+
 function customerSales(sales: readonly RetailSale[], accountId: string): RetailSale[] {
   return sales.filter((sale) => sale.customerAccountId === accountId && sale.status === 'completed');
 }
@@ -124,7 +130,7 @@ export function RetailCustomer360Panel({ party, sales, loyaltyAccounts, visits, 
           <Fact label="LTV" value={inr.format(totalSpend)} detail="Completed retail sales" />
           <Fact label="Orders" value={selectedSales.length.toLocaleString('en-IN')} detail="Completed only" />
           <Fact label="Avg basket" value={averageBasket === undefined ? '—' : inr.format(averageBasket)} detail="Per completed sale" />
-          <Fact label="Last order" value={lastSale && saleDate(lastSale) ? dateFormatter.format(new Date(saleDate(lastSale)!)) : '—'} detail={lastSale ? lastSale.number ?? lastSale.id : 'No sale recorded'} />
+          <Fact label="Last order" value={lastSale ? formatEvidenceDate(saleDate(lastSale)) : '—'} detail={lastSale ? lastSale.number ?? lastSale.id : 'No sale recorded'} />
           <Fact label="Points" value={selectedLoyalty ? selectedLoyalty.pointsBalance.toLocaleString('en-IN') : '—'} detail={selectedLoyalty ? `${selectedLoyalty.tier} tier` : 'Not enrolled'} />
         </div>
         <nav className="customer360__tabs" aria-label="Customer record sections" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, borderBottom: '1px solid var(--line)', paddingBottom: 10 }}>
@@ -132,7 +138,7 @@ export function RetailCustomer360Panel({ party, sales, loyaltyAccounts, visits, 
         </nav>
         {activeTab === 'overview' ? <div className="customer360__tab-grid customer360__tab-grid--overview" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: 14, paddingTop: 16 }}>
           <BarChart title="Purchased items by recorded value" data={categoryData} formatValue={(value) => inr.format(value)} />
-          <section className="customer360__addresses" aria-labelledby="customer-activity-title"><span className="eyebrow">Recent activity</span><h4 id="customer-activity-title">Evidence timeline</h4>{activity.length ? activity.map((item) => <div key={item.id}><span className="customer360__avatar"><Clock3 size={14} aria-hidden="true" /></span><span><strong>{item.title}</strong><small>{item.at ? dateFormatter.format(new Date(item.at)) : 'Date not recorded'} · {item.detail}</small></span></div>) : <p>No purchase or visit evidence has been recorded for this customer.</p>}</section>
+          <section className="customer360__addresses" aria-labelledby="customer-activity-title"><span className="eyebrow">Recent activity</span><h4 id="customer-activity-title">Evidence timeline</h4>{activity.length ? activity.map((item) => <div key={item.id}><span className="customer360__avatar"><Clock3 size={14} aria-hidden="true" /></span><span><strong>{item.title}</strong><small>{formatEvidenceDate(item.at)} · {item.detail}</small></span></div>) : <p>No purchase or visit evidence has been recorded for this customer.</p>}</section>
         </div> : null}
         {activeTab === 'orders' ? <CustomerOrders sales={selectedSales} /> : null}
         {activeTab === 'loyalty' ? <section className="customer360__addresses"><span className="eyebrow">Loyalty evidence</span>{selectedLoyalty ? <><div><Sparkles size={15} aria-hidden="true" /><span><strong>{selectedLoyalty.pointsBalance.toLocaleString('en-IN')} available points</strong><small>{selectedLoyalty.tier} · {selectedLoyalty.lifetimePointsEarned.toLocaleString('en-IN')} earned · {selectedLoyalty.lifetimePointsRedeemed.toLocaleString('en-IN')} redeemed</small></span></div><small>Redemption remains a governed checkout action.</small></> : <p>This customer has no enrolled loyalty account.</p>}</section> : null}
@@ -154,14 +160,14 @@ function Fact({ label, value, detail }: { label: string; value: string; detail: 
 }
 
 function CustomerOrders({ sales }: { sales: readonly RetailSale[] }): ReactNode {
-  return <section className="customer360__addresses" aria-labelledby="customer-orders-title"><span className="eyebrow">Orders</span><h4 id="customer-orders-title">Completed retail orders</h4>{sales.length ? <div className="customer360__order-list" style={{ display: 'grid', gap: 8 }} role="list">{sales.map((sale) => <div key={sale.id} role="listitem"><ShoppingBag size={15} aria-hidden="true" /><span><strong>{sale.number ?? sale.id}</strong><small>{saleDate(sale) ? dateFormatter.format(new Date(saleDate(sale)!)) : 'Date not recorded'} · {sale.tenders?.map((tender) => tender.method).join(', ') || 'Tender not recorded'}</small></span><em>{inr.format(sale.taxPreview.grandTotal)}</em></div>)}</div> : <p>No completed retail order is linked to this customer.</p>}</section>;
+  return <section className="customer360__addresses" aria-labelledby="customer-orders-title"><span className="eyebrow">Orders</span><h4 id="customer-orders-title">Completed retail orders</h4>{sales.length ? <div className="customer360__order-list" style={{ display: 'grid', gap: 8 }} role="list">{sales.map((sale) => <div key={sale.id} role="listitem"><ShoppingBag size={15} aria-hidden="true" /><span><strong>{sale.number ?? sale.id}</strong><small>{formatEvidenceDate(saleDate(sale))} · {sale.tenders?.map((tender) => tender.method).join(', ') || 'Tender not recorded'}</small></span><em>{inr.format(sale.taxPreview.grandTotal)}</em></div>)}</div> : <p>No completed retail order is linked to this customer.</p>}</section>;
 }
 
 function CustomerVisits({ title, visits }: { title: string; visits: readonly RetailCustomerVisit[] }): ReactNode {
-  return <section className="customer360__addresses"><span className="eyebrow">Support</span><h4>{title}</h4>{visits.length ? visits.map((visit) => <div key={visit.id}><Clock3 size={15} aria-hidden="true" /><span><strong>{visit.purpose} via {visit.channel}</strong><small>{dateFormatter.format(new Date(visit.visitedAt))} · {visit.notes || visit.sourceReference || 'No note attached'}</small></span></div>) : <p>No service or return interaction is recorded.</p>}</section>;
+  return <section className="customer360__addresses"><span className="eyebrow">Support</span><h4>{title}</h4>{visits.length ? visits.map((visit) => <div key={visit.id}><Clock3 size={15} aria-hidden="true" /><span><strong>{visit.purpose} via {visit.channel}</strong><small>{formatEvidenceDate(visit.visitedAt)} · {visit.notes || visit.sourceReference || 'No note attached'}</small></span></div>) : <p>No service or return interaction is recorded.</p>}</section>;
 }
 
 function CustomerConsent({ party, contactId }: { party: PartySnapshot; contactId?: string }): ReactNode {
   const consents = contactId ? party.consents.filter((consent) => consent.contactId === contactId) : [];
-  return <section className="customer360__addresses"><span className="eyebrow">Consent</span><h4>Recorded communication permission</h4>{consents.length ? consents.map((consent) => <div key={consent.id}><ShieldCheck size={15} aria-hidden="true" /><span><strong>{consent.purpose} · {consent.status}</strong><small>{consent.channel} · source: {consent.source} · recorded {dateFormatter.format(new Date(consent.capturedAt))}</small></span></div>) : <p>No consent record is available for the selected primary contact.</p>}</section>;
+  return <section className="customer360__addresses"><span className="eyebrow">Consent</span><h4>Recorded communication permission</h4>{consents.length ? consents.map((consent) => <div key={consent.id}><ShieldCheck size={15} aria-hidden="true" /><span><strong>{consent.purpose} · {consent.status}</strong><small>{consent.channel} · source: {consent.source} · recorded {formatEvidenceDate(consent.capturedAt)}</small></span></div>) : <p>No consent record is available for the selected primary contact.</p>}</section>;
 }

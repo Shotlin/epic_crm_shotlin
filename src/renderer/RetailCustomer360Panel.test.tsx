@@ -67,4 +67,12 @@ describe('RetailCustomer360Panel', () => {
     await user.click(screen.getAllByRole('button', { name: /Open customer data/ })[0]!);
     expect(onOpenCustomerData).toHaveBeenCalledTimes(1);
   });
+
+  it('keeps malformed legacy activity timestamps visible without crashing Customer 360', () => {
+    const malformedSale = { ...sale, saleAt: 'not-a-date', completedAt: 'not-a-date', number: 'SALE-LEGACY' } as RetailSale;
+    render(<RetailCustomer360Panel party={party} sales={[malformedSale]} loyaltyAccounts={[]} visits={[]} onOpenCustomerData={vi.fn()} />);
+
+    expect(screen.getAllByText('SALE-LEGACY')).toHaveLength(2);
+    expect(screen.getAllByText(/Date unavailable/i)).toHaveLength(2);
+  });
 });
