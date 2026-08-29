@@ -85,7 +85,7 @@ import { RetailWorkspaceNavigation, type AdvancedWorkspaceId, type RetailWorkspa
 import { RetailShadowImportReviewPanel } from './RetailShadowImportReviewPanel';
 import { RetailCustomer360Panel, type RetailCustomerTab } from './RetailCustomer360Panel';
 import { RetailDeliveryOverviewPanel } from './RetailDeliveryOverviewPanel';
-import { RetailStockOverviewFromRevenue, type RetailStockDestination } from './RetailStockOverviewPanel';
+import { RetailStockOverviewFromRevenue, type RetailStockDestination, type StockWorkspaceTab } from './RetailStockOverviewPanel';
 import { RetailCashOverviewFromRevenue } from './RetailCashOverviewPanel';
 import { RetailInsightsOverviewPanel } from './RetailInsightsOverviewPanel';
 import { RetailSellOverviewFromRevenue } from './RetailSellOverviewPanel';
@@ -6443,6 +6443,7 @@ function AppShell({
   // outside the panel allows a rail task such as "Loyalty" to open the exact
   // tab rather than resetting back to a generic CRM screen.
   const [retailCustomerTab, setRetailCustomerTab] = useState<RetailCustomerTab>('overview');
+  const [retailStockTab, setRetailStockTab] = useState<StockWorkspaceTab>('health');
   const [attentionOpen, setAttentionOpen] = useState(false);
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -6561,6 +6562,7 @@ function AppShell({
   function navigateRetailWorkspace(route: RetailWorkspaceRoute): void {
     setRetailOverviewOpen(true);
     if (route.id === 'sell') setActiveCommerceSurface('overview');
+    if (route.id === 'stock') setRetailStockTab('health');
     if (route.id === 'customers') setRetailCustomerTab('overview');
     const { target } = route.adapter;
     const handoff = `${route.label} is ready. ${route.description}`;
@@ -6617,13 +6619,18 @@ function AppShell({
       setNavigationMessage(`${submodule.label} is open. ${submodule.description}`);
       return;
     }
+    if (key === 'stock:replenishment') {
+      navigateRetailWorkspace(route);
+      setRetailStockTab('replenishment');
+      setNavigationMessage(`${submodule.label} is open. ${submodule.description}`);
+      return;
+    }
 
-    const destinations: Record<Exclude<RetailWorkspaceSubmoduleKey, 'home:attention' | 'home:overview' | 'home:store-pulse' | 'sell:orders' | 'stock:products' | 'stock:control' | 'insights:executive'>, WorkspaceDestination> = {
+    const destinations: Record<Exclude<RetailWorkspaceSubmoduleKey, 'home:attention' | 'home:overview' | 'home:store-pulse' | 'sell:orders' | 'stock:products' | 'stock:control' | 'stock:replenishment' | 'insights:executive'>, WorkspaceDestination> = {
       'sell:pos': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'pos' },
       'sell:returns': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'returns' },
       'sell:pricing': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'pricing' },
       'stock:purchasing': { kind: 'bharat', tab: 'procurement', workspace: 'operations' },
-      'stock:replenishment': { kind: 'bharat', tab: 'warehouse', workspace: 'operations' },
       'deliver:queue': { kind: 'bharat', tab: 'fulfilment', workspace: 'operations' },
       'deliver:dispatch': { kind: 'bharat', tab: 'delivery', workspace: 'service' },
       'deliver:branches': { kind: 'bharat', tab: 'fulfilment', workspace: 'operations' },
@@ -7152,6 +7159,7 @@ function AppShell({
             }}
           /> : retailOverviewOpen && activeRetailRoute === 'stock' ? <RetailStockOverviewFromRevenue
             revenue={revenueOpsSnapshot}
+            initialTab={retailStockTab}
             onOpenAdvanced={() => openAdvancedRetailWorkbench({ kind: 'bharat', tab: 'warehouse', workspace: 'operations', handoff: 'Warehouse controls are open. Review quantities, batches and replenishment before writing evidence.' })}
             onOpenDestination={(destination: RetailStockDestination) => {
               if (destination === 'procurement') {

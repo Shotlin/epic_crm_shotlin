@@ -10,14 +10,14 @@ import {
   Truck,
   Warehouse,
 } from 'lucide-react';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { computeRetailOmnichannelInventoryTruth } from '../domain/retail-omnichannel-inventory-truth';
 import { computeRetailStockOverview, type RetailStockOverviewRow, type RetailStockRisk } from '../domain/retail-stock-overview';
 import type { BinBalance, InventoryBatch, ItemVariant, ReorderPolicy, ReorderProposal, WarehouseTask } from '../shared/inventory-contracts';
 import type { RevenueOpsSnapshot } from '../shared/revenue-ops-contracts';
 import { BarChart, type ChartDatum } from './ExecutiveCharts';
 
-type StockWorkspaceTab = 'health' | 'replenishment' | 'purchase' | 'receiving' | 'counts' | 'transfers' | 'expiry';
+export type StockWorkspaceTab = 'health' | 'replenishment' | 'purchase' | 'receiving' | 'counts' | 'transfers' | 'expiry';
 
 export type RetailStockDestination = 'warehouse' | 'procurement' | 'expiry';
 
@@ -51,6 +51,7 @@ export interface RetailStockOverviewPanelProps {
   cycleCountPlans?: RevenueOpsSnapshot['cycleCountPlans'];
   commerceOrders?: RevenueOpsSnapshot['retailCommerceOrders'];
   commerceConnectors?: RevenueOpsSnapshot['retailCommerceConnectors'];
+  initialTab?: StockWorkspaceTab;
   onOpenAdvanced: () => void;
   onOpenDestination?: (destination: RetailStockDestination) => void;
 }
@@ -82,10 +83,12 @@ export function RetailStockOverviewPanel({
   cycleCountPlans = [],
   commerceOrders = [],
   commerceConnectors = [],
+  initialTab = 'health',
   onOpenAdvanced,
   onOpenDestination,
 }: RetailStockOverviewPanelProps): ReactNode {
-  const [activeTab, setActiveTab] = useState<StockWorkspaceTab>('health');
+  const [activeTab, setActiveTab] = useState<StockWorkspaceTab>(initialTab);
+  useEffect(() => setActiveTab(initialTab), [initialTab]);
   const report = useMemo(
     () => computeRetailStockOverview({ variants: [...variants], balances: [...balances], policies: [...policies], proposals: [...proposals], batches: [...batches], tasks: [...tasks] }),
     [balances, batches, policies, proposals, tasks, variants],
@@ -300,7 +303,7 @@ function addDays(date: string, days: number): string {
   return parsed.toISOString().slice(0, 10);
 }
 
-export function RetailStockOverviewFromRevenue({ revenue, onOpenAdvanced, onOpenDestination }: { revenue: RevenueOpsSnapshot; onOpenAdvanced: () => void; onOpenDestination?: (destination: RetailStockDestination) => void }): ReactNode {
+export function RetailStockOverviewFromRevenue({ revenue, initialTab, onOpenAdvanced, onOpenDestination }: { revenue: RevenueOpsSnapshot; initialTab?: StockWorkspaceTab; onOpenAdvanced: () => void; onOpenDestination?: (destination: RetailStockDestination) => void }): ReactNode {
   return <RetailStockOverviewPanel
     variants={revenue.itemVariants}
     balances={revenue.binBalances}
@@ -312,6 +315,7 @@ export function RetailStockOverviewFromRevenue({ revenue, onOpenAdvanced, onOpen
     cycleCountPlans={revenue.cycleCountPlans}
     commerceOrders={revenue.retailCommerceOrders}
     commerceConnectors={revenue.retailCommerceConnectors}
+    initialTab={initialTab}
     onOpenAdvanced={onOpenAdvanced}
     onOpenDestination={onOpenDestination}
   />;
