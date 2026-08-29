@@ -131,8 +131,11 @@ export function computeRetailCommandCenter(
     s.variance !== undefined && Math.abs(s.variance) > 0 && s.status !== 'closed',
   ).length;
 
-  // Stockout calculations (bin balance available <= 0)
-  const stockoutItemsCount = binBalances.filter((b) => b.available <= 0).length;
+  // One SKU may have several bin balances. The operator-facing stockout KPI
+  // is a product/variant count, not a count of empty storage rows.
+  const stockoutItemsCount = new Set(
+    binBalances.filter((balance) => balance.available <= 0).map((balance) => balance.itemVariantId),
+  ).size;
 
   // Expiry risk: use InventoryBatch records. InventoryBatch.expiresAt is the expiry field.
   // BinBalance.available is used as the quantity proxy for whether stock is actually on hand.

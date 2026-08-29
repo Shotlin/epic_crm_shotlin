@@ -215,7 +215,7 @@ export function BakalooRetailCommandCenter({
   const periodSales = useMemo(() => completedSales.filter((sale) => saleFallsInPeriod(sale.saleAt, revenue.generatedAt, period)), [completedSales, period, revenue.generatedAt]);
   const periodCommerceOrders = useMemo(() => revenue.retailCommerceOrders.filter((order) => saleFallsInPeriod(order.remoteCreatedAt, revenue.generatedAt, period)), [period, revenue.generatedAt, revenue.retailCommerceOrders]);
   const stockoutCount = command.totalStockoutCount;
-  const stockAttentionCount = stockoutCount + command.totalExpiryRiskItemsCount;
+  const stockAttentionCount = stockoutCount;
   const totalRevenue = periodSales.reduce((sum, sale) => sum + sale.taxPreview.grandTotal, 0);
   const customerCount = new Set(periodSales.map((sale) => sale.customerAccountId).filter(Boolean)).size;
   const totalOrders = periodSales.length + periodCommerceOrders.length;
@@ -376,7 +376,7 @@ export function BakalooRetailCommandCenter({
           icon={AlertTriangle}
           label="Low stock items"
           value={numberFormatter.format(stockAttentionCount)}
-          detail={stockAttentionCount ? `${stockoutCount} stockout${stockoutCount === 1 ? '' : 's'} and ${command.totalExpiryRiskItemsCount} expiry risk${command.totalExpiryRiskItemsCount === 1 ? '' : 's'} recorded.` : 'No stock exception is recorded.'}
+          detail={stockAttentionCount ? `${stockoutCount} unavailable item${stockoutCount === 1 ? '' : 's'} across active retail bins.` : 'No unavailable item is recorded.'}
           actionLabel="Review stock"
           onOpen={onStock}
           tone={stockAttentionCount ? 'attention' : undefined}

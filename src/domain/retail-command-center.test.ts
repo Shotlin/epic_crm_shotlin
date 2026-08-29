@@ -116,6 +116,20 @@ describe('retail-command-center domain', () => {
     expect(cc.attentionItems.some((item) => item.includes('out of stock'))).toBe(true);
   });
 
+  it('counts each unavailable variant once even when it has several empty bin balances', () => {
+    const state = mockState();
+    state.binBalances = [
+      binBalance,
+      { ...binBalance, id: 'bb-2', binId: 'bin-2' },
+      { ...binBalance, id: 'bb-3', binId: 'bin-3', itemVariantId: 'var-2' },
+    ];
+
+    const cc = computeRetailCommandCenter(state);
+
+    expect(cc.totalStockoutCount).toBe(2);
+    expect(cc.attentionItems).toContain('2 items are out of stock at a counter bin.');
+  });
+
   it('surfaces the governed online order queue and its INR exposure', () => {
     const state = mockState();
     const connector: RetailCommerceConnector = { id: 'marketplace-1', code: 'MKT-1', name: 'Marketplace', channel: 'marketplace', environment: 'sandbox', baseUrl: 'https://marketplace.example', capabilities: ['order-pull'], credentialStatus: 'configured', status: 'configured', createdBy: 'operator-1', createdAt: '2025-01-01T00:00:00Z', version: 1 };
