@@ -6643,13 +6643,13 @@ function AppShell({
       setNavigationMessage(`${submodule.label} is open. ${submodule.description}`);
       return;
     }
-    if (key === 'money:cash') {
+    if (key === 'money:cash' || key === 'money:settlements') {
       navigateRetailWorkspace(route);
       setNavigationMessage(`${submodule.label} is open. ${submodule.description}`);
       return;
     }
 
-    const destinations: Record<Exclude<RetailWorkspaceSubmoduleKey, 'home:attention' | 'home:overview' | 'home:store-pulse' | 'sell:orders' | 'stock:products' | 'stock:control' | 'stock:replenishment' | 'stock:purchasing' | 'deliver:queue' | 'deliver:dispatch' | 'deliver:branches' | 'money:cash' | 'insights:executive'>, WorkspaceDestination> = {
+    const destinations: Record<Exclude<RetailWorkspaceSubmoduleKey, 'home:attention' | 'home:overview' | 'home:store-pulse' | 'sell:orders' | 'stock:products' | 'stock:control' | 'stock:replenishment' | 'stock:purchasing' | 'deliver:queue' | 'deliver:dispatch' | 'deliver:branches' | 'money:cash' | 'money:settlements' | 'insights:executive'>, WorkspaceDestination> = {
       'sell:pos': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'pos' },
       'sell:returns': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'returns' },
       'sell:pricing': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'pricing' },
@@ -6658,7 +6658,6 @@ function AppShell({
       'customers:loyalty': { kind: 'crm-surface', surface: 'party' },
       'customers:campaigns': { kind: 'crm', tab: 'audience' },
       'customers:data-quality': { kind: 'crm', tab: 'data' },
-      'money:settlements': { kind: 'bharat', tab: 'cash', workspace: 'finance' },
       'money:gst': { kind: 'bharat', tab: 'statutory', workspace: 'finance' },
       'money:close': { kind: 'bharat', tab: 'close', workspace: 'finance' },
       'insights:sales-margin': { kind: 'bharat', tab: 'intelligence', workspace: 'intelligence' },
