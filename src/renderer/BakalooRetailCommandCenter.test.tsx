@@ -80,6 +80,7 @@ describe('BakalooRetailCommandCenter', () => {
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
     expect(screen.getByRole('heading', { level: 1, name: 'Dashboard' })).toBeTruthy();
     expect(commandCenter.textContent).toContain('Overview of your store performance');
+    expect(screen.getByRole('region', { name: 'Store activity' }).textContent).toContain('0 riders with verified live evidence');
     [
       'Total revenue', 'Total orders', 'Products', 'Customers', 'Pending orders',
       'Low stock items', 'Online riders', 'Today’s revenue', 'Average order value', 'COD collections',

@@ -253,6 +253,10 @@ body {
   border-radius: var(--bakaloo-radius);
   background: color-mix(in srgb, var(--bakaloo-brand-50) 44%, #fff);
 }
+.workspace-canvas--retail-front-door .bakaloo-command__activity { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 10px 14px; border: 1px solid var(--bakaloo-border); border-radius: var(--bakaloo-radius); background: var(--bakaloo-card); color: var(--bakaloo-muted); font-size: .72rem; font-weight: 650; }
+.workspace-canvas--retail-front-door .bakaloo-command__activity span { display: inline-flex; align-items: center; gap: 6px; }
+.workspace-canvas--retail-front-door .bakaloo-command__activity span[data-status='synced'] { color: var(--bakaloo-brand-700); }
+.workspace-canvas--retail-front-door .bakaloo-command__activity span[data-status='local'] { color: var(--bakaloo-muted); }
 .workspace-canvas--retail-front-door .bakaloo-command__abandoned-carts h2 { margin: 3px 0 5px; color: var(--bakaloo-foreground); font-size: 1rem; }
 .workspace-canvas--retail-front-door .bakaloo-command__abandoned-carts p { max-width: 760px; margin: 0; color: var(--bakaloo-muted); font-size: .78rem; line-height: 1.45; }
 .workspace-canvas--retail-front-door .bakaloo-command__periods { display: inline-flex; flex-wrap: wrap; justify-content: center; gap: 4px; padding: 4px; border: 1px solid var(--bakaloo-border); border-radius: var(--bakaloo-radius); background: var(--bakaloo-card); }

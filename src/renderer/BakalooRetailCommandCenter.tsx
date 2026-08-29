@@ -329,6 +329,13 @@ export function BakalooRetailCommandCenter({
         </div>
       </header>
 
+      <section className="bakaloo-command__activity" aria-label="Store activity">
+        <span data-status={revenue.retailHubStoreEdgeSyncPolicy?.enabled ? 'synced' : 'local'}><CheckCircle2 size={14} aria-hidden="true" /> {localStatus}</span>
+        <span><PackageCheck size={14} aria-hidden="true" /> {numberFormatter.format(command.onlinePendingOrdersCount)} online order{command.onlinePendingOrdersCount === 1 ? '' : 's'} pending</span>
+        <span><Truck size={14} aria-hidden="true" /> {activeRiders === undefined ? 'Rider location unavailable' : `${numberFormatter.format(activeRiders)} rider${activeRiders === 1 ? '' : 's'} with verified live evidence`}</span>
+        <span><IndianRupee size={14} aria-hidden="true" /> {inrFormatter.format(todaySales.total)} today · {numberFormatter.format(todaySales.count)} completed receipt{todaySales.count === 1 ? '' : 's'}</span>
+      </section>
+
       <section className="bakaloo-command__metrics bakaloo-command__metrics--ten" aria-label="Store performance metrics">
         <MetricCard
           icon={IndianRupee}
