@@ -934,6 +934,18 @@ describe('Epic BOS renderer', () => {
     }
   });
 
+  it('keeps Home submodules in the retail command centre instead of reopening a legacy command page', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openCrmHome();
+
+    await user.click(screen.getByRole('button', { name: 'Home' }));
+    await user.click(screen.getByRole('button', { name: 'Open Store pulse' }));
+
+    expect(await screen.findByTestId('bakaloo-retail-command-center')).toBeTruthy();
+    expect(screen.queryByTestId('bharat-workbench')).toBeNull();
+  });
+
   it('collapses and restores the Bakaloo sidebar without removing keyboard navigation', async () => {
     const user = userEvent.setup();
     render(<App />);

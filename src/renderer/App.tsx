@@ -6604,15 +6604,13 @@ function AppShell({
       setNavigationMessage(`${submodule.label} is open. ${submodule.description}`);
       return;
     }
-    if (key === 'insights:executive') {
+    if (key === 'home:overview' || key === 'home:store-pulse' || key === 'insights:executive') {
       navigateRetailWorkspace(route);
       setNavigationMessage(`${submodule.label} is open. ${submodule.description}`);
       return;
     }
 
-    const destinations: Record<Exclude<RetailWorkspaceSubmoduleKey, 'home:attention'>, WorkspaceDestination> = {
-      'home:overview': { kind: 'command', surface: 'overview' },
-      'home:store-pulse': { kind: 'command', surface: 'overview' },
+    const destinations: Record<Exclude<RetailWorkspaceSubmoduleKey, 'home:attention' | 'home:overview' | 'home:store-pulse' | 'insights:executive'>, WorkspaceDestination> = {
       'sell:pos': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'pos' },
       'sell:orders': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'orders' },
       'sell:returns': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'returns' },
@@ -6633,7 +6631,6 @@ function AppShell({
       'money:settlements': { kind: 'bharat', tab: 'cash', workspace: 'finance' },
       'money:gst': { kind: 'bharat', tab: 'statutory', workspace: 'finance' },
       'money:close': { kind: 'bharat', tab: 'close', workspace: 'finance' },
-      'insights:executive': { kind: 'bharat', tab: 'intelligence', workspace: 'intelligence' },
       'insights:sales-margin': { kind: 'bharat', tab: 'intelligence', workspace: 'intelligence' },
       'insights:stock-risk': { kind: 'bharat', tab: 'warehouse', workspace: 'operations' },
       'insights:outlets': { kind: 'bharat', tab: 'intelligence', workspace: 'intelligence' },
