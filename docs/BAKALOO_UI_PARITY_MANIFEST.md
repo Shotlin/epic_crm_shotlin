@@ -4,7 +4,7 @@ Status legend: **Captured** = live read-only behaviour inspected; **Source** = p
 
 | Bakaloo route | Captured | Source | Epic destination | Current state |
 | --- | ---: | ---: | --- | --- |
-| Dashboard | Yes | Yes | Home/dashboard | Partial — prior command centre is not visual parity |
+| Dashboard | Yes | Yes | Home/dashboard | In progress — Bakaloo shell, reporting-period selector, ten governed KPIs, cart-recovery unconfigured state, ordered decision visuals, low-stock alerts and evidence-only rider map are implemented. Live cart import, full visual capture comparison and role/empty/error certification remain. |
 | Orders | Yes | Yes | Orders + unified order inbox | Partial |
 | Settings / Fees | Yes | Yes | Setup / commercial policy | Planned parity |
 | Settings / Tip Presets | Yes | Yes | Setup / checkout policy | Planned parity |

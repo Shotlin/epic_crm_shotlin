@@ -14,15 +14,17 @@ import {
   Users,
   type LucideIcon,
 } from 'lucide-react';
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import {
   computeRetailCommandCenter,
   type RetailCommandAttention,
 } from '../domain/retail-command-center';
+import { computeCategorySales } from '../domain/retail-reports';
 import { toIndiaBusinessDate } from '../shared/india-business-date';
 import type { RetailCommerceChannel } from '../shared/retail-commerce-contracts';
 import type { RevenueOpsSnapshot } from '../shared/revenue-ops-contracts';
-import { TrendLineChart, type ChartDatum } from './ExecutiveCharts';
+import { BarChart, TrendLineChart, type ChartDatum } from './ExecutiveCharts';
+import { RetailDeliveryMapSurface } from './RetailDeliveryMapSurface';
 
 export interface BakalooRetailCommandCenterProps {
   /** The governed local retail projection. The component never invents values. */
@@ -53,6 +55,8 @@ interface OrderFlowStage {
   detail: string;
   tone?: 'attention' | 'positive';
 }
+
+type DashboardPeriod = 'today' | 'week' | 'month' | 'year';
 
 const inrFormatter = new Intl.NumberFormat('en-IN', {
   style: 'currency',
@@ -88,6 +92,43 @@ function formatRecordedMoment(value: string): string {
     hour12: true,
     timeZone: 'Asia/Kolkata',
   }).format(parsed);
+}
+
+function indiaHour(value: string): string | undefined {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return undefined;
+  const hour = new Intl.DateTimeFormat('en-IN', { hour: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' })
+    .formatToParts(parsed)
+    .find((part) => part.type === 'hour')?.value;
+  return hour === undefined ? undefined : `${hour}:00`;
+}
+
+function saleFallsInPeriod(saleAt: string, generatedAt: string, period: DashboardPeriod): boolean {
+  const saleDate = safeIndiaBusinessDate(saleAt);
+  const today = safeIndiaBusinessDate(generatedAt);
+  if (!saleDate || !today) return false;
+  if (period === 'today') return saleDate === today;
+  if (period === 'month') return saleDate.slice(0, 7) === today.slice(0, 7);
+  if (period === 'year') return saleDate.slice(0, 4) === today.slice(0, 4);
+  const start = new Date(`${today}T00:00:00+05:30`);
+  start.setUTCDate(start.getUTCDate() - 6);
+  return saleDate >= start.toISOString().slice(0, 10) && saleDate <= today;
+}
+
+function RevenueOrdersComparison({ data }: { data: ReadonlyArray<{ label: string; revenue: number; orders: number }> }): ReactNode {
+  if (!data.length) {
+    return <div className="bakaloo-command__comparison-empty" role="status">No governed completed sales yet.</div>;
+  }
+  const maxRevenue = Math.max(...data.map((item) => item.revenue), 1);
+  const maxOrders = Math.max(...data.map((item) => item.orders), 1);
+  return <div className="bakaloo-command__comparison" role="img" aria-label={`Revenue versus orders: ${data.map((item) => `${item.label}: ${inrFormatter.format(item.revenue)}, ${numberFormatter.format(item.orders)} orders`).join('; ')}`}>
+    {data.map((item) => <div className="bakaloo-command__comparison-row" key={item.label}>
+      <span>{item.label}</span>
+      <div><i data-series="revenue" style={{ width: `${(item.revenue / maxRevenue) * 100}%` }} /><i data-series="orders" style={{ width: `${(item.orders / maxOrders) * 100}%` }} /></div>
+      <small>{inrFormatter.format(item.revenue)} · {numberFormatter.format(item.orders)}</small>
+    </div>)}
+    <footer><span><i data-series="revenue" /> Revenue</span><span><i data-series="orders" /> Orders</span></footer>
+  </div>;
 }
 
 function MetricCard({ icon: Icon, label, value, detail, actionLabel, onOpen, tone }: MetricCardProps): ReactNode {
@@ -146,6 +187,7 @@ export function BakalooRetailCommandCenter({
   onCustomers,
   onSetup,
 }: BakalooRetailCommandCenterProps): ReactNode {
+  const [period, setPeriod] = useState<DashboardPeriod>('today');
   const command = useMemo(() => computeRetailCommandCenter(revenue), [revenue]);
   const today = safeIndiaBusinessDate(revenue.generatedAt);
   const storeName = revenue.profile.tradeName.trim() || revenue.profile.legalName.trim() || 'Your store';
@@ -169,24 +211,25 @@ export function BakalooRetailCommandCenter({
     };
   }, [revenue.deliveryPromises, today]);
 
+  const completedSales = revenue.retailSales.filter((sale) => sale.status === 'completed');
+  const periodSales = useMemo(() => completedSales.filter((sale) => saleFallsInPeriod(sale.saleAt, revenue.generatedAt, period)), [completedSales, period, revenue.generatedAt]);
+  const periodCommerceOrders = useMemo(() => revenue.retailCommerceOrders.filter((order) => saleFallsInPeriod(order.remoteCreatedAt, revenue.generatedAt, period)), [period, revenue.generatedAt, revenue.retailCommerceOrders]);
   const stockoutCount = command.totalStockoutCount;
   const stockAttentionCount = stockoutCount + command.totalExpiryRiskItemsCount;
-  const completedSales = revenue.retailSales.filter((sale) => sale.status === 'completed');
-  const totalRevenue = completedSales.reduce((sum, sale) => sum + sale.taxPreview.grandTotal, 0);
-  const customerCount = new Set(completedSales.map((sale) => sale.customerAccountId).filter(Boolean)).size;
-  const totalOrders = completedSales.length + revenue.retailCommerceOrders.length;
+  const totalRevenue = periodSales.reduce((sum, sale) => sum + sale.taxPreview.grandTotal, 0);
+  const customerCount = new Set(periodSales.map((sale) => sale.customerAccountId).filter(Boolean)).size;
+  const totalOrders = periodSales.length + periodCommerceOrders.length;
   const activeRiders = revenue.retailDeliveryMapSignals
     ? new Set(revenue.retailDeliveryMapSignals.filter((signal) => signal.status === 'live-evidence').map((signal) => signal.riderId)).size
     : undefined;
   const collectedCod = revenue.codCollectionCases
     .filter((caseFile) => ['carrier-collected', 'remitted', 'bank-matched'].includes(caseFile.status))
     .reduce((sum, caseFile) => sum + caseFile.expectedAmount, 0);
-  const averageOrderValue = completedSales.length ? totalRevenue / completedSales.length : undefined;
+  const averageOrderValue = periodSales.length ? totalRevenue / periodSales.length : undefined;
 
   const salesTrend = useMemo(() => {
     const daily = new Map<string, number>();
-    for (const sale of revenue.retailSales) {
-      if (sale.status !== 'completed') continue;
+    for (const sale of periodSales) {
       const businessDate = safeIndiaBusinessDate(sale.saleAt);
       if (!businessDate) continue;
       daily.set(businessDate, (daily.get(businessDate) ?? 0) + sale.taxPreview.grandTotal);
@@ -195,7 +238,45 @@ export function BakalooRetailCommandCenter({
       .sort(([left], [right]) => left.localeCompare(right))
       .slice(-7)
       .map(([date, value]): ChartDatum => ({ label: date.slice(5), value }));
-  }, [revenue.retailSales]);
+  }, [periodSales]);
+
+  const dashboardVisuals = useMemo(() => {
+    const daily = new Map<string, { revenue: number; orders: number }>();
+    const hourly = new Map<string, number>();
+    const products = new Map<string, number>();
+    for (const sale of periodSales) {
+      const day = safeIndiaBusinessDate(sale.saleAt);
+      if (day) {
+        const current = daily.get(day) ?? { revenue: 0, orders: 0 };
+        daily.set(day, { revenue: current.revenue + sale.taxPreview.grandTotal, orders: current.orders + 1 });
+      }
+      const hour = indiaHour(sale.saleAt);
+      if (hour) hourly.set(hour, (hourly.get(hour) ?? 0) + 1);
+      for (const line of sale.lines) {
+        const label = line.description.trim() || 'Unnamed product';
+        products.set(label, (products.get(label) ?? 0) + line.lineTotal);
+      }
+    }
+    const variantsById = Object.fromEntries(revenue.itemVariants.map((variant) => [variant.id, variant.itemId]));
+    const dates = [...daily.keys()].sort();
+    const categoryRows = dates.length
+      ? computeCategorySales({
+        allSales: periodSales,
+        fromDate: dates[0]!,
+        toDate: dates.at(-1)!,
+        merchandisingProfiles: revenue.retailMerchandisingProfiles,
+        categories: revenue.retailCatalogCategories,
+        variantItemMap: variantsById,
+      }).rows
+      : [];
+    return {
+      categoryRevenue: categoryRows.slice(0, 6).map((row) => ({ label: row.categoryName, value: row.revenue, color: '#1A7A3C' })),
+      revenueVsOrders: dates.slice(-7).map((date) => ({ label: date.slice(5), ...daily.get(date)! })),
+      ordersByHour: [...hourly.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([label, value]) => ({ label, value, color: '#3B82F6' })),
+      topProducts: [...products.entries()].map(([label, value]) => ({ label, value, color: '#158034' })).sort((left, right) => right.value - left.value).slice(0, 6),
+      stockAlerts: command.attentionQueue.filter((item) => item.kind === 'stockout' || item.kind === 'expiry'),
+    };
+  }, [command.attentionQueue, periodSales, revenue.itemVariants, revenue.retailCatalogCategories, revenue.retailMerchandisingProfiles]);
 
   const orderFlow = useMemo<OrderFlowStage[]>(() => {
     const orders = revenue.retailCommerceOrders;
@@ -238,6 +319,9 @@ export function BakalooRetailCommandCenter({
           <h1 id="bakaloo-command-title" className="retail-front-door__title">Dashboard</h1>
           <p>Overview of your store performance</p>
         </div>
+        <div className="bakaloo-command__periods" role="group" aria-label="Dashboard reporting period">
+          {([['today', 'Today'], ['week', 'This week'], ['month', 'This month'], ['year', 'This year']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={period === value} onClick={() => setPeriod(value)}>{label}</button>)}
+        </div>
         <div className="bakaloo-command__scope" aria-label="Current retail workspace status">
           <Store size={18} aria-hidden="true" />
           <span>{storeName}</span>
@@ -250,7 +334,7 @@ export function BakalooRetailCommandCenter({
           icon={IndianRupee}
           label="Total revenue"
           value={inrFormatter.format(totalRevenue)}
-          detail={`${numberFormatter.format(completedSales.length)} completed counter receipt${completedSales.length === 1 ? '' : 's'} in this local projection.`}
+          detail={`${numberFormatter.format(periodSales.length)} completed counter receipt${periodSales.length === 1 ? '' : 's'} in the selected period.`}
           actionLabel="Open sales"
           onOpen={onPos}
           tone={completedSales.length ? 'positive' : undefined}
@@ -259,7 +343,7 @@ export function BakalooRetailCommandCenter({
           icon={ShoppingBag}
           label="Total orders"
           value={numberFormatter.format(totalOrders)}
-          detail={`${numberFormatter.format(completedSales.length)} counter receipts · ${numberFormatter.format(revenue.retailCommerceOrders.length)} imported channel order${revenue.retailCommerceOrders.length === 1 ? '' : 's'}.`}
+          detail={`${numberFormatter.format(periodSales.length)} counter receipts · ${numberFormatter.format(periodCommerceOrders.length)} imported channel order${periodCommerceOrders.length === 1 ? '' : 's'} in the selected period.`}
           actionLabel="Open orders"
           onOpen={onOrders}
         />
@@ -275,7 +359,7 @@ export function BakalooRetailCommandCenter({
           icon={Users}
           label="Customers"
           value={numberFormatter.format(customerCount)}
-          detail={customerCount ? 'Unique customer accounts on completed local receipts.' : 'No customer is linked to a completed local receipt.'}
+          detail={customerCount ? 'Unique customer accounts on selected completed local receipts.' : 'No customer is linked to a selected completed local receipt.'}
           actionLabel="Open customers"
           onOpen={onCustomers}
         />
@@ -319,7 +403,7 @@ export function BakalooRetailCommandCenter({
           icon={ShoppingBag}
           label="Average order value"
           value={averageOrderValue === undefined ? '—' : inrFormatter.format(averageOrderValue)}
-          detail={averageOrderValue === undefined ? 'Available after the first completed local receipt.' : 'Completed local receipt average; channel orders are not mixed in.'}
+          detail={averageOrderValue === undefined ? 'Available after the first selected completed local receipt.' : 'Selected completed local receipt average; channel orders are not mixed in.'}
           actionLabel="Open sales"
           onOpen={onPos}
         />
@@ -333,26 +417,40 @@ export function BakalooRetailCommandCenter({
         />
       </section>
 
+      <section className="bakaloo-command__abandoned-carts" aria-labelledby="bakaloo-abandoned-carts-title">
+        <div>
+          <span className="bakaloo-command__eyebrow">Customer recovery</span>
+          <h2 id="bakaloo-abandoned-carts-title">Abandoned carts</h2>
+          <p>No governed cart-recovery feed is connected. Connect a consent-aware website/app cart source before customers are contacted or recovery value is reported.</p>
+        </div>
+        <button type="button" className="bakaloo-command__text-action" onClick={onCustomers}>Open customer recovery <ArrowRight size={15} aria-hidden="true" /></button>
+      </section>
+
       <div className="bakaloo-command__primary-grid">
         <section className="bakaloo-command__sheet bakaloo-command__sheet--sales" aria-labelledby="bakaloo-sales-title">
           <header>
             <div>
               <span className="bakaloo-command__eyebrow">Sales today</span>
-              <h3 id="bakaloo-sales-title">Sales by recorded day</h3>
+              <h3 id="bakaloo-sales-title">Revenue trend</h3>
               <p>Completed local receipts only. A line appears after the first governed sale.</p>
             </div>
             <button type="button" className="bakaloo-command__text-action" onClick={onPos}>
               Start sale <ArrowRight size={15} aria-hidden="true" />
             </button>
           </header>
-          <TrendLineChart title="Sales by recorded day" data={salesTrend} formatValue={(value) => inrFormatter.format(value)} />
+          <TrendLineChart title="Revenue trend" data={salesTrend} formatValue={(value) => inrFormatter.format(value)} />
+        </section>
+
+        <section className="bakaloo-command__sheet" aria-labelledby="bakaloo-category-revenue-title">
+          <header><div><span className="bakaloo-command__eyebrow">Sales mix</span><h3 id="bakaloo-category-revenue-title">Revenue by category</h3><p>Category comes from the controlled retail merchandising profile, never from a guessed product name.</p></div></header>
+          <BarChart title="Revenue by category" data={dashboardVisuals.categoryRevenue} formatValue={(value) => inrFormatter.format(value)} />
         </section>
 
         <section className="bakaloo-command__sheet bakaloo-command__sheet--attention" aria-labelledby="bakaloo-attention-title">
           <header>
             <div>
               <span className="bakaloo-command__eyebrow">Needs attention</span>
-              <h3 id="bakaloo-attention-title">Make the next decision clear</h3>
+              <h3 id="bakaloo-attention-title">Pending actions</h3>
               <p>Only recorded exceptions appear here. Nothing is estimated or fabricated.</p>
             </div>
           </header>
@@ -371,12 +469,27 @@ export function BakalooRetailCommandCenter({
         </section>
       </div>
 
+      <div className="bakaloo-command__visual-grid">
+        <section className="bakaloo-command__sheet" aria-labelledby="bakaloo-revenue-orders-title">
+          <header><div><span className="bakaloo-command__eyebrow">Trading pattern</span><h3 id="bakaloo-revenue-orders-title">Revenue vs orders</h3><p>Both measures derive from the same completed receipt evidence and remain distinct.</p></div></header>
+          <RevenueOrdersComparison data={dashboardVisuals.revenueVsOrders} />
+        </section>
+        <section className="bakaloo-command__sheet" aria-labelledby="bakaloo-orders-hour-title">
+          <header><div><span className="bakaloo-command__eyebrow">Checkout pattern</span><h3 id="bakaloo-orders-hour-title">Orders by hour</h3><p>Completed receipt count in India business time.</p></div></header>
+          <BarChart title="Orders by hour" data={dashboardVisuals.ordersByHour} formatValue={(value) => `${numberFormatter.format(value)} order${value === 1 ? '' : 's'}`} />
+        </section>
+      </div>
+
       <div className="bakaloo-command__work-grid">
+        <section className="bakaloo-command__sheet" aria-labelledby="bakaloo-top-products-title">
+          <header><div><span className="bakaloo-command__eyebrow">Product demand</span><h3 id="bakaloo-top-products-title">Top products</h3><p>Ranked by completed local receipt value, not an assumed catalogue ranking.</p></div><button type="button" className="bakaloo-command__text-action" onClick={onStock}>Open products <ArrowRight size={15} aria-hidden="true" /></button></header>
+          <BarChart title="Top products" data={dashboardVisuals.topProducts} formatValue={(value) => inrFormatter.format(value)} />
+        </section>
         <section className="bakaloo-command__sheet bakaloo-command__sheet--orders" aria-labelledby="bakaloo-order-flow-title">
           <header>
             <div>
               <span className="bakaloo-command__eyebrow">Order flow</span>
-              <h3 id="bakaloo-order-flow-title">See every handoff</h3>
+              <h3 id="bakaloo-order-flow-title">Recent orders</h3>
               <p>Online order status and delivery promise evidence stay separate until the real fulfilment workbench confirms them.</p>
             </div>
             <button type="button" className="bakaloo-command__text-action" onClick={onOrders}>
@@ -431,6 +544,17 @@ export function BakalooRetailCommandCenter({
           <footer className="bakaloo-command__source-note">
             <PackageSearch size={14} aria-hidden="true" /> Local governed records · no demo sales, no fabricated map or sync state.
           </footer>
+        </section>
+      </div>
+
+      <div className="bakaloo-command__visual-grid">
+        <section className="bakaloo-command__sheet" aria-labelledby="bakaloo-low-stock-title">
+          <header><div><span className="bakaloo-command__eyebrow">Inventory risk</span><h3 id="bakaloo-low-stock-title">Low stock alerts</h3><p>Only counter-bin stockouts and released near-expiry batches are surfaced.</p></div><button type="button" className="bakaloo-command__text-action" onClick={onStock}>Review stock <ArrowRight size={15} aria-hidden="true" /></button></header>
+          {dashboardVisuals.stockAlerts.length ? <ul className="bakaloo-command__attention-list" aria-label="Low stock alerts">{dashboardVisuals.stockAlerts.map((attention) => <AttentionAction key={attention.id} attention={attention} onCash={onCash} onStock={onStock} onOrders={onOrders} />)}</ul> : <div className="bakaloo-command__empty bakaloo-command__empty--compact"><CheckCircle2 size={20} aria-hidden="true" /><div><strong>No low-stock alert is recorded.</strong><span>Record a governed bin balance or batch expiry before this decision surface changes.</span></div></div>}
+        </section>
+        <section className="bakaloo-command__sheet bakaloo-command__sheet--map" aria-labelledby="bakaloo-rider-map-title">
+          <header><div><span className="bakaloo-command__eyebrow">Delivery evidence</span><h3 id="bakaloo-rider-map-title">Live rider map</h3><p>Coordinates appear only after consent, freshness and evidence checks pass.</p></div><button type="button" className="bakaloo-command__text-action" onClick={onDelivery}>Open delivery <ArrowRight size={15} aria-hidden="true" /></button></header>
+          <RetailDeliveryMapSurface signals={revenue.retailDeliveryMapSignals} now={revenue.generatedAt} />
         </section>
       </div>
     </section>

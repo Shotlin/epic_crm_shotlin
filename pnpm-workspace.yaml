@@ -1,6 +1,10 @@
 packages:
   - .
 
+# Electron Forge packages an installed dependency tree. pnpm 11 reads this
+# project-level setting from pnpm-workspace.yaml (rather than .npmrc).
+nodeLinker: hoisted
+
 allowBuilds:
   electron: true
   electron-winstaller: true

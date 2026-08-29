@@ -46,9 +46,9 @@ describe('BakalooRetailCommandCenter', () => {
 
     await user.click(screen.getByRole('button', { name: 'Open POS' }));
     await user.click(screen.getAllByRole('button', { name: 'Open orders' })[0]!);
-    await user.click(screen.getByRole('button', { name: 'Review stock' }));
-    await user.click(screen.getByRole('button', { name: 'Open delivery' }));
-    await user.click(screen.getByRole('button', { name: 'Close cash' }));
+    await user.click(screen.getAllByRole('button', { name: 'Review stock' })[0]!);
+    await user.click(screen.getAllByRole('button', { name: 'Open delivery' })[0]!);
+    await user.click(screen.getByRole('button', { name: /^Close cash/ }));
     await user.click(screen.getByRole('button', { name: 'Open customers' }));
     await user.click(screen.getByRole('button', { name: /^Set up store/ }));
 
@@ -61,7 +61,8 @@ describe('BakalooRetailCommandCenter', () => {
     expect(onSetup).toHaveBeenCalledTimes(1);
   });
 
-  it('shows a useful empty retail starter state without invented values or foreign currency', () => {
+  it('shows a useful empty retail starter state without invented values or foreign currency', async () => {
+    const user = userEvent.setup();
     render(
       <BakalooRetailCommandCenter
         revenue={cleanRetailRevenue()}
@@ -86,8 +87,18 @@ describe('BakalooRetailCommandCenter', () => {
     expect(commandCenter.textContent).toContain('No completed sales recorded today.');
     expect(commandCenter.textContent).toContain('No online order needs review.');
     expect(commandCenter.textContent).toContain('No recorded exception needs a decision.');
+    expect(screen.getByText('Abandoned carts')).toBeTruthy();
+    expect(commandCenter.textContent).toContain('No governed cart-recovery feed is connected.');
+    [
+      'Revenue trend', 'Revenue by category', 'Revenue vs orders', 'Orders by hour',
+      'Top products', 'Low stock alerts', 'Live rider map',
+    ].forEach((label) => expect(screen.getAllByText(label).length).toBeGreaterThan(0));
     expect(commandCenter.textContent).toContain('₹0');
     expect(commandCenter.textContent).not.toContain('$');
+    expect(screen.getByRole('button', { name: 'Today' }).getAttribute('aria-pressed')).toBe('true');
+    await user.click(screen.getByRole('button', { name: 'This month' }));
+    expect(screen.getByRole('button', { name: 'This month' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: 'Today' }).getAttribute('aria-pressed')).toBe('false');
   });
 
   it('shows the actual mapped channel without manufacturing activity for another channel', () => {
