@@ -441,7 +441,7 @@ function validateRetailSaleCostHandoff(
     throw new Error('Retail cost handoff is not tied to a completed in-scope retail sale.');
   }
   const expected = toMinor(sale.costTotal, 'Retail sale cost');
-  const lineCost = sale.lines.reduce((total, line) => total + toMinor(line.costValue, 'Retail line cost'), 0);
+  const lineCost = sale.lines.reduce((total, line) => total + toMinor(line.lineCostTotal, 'Retail line cost'), 0);
   const inventoryCost = revenue.inventoryLedger
     .filter((entry) => entry.type === 'retail-sale' && entry.reference === sale.number)
     .reduce((total, entry) => total + Math.round(Math.abs(entry.value) * 100), 0);
@@ -481,7 +481,7 @@ function validateRetailReturnCostHandoff(
   ) {
     throw new Error('Retail return cost handoff is not tied to an approved in-scope counter return.');
   }
-  const expected = returnCase.lines.reduce((total, line) => total + toMinor(line.returnValues.costValue, 'Retail return line cost'), 0);
+  const expected = returnCase.lines.reduce((total, line) => total + toMinor(line.returnValues.lineCostTotal, 'Retail return line cost'), 0);
   const inventoryCost = revenue.inventoryLedger
     .filter((entry) => entry.type === 'return' && entry.reference === returnCase.number)
     .reduce((total, entry) => total + Math.round(entry.value * 100), 0);

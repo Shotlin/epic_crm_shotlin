@@ -8,6 +8,7 @@ import type { ShadowImportPostgresRepository } from './shadow-import-postgres-re
 import { checksumStoreEdgePayload, createInMemoryStoreEdgeSyncInbox } from './store-edge-sync';
 import { createInMemoryStoreEdgeSyncWorkStore } from './store-edge-sync-worker';
 import { createInMemoryRetailHubChannelOrderTransport } from './channel-order-transport';
+import { signRetailHubWebhook } from './webhook-signature';
 
 const scope = { tenantId: 'tenant-1', companyId: 'company-1', branchId: 'branch-1' };
 
@@ -220,6 +221,24 @@ describe('Node Retail Hub HTTP adapter', () => {
       channelOrderTransport: transport,
       resolveContext: () => ({ scope, authorization: { actorId: 'manager-1', scope: { ...scope, branchId: 'branch-2' }, permissions: ['channel-orders:ingest'] } }),
     });
+  });
+
+  it('fails closed when a configured channel-order webhook verifier rejects the raw payload', async () => {
+    const transport = createInMemoryRetailHubChannelOrderTransport();
+    const body = JSON.stringify({ mode: 'shadow', event: { channel: 'website', connectionId: 'web', externalOrderId: 'order-signed', externalEventId: 'event-signed', occurredAt: '2026-08-08T10:00:00.000Z', status: 'received', currency: 'INR', totalAmountPaise: 100, lines: [{ externalLineId: 'line-signed', sku: 'SKU-1', quantity: 1, unitAmountPaise: 100 }] } });
+    const verifier = vi.fn(async ({ rawBody, signatureHeader }) => rawBody === body && signatureHeader === signRetailHubWebhook(body, 'retail-hub-test-secret-2026', Date.parse('2026-08-14T10:00:00.000Z')));
+    await withServer(async (port) => {
+      const denied = await httpRequest(port, 'POST', '/v1/channel-orders/events', body, { 'content-type': 'application/json', 'x-epic-webhook-signature': 't=bad' });
+      expect(denied.status).toBe(401);
+      expect(denied.body).toContain('webhook_signature_invalid');
+    }, {
+      service: service(),
+      channelOrderTransport: transport,
+      verifyChannelOrderWebhook: verifier,
+      resolveContext: () => ({ scope, authorization: { actorId: 'manager-1', scope, permissions: ['channel-orders:ingest'] } }),
+    });
+    expect(verifier).toHaveBeenCalledOnce();
+    expect(verifier.mock.calls[0]?.[0]).toMatchObject({ rawBody: body, signatureHeader: 't=bad', scope });
   });
 
   it('exposes scoped dead-letter evidence and requires explicit recovery authority', async () => {

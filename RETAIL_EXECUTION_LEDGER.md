@@ -3346,3 +3346,123 @@ pass. The local Vitest launcher is currently blocked by its pnpm/esbuild link
 resolving through an inaccessible parent directory; this is recorded as an
 environment limitation, not as passing test evidence. Full click-by-click UAT
 and native macOS/Linux packaging remain release gates.
+
+### Build 0.1.82 retail front-door and packaged-flow reconciliation (2026-08-14)
+
+Status: **INTERNALLY IMPLEMENTED / PACKAGE-VERIFIED**. The eight primary
+retail workspaces now use the clean blue-white front-door layout with explicit
+left-rail submodules, truthful INR/local-evidence states, source-backed charts,
+and one active desk per commerce surface. Stock actions route to the correct
+Warehouse, Procurement, or Expiry desk; Setup controls route to their exact
+destination; the legacy sales-order readiness block is separated from
+fulfilment; and the cashier-facing Returns and exchange action is restored.
+
+Evidence from the rebuilt Windows artifact:
+
+- TypeScript, ESLint, capability registry, IPC-policy alignment, and renderer
+  copy checks pass.
+- Windows package and smoke test pass (`EPIC_BOS_SMOKE_OK`).
+- Retail navigation passes all 8 primary routes and 31 submodules.
+- POS checkout/restart passes a cash sale, return inspection, close, and
+  SQLite persistence across restart.
+- Offline recovery and conflict recovery pass in the same packaged run.
+
+The visual evidence harness now captures real compositor pixels from the
+isolated visible E2E window. Eight 1600×1000 PNGs and a JSON evidence record
+are stored under `test-evidence/visual/0.1.82-final9`; semantic/layout
+assertions pass and `rendererErrors` is empty. Pixel-parity scoring against
+the supplied static mockups remains **not run** (the harness never fabricates
+a similarity score); the captures are ready for human/design review. Native
+macOS/Linux builds/signing, provider/device/statutory credentials, live Hub
+shadow import/reconciliation, hardware drivers, native page-encryption
+certification, and human role-by-role UAT remain separate gates.
+
+### Build 0.1.82-final9 accessibility and visual reconciliation (2026-08-14)
+
+Status: **INTERNALLY VERIFIED / WINDOWS ARTIFACT READY FOR REVIEW**. The
+focused retail front-door suite passes 9 files / 28 tests. The final package
+passes `pnpm.cmd typecheck`, `pnpm.cmd lint`, `pnpm.cmd package`, and the
+Windows packaged smoke gate. The POS catalog preserves native button
+semantics inside list items, and Home, Sell, Customers, Setup, Stock, Deliver,
+Money, and Insights actions remain explicit, source-backed, and INR-localized.
+
+The isolated packaged navigation scenario passes all 8 primary routes and 31
+submodules (87 seconds). The complete multi-process E2E batch now passes all
+8 journey files, including navigation, POS, offline recovery/conflict,
+visual evidence, maintenance, intelligence, and owner restart. The exact
+final visual evidence is in `test-evidence/visual/0.1.82-final9` with the 8 PNGs and
+`retail-visual-evidence.json`.
+
+The final visual pass also repaired Home KPI card flow: each value, explanation,
+and action now occupies a stable vertical slot, so the six-card layout does not
+clip or overlap INR values and actions. The fresh visual scenario passes with
+empty-state data and no renderer errors.
+
+The latest Windows artifact was rebuilt after that repair and passed the
+headless packaged smoke marker `EPIC_BOS_SMOKE_OK`. The aggregate
+`verify:retail-core` command reaches all registry, IPC, renderer-copy, and
+typecheck gates, then cannot load Vitest in this restricted runner because
+esbuild is denied access to the repository ancestor; the focused retail suite
+and complete packaged Electron journeys remain separately green.
+
+### Build 0.1.82-final10 — full retail-core verification (2026-08-14)
+
+Status: **INTERNALLY VERIFIED / EXTERNAL RELEASE GATES OPEN**. The renderer
+journey assertions were reconciled with the current eight front-door contract
+(one active desk, explicit rail submodules, truthful empty states, and no
+legacy sibling mega-panels). The focused App and delivery-map suites pass
+47/47 tests. The aggregate `verify:retail-core` gate now passes end-to-end:
+
+- Main Electron suite: 251 test files, 1,095 tests passed.
+- Retail Hub suite: 30 test files, 149 tests passed.
+- Capability registry, 540 IPC permission checks, renderer-copy validation,
+  Electron typecheck, Hub typecheck, and ESLint all pass.
+
+This is a current local verification result, not a claim of external
+certification. Native macOS/Linux builds, signing/notarisation, auto-update
+and monitoring, real Bakaloo Hub shadow import/reconciliation, hardware
+drivers, provider/statutory credentials, native page-encryption certification,
+and human role-by-role UAT remain release gates.
+
+### Build 0.1.82-final10 — packaged navigation certification (2026-08-14)
+
+Status: **PASS / WINDOWS PACKAGE**. The rebuilt executable was exercised in an
+isolated profile. The navigation journey passed all eight primary routes, all
+31 left-rail submodules, and every visible advanced shortcut; it also passed
+the labelled-control, no-renderer-error, desktop-scroll, narrow-viewport, and
+command-palette checks. Runtime duration was 589.8 seconds because the sweep
+waits for real advanced-workbench handoffs rather than accepting a clicked
+button as proof of a destination.
+
+The earlier five-minute timeout was a test-harness limit, not an application
+failure. The certified test now allows the complete sweep to finish and skips
+only a genuinely empty shortcut rail while still requiring the full observed
+shortcut baseline. The seven other packaged journeys (owner restart, POS
+restart, offline recovery, conflict recovery, visual evidence, maintenance,
+and intelligence) passed in the same release run.
+
+### Build 0.1.82-final10 — inbound webhook authenticity boundary (2026-08-14)
+
+Status: **INTERNALLY VERIFIED / PROVIDER CONFIGURATION REQUIRED**. Added a
+provider-neutral HMAC-SHA256 verifier for channel-order/payment evidence with
+exact raw-body signing, bounded timestamp tolerance, constant-time comparison,
+and replay protection. The HTTP adapter exposes an explicit server-side
+`verifyChannelOrderWebhook` seam and returns 401 when a configured verifier
+rejects the payload; renderer headers and body fields are never trusted as
+authorization. A shared Redis/Postgres replay store and real provider secret
+remain deployment responsibilities.
+
+Retail Hub verification after this change: 31 test files / 156 tests passed,
+Hub and Electron typecheck passed, and full ESLint passed. This closes the
+internal signature primitive and boundary; it does not certify any live UPI,
+card, marketplace, ONDC, GSP/IRP, messaging, or logistics provider.
+
+### Build 0.1.82-final10 — rebuilt package visual evidence (2026-08-14)
+
+The rebuilt Windows executable passed the packaged smoke marker
+`EPIC_BOS_SMOKE_OK`. The eight-workspace visual scenario also passed at a
+1600×1000 viewport with no renderer errors, one active retail route, an
+unclipped desktop scroll owner, and 8 fresh PNG captures under
+`test-evidence/visual/0.1.82-final10`. The evidence intentionally remains
+semantic/layout-only; pixel similarity against the supplied references is
+still **not run** and needs human/design approval.

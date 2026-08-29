@@ -7,7 +7,7 @@ import type { RetailSale } from './retail-pos-contracts';
  */
 export function buildRetailHubStoreEdgeSalePayload(sale: RetailSale): Record<string, unknown> {
   return {
-    schema: 'epic-bos.retail-sale.v1',
+    schema: 'epic-bos.retail-sale.v2',
     saleId: sale.id,
     saleNumber: sale.number,
     counterId: sale.counterId,
@@ -26,10 +26,10 @@ export function buildRetailHubStoreEdgeSalePayload(sale: RetailSale): Record<str
       unitPrice: line.unitPrice,
       taxableValue: line.taxableValue,
       gstRate: line.gstRate,
-      gstAmount: line.cessAmount + (line.lineTotal - line.taxableValue - line.cessAmount),
+      gstAmount: line.gstAmount ?? (line.lineTotal - line.taxableValue - line.cessAmount),
       cessAmount: line.cessAmount,
       lineTotal: line.lineTotal,
-      costValue: line.costValue,
+      lineCostTotal: line.lineCostTotal,
     })),
     subtotal: sale.subtotal,
     discountTotal: sale.discountTotal,

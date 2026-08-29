@@ -1,5 +1,10 @@
 import {
+  AlertTriangle,
   ArrowRight,
+  Banknote,
+  Boxes,
+  CheckCircle2,
+  ClipboardList,
   IndianRupee,
   PackageCheck,
   PackageSearch,
@@ -10,10 +15,14 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useMemo, type ReactNode } from 'react';
-import { computeRetailCommandCenter } from '../domain/retail-command-center';
+import {
+  computeRetailCommandCenter,
+  type RetailCommandAttention,
+} from '../domain/retail-command-center';
 import { toIndiaBusinessDate } from '../shared/india-business-date';
+import type { RetailCommerceChannel } from '../shared/retail-commerce-contracts';
 import type { RevenueOpsSnapshot } from '../shared/revenue-ops-contracts';
-import { BarChart, DonutChart, TrendLineChart, type ChartDatum } from './ExecutiveCharts';
+import { TrendLineChart, type ChartDatum } from './ExecutiveCharts';
 
 export interface BakalooRetailCommandCenterProps {
   /** The governed local retail projection. The component never invents values. */
@@ -29,19 +38,20 @@ export interface BakalooRetailCommandCenterProps {
 
 interface MetricCardProps {
   icon: LucideIcon;
-  title: string;
+  label: string;
   value: string;
   detail: string;
   actionLabel: string;
   onOpen: () => void;
-  emphasis?: 'attention' | 'positive';
+  tone?: 'attention' | 'positive' | 'danger';
 }
 
-interface SetupStep {
+interface OrderFlowStage {
   id: string;
-  title: string;
+  label: string;
+  value: number;
   detail: string;
-  ready: boolean;
+  tone?: 'attention' | 'positive';
 }
 
 const inrFormatter = new Intl.NumberFormat('en-IN', {
@@ -52,12 +62,12 @@ const inrFormatter = new Intl.NumberFormat('en-IN', {
 
 const numberFormatter = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
 
-const channelLabels = {
+const channelLabels: Record<RetailCommerceChannel, string> = {
   marketplace: 'Marketplace',
   ondc: 'ONDC',
   website: 'Website',
   whatsapp: 'WhatsApp',
-} as const;
+};
 
 function safeIndiaBusinessDate(value: string): string | undefined {
   try {
@@ -67,20 +77,25 @@ function safeIndiaBusinessDate(value: string): string | undefined {
   }
 }
 
-function MetricCard({
-  icon: Icon,
-  title,
-  value,
-  detail,
-  actionLabel,
-  onOpen,
-  emphasis,
-}: MetricCardProps): ReactNode {
+function formatRecordedMoment(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return 'Recorded time unavailable';
+  return new Intl.DateTimeFormat('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: 'Asia/Kolkata',
+  }).format(parsed);
+}
+
+function MetricCard({ icon: Icon, label, value, detail, actionLabel, onOpen, tone }: MetricCardProps): ReactNode {
   return (
-    <article className="bakaloo-command__metric" data-emphasis={emphasis}>
+    <article className="bakaloo-command__metric" data-emphasis={tone}>
       <div className="bakaloo-command__metric-heading">
         <span className="bakaloo-command__metric-icon"><Icon size={18} aria-hidden="true" /></span>
-        <h3>{title}</h3>
+        <h3>{label}</h3>
       </div>
       <strong className="bakaloo-command__metric-value">{value}</strong>
       <p>{detail}</p>
@@ -91,10 +106,35 @@ function MetricCard({
   );
 }
 
+function AttentionAction({ attention, onCash, onStock, onOrders }: {
+  attention: RetailCommandAttention;
+  onCash: () => void;
+  onStock: () => void;
+  onOrders: () => void;
+}): ReactNode {
+  const action = attention.kind === 'cash-variance'
+    ? { label: 'Review cash', onClick: onCash }
+    : attention.kind === 'omnichannel'
+      ? { label: 'Open orders', onClick: onOrders }
+      : { label: 'Review stock', onClick: onStock };
+  return (
+    <li className="bakaloo-command__attention-item" data-severity={attention.severity}>
+      <span className="bakaloo-command__attention-signal" aria-hidden="true"><AlertTriangle size={16} /></span>
+      <div>
+        <strong>{attention.summary}</strong>
+        <small>{attention.action}</small>
+      </div>
+      <button type="button" className="bakaloo-command__text-action" onClick={action.onClick}>
+        {action.label} <ArrowRight size={14} aria-hidden="true" />
+      </button>
+    </li>
+  );
+}
+
 /**
- * A retailer-first command centre that intentionally uses only local,
- * governed records. It gives a new operator clear, small next actions while
- * retaining one route to each existing retail workbench.
+ * The Home route is intentionally a decision surface rather than a second
+ * dashboard. Every figure is derived from the governed local projection and
+ * each action routes to the workbench that owns the eventual write.
  */
 export function BakalooRetailCommandCenter({
   revenue,
@@ -108,6 +148,7 @@ export function BakalooRetailCommandCenter({
 }: BakalooRetailCommandCenterProps): ReactNode {
   const command = useMemo(() => computeRetailCommandCenter(revenue), [revenue]);
   const today = safeIndiaBusinessDate(revenue.generatedAt);
+  const storeName = revenue.profile.tradeName.trim() || revenue.profile.legalName.trim() || 'Your store';
 
   const todaySales = useMemo(() => {
     const completed = today
@@ -119,217 +160,255 @@ export function BakalooRetailCommandCenter({
     };
   }, [revenue.retailSales, today]);
 
-  const activePromises = revenue.deliveryPromises.filter((promise) => promise.status === 'active');
-  const overduePromises = today
-    ? activePromises.filter((promise) => promise.deliveryTo < today)
-    : [];
-  const stockAttentionCount = command.totalStockoutCount + command.totalExpiryRiskItemsCount;
+  const delivery = useMemo(() => {
+    const active = revenue.deliveryPromises.filter((promise) => promise.status === 'active');
+    return {
+      active,
+      overdue: today ? active.filter((promise) => promise.deliveryTo < today) : [],
+      fulfilled: revenue.deliveryPromises.filter((promise) => promise.status === 'fulfilled'),
+    };
+  }, [revenue.deliveryPromises, today]);
+
+  const stockoutCount = command.totalStockoutCount;
+  const stockAttentionCount = stockoutCount + command.totalExpiryRiskItemsCount;
+  const loyaltyMembers = revenue.retailLoyaltyAccounts.length;
   const loyaltyPoints = revenue.retailLoyaltyAccounts.reduce((sum, account) => sum + account.pointsBalance, 0);
-  const configuredConnectors = revenue.retailCommerceConnectors.filter((connector) => (
-    connector.status === 'configured' || connector.status === 'certified'
-  )).length;
-  const setupSteps: SetupStep[] = [
-    {
-      id: 'counter',
-      title: 'Set up a counter',
-      detail: revenue.retailCounters.length
-        ? `${numberFormatter.format(revenue.retailCounters.length)} counter${revenue.retailCounters.length === 1 ? '' : 's'} configured.`
-        : 'Set up a counter to begin selling.',
-      ready: revenue.retailCounters.length > 0,
-    },
-    {
-      id: 'catalog',
-      title: 'Add products',
-      detail: revenue.products.length
-        ? `${numberFormatter.format(revenue.products.length)} product${revenue.products.length === 1 ? '' : 's'} in the catalog.`
-        : 'Add products and a price before the first sale.',
-      ready: revenue.products.length > 0,
-    },
-    {
-      id: 'channel',
-      title: 'Connect online selling',
-      detail: configuredConnectors
-        ? `${numberFormatter.format(configuredConnectors)} connector${configuredConnectors === 1 ? '' : 's'} configured locally.`
-        : 'Connect a channel only when its credentials and evidence are ready.',
-      ready: configuredConnectors > 0,
-    },
-    {
-      id: 'customers',
-      title: 'Start customer loyalty',
-      detail: revenue.retailLoyaltyAccounts.length
-        ? `${numberFormatter.format(revenue.retailLoyaltyAccounts.length)} loyalty member${revenue.retailLoyaltyAccounts.length === 1 ? '' : 's'} recorded.`
-        : 'Add a named customer to start loyalty safely.',
-      ready: revenue.retailLoyaltyAccounts.length > 0,
-    },
-  ];
-  const channelTotal = Math.max(command.onlinePendingOrdersCount, 1);
-  const chartData = useMemo(() => {
+
+  const salesTrend = useMemo(() => {
     const daily = new Map<string, number>();
-    const tenders = new Map<string, number>();
-    for (const sale of revenue.retailSales.filter(({ status }) => status === 'completed')) {
-      const date = sale.saleAt.slice(0, 10);
-      daily.set(date, (daily.get(date) ?? 0) + sale.taxPreview.grandTotal);
-      for (const tender of sale.tenders) tenders.set(tender.method, (tenders.get(tender.method) ?? 0) + tender.amount);
+    for (const sale of revenue.retailSales) {
+      if (sale.status !== 'completed') continue;
+      const businessDate = safeIndiaBusinessDate(sale.saleAt);
+      if (!businessDate) continue;
+      daily.set(businessDate, (daily.get(businessDate) ?? 0) + sale.taxPreview.grandTotal);
     }
-    const trend: ChartDatum[] = [...daily.entries()].sort(([left], [right]) => left.localeCompare(right)).slice(-7).map(([date, value]) => ({ label: date.slice(5), value }));
-    const tenderSplit: ChartDatum[] = [...tenders.entries()].sort(([, left], [, right]) => right - left).map(([label, value]) => ({ label: label.replace('-', ' '), value }));
-    const channelQueue: ChartDatum[] = Object.entries(command.channelPendingOrders)
-      .filter(([, queue]) => queue.count > 0)
-      .map(([channel, queue]) => ({ label: channelLabels[channel as keyof typeof channelLabels], value: queue.count }));
-    return { trend, tenderSplit, channelQueue };
-  }, [command.channelPendingOrders, revenue.retailSales]);
+    return [...daily.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .slice(-7)
+      .map(([date, value]): ChartDatum => ({ label: date.slice(5), value }));
+  }, [revenue.retailSales]);
+
+  const orderFlow = useMemo<OrderFlowStage[]>(() => {
+    const orders = revenue.retailCommerceOrders;
+    const awaitingReview = orders.filter((order) => order.status === 'imported').length;
+    const confirmed = orders.filter((order) => order.status === 'confirmed').length;
+    const inDelivery = delivery.active.length;
+    const complete = orders.filter((order) => order.status === 'fulfilled').length + delivery.fulfilled.length;
+    return [
+      { id: 'review', label: 'To review', value: awaitingReview, detail: 'Imported online orders', tone: awaitingReview ? 'attention' : undefined },
+      { id: 'confirmed', label: 'Confirmed', value: confirmed, detail: 'Ready for fulfilment' },
+      { id: 'delivery', label: 'Out for delivery', value: inDelivery, detail: 'Active delivery promises', tone: delivery.overdue.length ? 'attention' : undefined },
+      { id: 'complete', label: 'Completed', value: complete, detail: 'Fulfilled order evidence', tone: complete ? 'positive' : undefined },
+    ];
+  }, [delivery.active.length, delivery.fulfilled.length, delivery.overdue.length, revenue.retailCommerceOrders]);
+
+  const latestOrders = useMemo(() => {
+    const connectorById = new Map(revenue.retailCommerceConnectors.map((connector) => [connector.id, connector]));
+    return [...revenue.retailCommerceOrders]
+      .sort((left, right) => right.importedAt.localeCompare(left.importedAt))
+      .slice(0, 4)
+      .map((order) => ({
+        id: order.id,
+        number: order.orderNumber,
+        channel: connectorById.get(order.connectorId)?.channel,
+        value: order.totalAmount,
+        status: order.status,
+        recordedAt: order.importedAt,
+      }));
+  }, [revenue.retailCommerceConnectors, revenue.retailCommerceOrders]);
+
+  const localStatus = revenue.retailHubStoreEdgeSyncPolicy?.enabled
+    ? 'Local-first sync enabled'
+    : 'Local records';
 
   return (
-    <section className="bakaloo-command" aria-labelledby="bakaloo-command-title" data-testid="bakaloo-retail-command-center">
-      <header className="bakaloo-command__header">
+    <section className="bakaloo-command bakaloo-command--retail-front" aria-labelledby="bakaloo-command-title" data-testid="bakaloo-retail-command-center">
+      <header className="bakaloo-command__header bakaloo-command__header--retail-front">
         <div className="bakaloo-command__header-copy">
-          <span className="bakaloo-command__eyebrow">Retail command centre</span>
-          <h2 id="bakaloo-command-title">Your store, made simple.</h2>
-          <p>See what needs doing now: sell, pack, restock, deliver, close cash, and look after customers.</p>
+          <span className="bakaloo-command__eyebrow">Store command centre</span>
+          <h1 id="bakaloo-command-title" className="retail-front-door__title">Your store, made simple.</h1>
+          <p>See sales, orders, stock, cash and customers in one place. Start with the item that needs attention.</p>
         </div>
-        <div className="bakaloo-command__scope" aria-label="Current scope">
+        <div className="bakaloo-command__scope" aria-label="Current retail workspace status">
           <Store size={18} aria-hidden="true" />
-          <span>Local retail view</span>
-          <small>All money is shown in INR</small>
+          <span>{storeName}</span>
+          <small>{localStatus} · generated {formatRecordedMoment(revenue.generatedAt)}</small>
         </div>
       </header>
 
-      <div className="bakaloo-command__metrics" aria-label="Retail activities">
+      <section className="bakaloo-command__metrics" aria-label="Today at a glance">
         <MetricCard
           icon={IndianRupee}
-          title="Today’s sales"
+          label="Net sales today"
           value={inrFormatter.format(todaySales.total)}
           detail={todaySales.count
             ? `${numberFormatter.format(todaySales.count)} completed sale${todaySales.count === 1 ? '' : 's'} recorded today.`
             : 'No completed sales recorded today.'}
           actionLabel="Open POS"
           onOpen={onPos}
-          emphasis={todaySales.count ? 'positive' : undefined}
+          tone={todaySales.count ? 'positive' : undefined}
         />
         <MetricCard
           icon={ShoppingBag}
-          title="Orders to pack"
+          label="Orders to review"
           value={numberFormatter.format(command.onlinePendingOrdersCount)}
           detail={command.onlinePendingOrdersCount
-            ? `${inrFormatter.format(command.onlinePendingOrderValue)} waiting for confirmation or fulfilment.`
-            : 'No online orders are waiting to be packed.'}
+            ? `${inrFormatter.format(command.onlinePendingOrderValue)} awaiting confirmation or fulfilment.`
+            : 'No online order needs review.'}
           actionLabel="Open orders"
           onOpen={onOrders}
-          emphasis={command.onlinePendingOrdersCount ? 'attention' : undefined}
+          tone={command.onlinePendingOrdersCount ? 'attention' : undefined}
         />
         <MetricCard
-          icon={PackageSearch}
-          title="Stock to check"
+          icon={Boxes}
+          label="Stock exceptions"
           value={numberFormatter.format(stockAttentionCount)}
           detail={stockAttentionCount
-            ? `${command.totalStockoutCount} stockout${command.totalStockoutCount === 1 ? '' : 's'} and ${command.totalExpiryRiskItemsCount} expiry risk${command.totalExpiryRiskItemsCount === 1 ? '' : 's'} recorded.`
-            : 'No stock exceptions recorded in this retail view.'}
+            ? `${stockoutCount} stockout${stockoutCount === 1 ? '' : 's'} and ${command.totalExpiryRiskItemsCount} expiry risk${command.totalExpiryRiskItemsCount === 1 ? '' : 's'} recorded.`
+            : 'No stock exception is recorded.'}
           actionLabel="Review stock"
           onOpen={onStock}
-          emphasis={stockAttentionCount ? 'attention' : undefined}
+          tone={stockAttentionCount ? 'attention' : undefined}
         />
         <MetricCard
           icon={Truck}
-          title="Delivery watch"
-          value={numberFormatter.format(activePromises.length)}
-          detail={overduePromises.length
-            ? `${numberFormatter.format(overduePromises.length)} promise${overduePromises.length === 1 ? '' : 's'} past the recorded delivery date.`
-            : activePromises.length
-              ? `${numberFormatter.format(activePromises.length)} active delivery promise${activePromises.length === 1 ? '' : 's'} to follow.`
-              : 'No active delivery promises recorded.'}
+          label="On-time delivery"
+          value={delivery.active.length ? `${numberFormatter.format(delivery.active.length - delivery.overdue.length)} / ${numberFormatter.format(delivery.active.length)}` : '—'}
+          detail={delivery.overdue.length
+            ? `${numberFormatter.format(delivery.overdue.length)} delivery promise${delivery.overdue.length === 1 ? '' : 's'} need review.`
+            : delivery.active.length
+              ? 'No active promise is past its recorded date.'
+              : 'No active delivery promise is recorded.'}
           actionLabel="Open delivery"
           onOpen={onDelivery}
-          emphasis={overduePromises.length ? 'attention' : undefined}
+          tone={delivery.overdue.length ? 'attention' : delivery.active.length ? 'positive' : undefined}
         />
         <MetricCard
-          icon={PackageCheck}
-          title="Cash to close"
+          icon={Banknote}
+          label="Cash to close"
           value={numberFormatter.format(command.activeCashierShiftsCount)}
           detail={command.unresolvedVarianceCount
-            ? `${numberFormatter.format(command.unresolvedVarianceCount)} drawer variance${command.unresolvedVarianceCount === 1 ? '' : 's'} need review.`
+            ? `${numberFormatter.format(command.unresolvedVarianceCount)} unresolved variance${command.unresolvedVarianceCount === 1 ? '' : 's'} need review.`
             : command.activeCashierShiftsCount
-              ? `${numberFormatter.format(command.activeCashierShiftsCount)} open cash shift${command.activeCashierShiftsCount === 1 ? '' : 's'} recorded.`
+              ? 'Open cash shifts require a governed close.'
               : 'No cash shift is open.'}
           actionLabel="Close cash"
           onOpen={onCash}
-          emphasis={command.unresolvedVarianceCount ? 'attention' : undefined}
+          tone={command.unresolvedVarianceCount ? 'danger' : undefined}
         />
         <MetricCard
           icon={Users}
-          title="Customers & loyalty"
-          value={numberFormatter.format(revenue.retailLoyaltyAccounts.length)}
-          detail={revenue.retailLoyaltyAccounts.length
-            ? `${numberFormatter.format(loyaltyPoints)} loyalty point${loyaltyPoints === 1 ? '' : 's'} available to customers.`
-            : 'No loyalty members recorded yet.'}
+          label="Loyalty members"
+          value={numberFormatter.format(loyaltyMembers)}
+          detail={loyaltyMembers
+            ? `${numberFormatter.format(loyaltyPoints)} points are held in the customer ledger.`
+            : 'No loyalty member is recorded yet.'}
           actionLabel="Open customers"
           onOpen={onCustomers}
-          emphasis={revenue.retailLoyaltyAccounts.length ? 'positive' : undefined}
+          tone={loyaltyMembers ? 'positive' : undefined}
         />
+      </section>
+
+      <div className="bakaloo-command__primary-grid">
+        <section className="bakaloo-command__sheet bakaloo-command__sheet--sales" aria-labelledby="bakaloo-sales-title">
+          <header>
+            <div>
+              <span className="bakaloo-command__eyebrow">Sales today</span>
+              <h3 id="bakaloo-sales-title">Sales by recorded day</h3>
+              <p>Completed local receipts only. A line appears after the first governed sale.</p>
+            </div>
+            <button type="button" className="bakaloo-command__text-action" onClick={onPos}>
+              Start sale <ArrowRight size={15} aria-hidden="true" />
+            </button>
+          </header>
+          <TrendLineChart title="Sales by recorded day" data={salesTrend} formatValue={(value) => inrFormatter.format(value)} />
+        </section>
+
+        <section className="bakaloo-command__sheet bakaloo-command__sheet--attention" aria-labelledby="bakaloo-attention-title">
+          <header>
+            <div>
+              <span className="bakaloo-command__eyebrow">Needs attention</span>
+              <h3 id="bakaloo-attention-title">Make the next decision clear</h3>
+              <p>Only recorded exceptions appear here. Nothing is estimated or fabricated.</p>
+            </div>
+          </header>
+          {command.attentionQueue.length ? (
+            <ul className="bakaloo-command__attention-list" aria-label="Recorded retail exceptions">
+              {command.attentionQueue.slice(0, 4).map((attention) => (
+                <AttentionAction key={attention.id} attention={attention} onCash={onCash} onStock={onStock} onOrders={onOrders} />
+              ))}
+            </ul>
+          ) : (
+            <div className="bakaloo-command__empty" role="status">
+              <CheckCircle2 size={20} aria-hidden="true" />
+              <div><strong>No recorded exception needs a decision.</strong><span>Keep recording sales, stock, cash and delivery evidence to maintain this view.</span></div>
+            </div>
+          )}
+        </section>
       </div>
 
       <div className="bakaloo-command__work-grid">
-        <article className="bakaloo-command__sheet bakaloo-command__sheet--channels" aria-labelledby="bakaloo-command-channels-title">
+        <section className="bakaloo-command__sheet bakaloo-command__sheet--orders" aria-labelledby="bakaloo-order-flow-title">
           <header>
             <div>
-              <span className="bakaloo-command__eyebrow">Unified order queue</span>
-              <h3 id="bakaloo-command-channels-title">One queue for every online channel</h3>
-              <p>Orders stay visible by source before stock is reserved or fulfilment is confirmed.</p>
+              <span className="bakaloo-command__eyebrow">Order flow</span>
+              <h3 id="bakaloo-order-flow-title">See every handoff</h3>
+              <p>Online order status and delivery promise evidence stay separate until the real fulfilment workbench confirms them.</p>
             </div>
             <button type="button" className="bakaloo-command__text-action" onClick={onOrders}>
-              View order queue <ArrowRight size={15} aria-hidden="true" />
+              Open orders <ArrowRight size={15} aria-hidden="true" />
             </button>
           </header>
-          {command.onlinePendingOrdersCount ? (
-            <ul className="bakaloo-command__channel-list" aria-label="Pending online orders by channel">
-              {Object.entries(command.channelPendingOrders).map(([channel, queue]) => {
-                const width = Math.max(0, Math.min(100, (queue.count / channelTotal) * 100));
-                return (
-                  <li key={channel}>
-                    <div>
-                      <strong>{channelLabels[channel as keyof typeof channelLabels]}</strong>
-                      <span>{numberFormatter.format(queue.count)} order{queue.count === 1 ? '' : 's'} · {inrFormatter.format(queue.value)}</span>
-                    </div>
-                    <span className="bakaloo-command__channel-progress" aria-hidden="true"><b data-empty={queue.count === 0 ? 'true' : undefined} style={{ width: `${width}%` }} /></span>
-                  </li>
-                );
-              })}
-            </ul>
+          <div className="bakaloo-command__flow-strip" aria-label="Online order flow">
+            {orderFlow.map((stage) => (
+              <div key={stage.id} data-tone={stage.tone}>
+                <strong>{numberFormatter.format(stage.value)}</strong>
+                <span>{stage.label}</span>
+                <small>{stage.detail}</small>
+              </div>
+            ))}
+          </div>
+          {latestOrders.length ? (
+            <div className="bakaloo-command__order-table" role="table" aria-label="Latest governed online orders">
+              <div role="row" className="bakaloo-command__order-table-heading"><span role="columnheader">Order</span><span role="columnheader">Channel</span><span role="columnheader">Recorded</span><span role="columnheader">Status</span></div>
+              {latestOrders.map((order) => (
+                <div role="row" key={order.id}>
+                  <strong role="cell">{order.number}</strong>
+                  <span role="cell">{order.channel ? channelLabels[order.channel] : 'Channel unmapped'}</span>
+                  <span role="cell">{formatRecordedMoment(order.recordedAt)}</span>
+                  <span role="cell" className="bakaloo-command__status-pill">{order.status.replace('-', ' ')}</span>
+                </div>
+              ))}
+            </div>
           ) : (
-            <div className="bakaloo-command__empty">
+            <div className="bakaloo-command__empty bakaloo-command__empty--compact">
               <ShoppingBag size={20} aria-hidden="true" />
-              <div><strong>Your online queue is clear.</strong><span>Connect a channel when you are ready to bring online orders into the same stock view.</span></div>
+              <div><strong>No governed online order is in this scope.</strong><span>Connect a channel and shadow-import only when source credentials and reconciliation evidence are ready.</span></div>
             </div>
           )}
-        </article>
+        </section>
 
-        <article className="bakaloo-command__sheet bakaloo-command__sheet--setup" aria-labelledby="bakaloo-command-setup-title">
+        <section className="bakaloo-command__sheet bakaloo-command__sheet--quick-actions" aria-labelledby="bakaloo-quick-actions-title">
           <header>
             <div>
-              <span className="bakaloo-command__eyebrow">Start here</span>
-              <h3 id="bakaloo-command-setup-title">A simple retail setup checklist</h3>
-              <p>Complete the basics in order. Nothing is assumed or switched on silently.</p>
+              <span className="bakaloo-command__eyebrow">Quick actions</span>
+              <h3 id="bakaloo-quick-actions-title">Start with one clear task</h3>
+              <p>Each action opens the accountable workbench. Nothing is posted from this overview.</p>
             </div>
-            <button type="button" className="bakaloo-command__text-action" onClick={onSetup}>
-              Open setup <ArrowRight size={15} aria-hidden="true" />
-            </button>
           </header>
-          <ol className="bakaloo-command__setup-list">
-            {setupSteps.map((step, index) => {
-              const StatusIcon = step.ready ? PackageCheck : PackageSearch;
-              return (
-                <li key={step.id} data-ready={step.ready}>
-                  <span className="bakaloo-command__setup-index">{String(index + 1).padStart(2, '0')}</span>
-                  <span className="bakaloo-command__setup-state" aria-label={step.ready ? 'Ready' : 'Needs setup'}>
-                    <StatusIcon size={16} aria-hidden="true" />
-                  </span>
-                  <div><strong>{step.title}</strong><small>{step.detail}</small></div>
-                </li>
-              );
-            })}
-          </ol>
-        </article>
+          <div className="bakaloo-command__quick-actions">
+            <button type="button" onClick={onPos}><ShoppingBag size={18} aria-hidden="true" /><span><strong>Start sale</strong><small>Open the POS counter</small></span><ArrowRight size={15} aria-hidden="true" /></button>
+            <button type="button" onClick={onOrders}><PackageCheck size={18} aria-hidden="true" /><span><strong>Pack orders</strong><small>Review online fulfilment</small></span><ArrowRight size={15} aria-hidden="true" /></button>
+            <button type="button" onClick={onStock}><Boxes size={18} aria-hidden="true" /><span><strong>Check stock</strong><small>Review stock exceptions</small></span><ArrowRight size={15} aria-hidden="true" /></button>
+            <button type="button" onClick={onCash}><Banknote size={18} aria-hidden="true" /><span><strong>Close cash</strong><small>Review shifts and variance</small></span><ArrowRight size={15} aria-hidden="true" /></button>
+            <button type="button" onClick={onCustomers}><Users size={18} aria-hidden="true" /><span><strong>Find customer</strong><small>Open customer 360</small></span><ArrowRight size={15} aria-hidden="true" /></button>
+            <button type="button" onClick={onSetup}><ClipboardList size={18} aria-hidden="true" /><span><strong>Set up store</strong><small>Finish safe operating basics</small></span><ArrowRight size={15} aria-hidden="true" /></button>
+          </div>
+          <footer className="bakaloo-command__source-note">
+            <PackageSearch size={14} aria-hidden="true" /> Local governed records · no demo sales, no fabricated map or sync state.
+          </footer>
+        </section>
       </div>
-      <section className="epic-visual-analytics" aria-labelledby="command-visual-analytics-title"><header className="epic-visual-analytics__header"><div><span className="bakaloo-command__eyebrow">Store pulse</span><h3 id="command-visual-analytics-title">Decisions at a glance</h3><p>These visuals use completed local records only. Empty charts stay empty until governed data exists.</p></div></header><div className="epic-visual-analytics__grid"><TrendLineChart title="Sales by recorded day" data={chartData.trend} formatValue={(value) => inrFormatter.format(value)} /><DonutChart title="Tender mix" data={chartData.tenderSplit} formatValue={(value) => inrFormatter.format(value)} /><BarChart title="Online orders by channel" data={chartData.channelQueue} formatValue={(value) => numberFormatter.format(value)} /></div></section>
     </section>
   );
 }

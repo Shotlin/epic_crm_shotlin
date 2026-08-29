@@ -96,13 +96,29 @@ export interface RetailSaleLine {
   unitPrice: number;
   taxableValue: number;
   gstRate: number;
+  /**
+   * GST calculated and rounded for this complete sale line when it was sold.
+   *
+   * Older locally persisted sales may not have this frozen amount yet. Readers
+   * must derive it from the immutable taxable value and rate only for that
+   * legacy compatibility path; new checkout writes it explicitly.
+   */
+  gstAmount?: number;
   taxCodeId: string;
   priceListEntryId: string;
   discountAmount: number;
   cessRate: number;
   cessAmount: number;
   lineTotal: number;
-  costValue: number;
+  /**
+   * Immutable total inventory cost consumed by this entire sale line, in INR.
+   *
+   * This is deliberately not a unit cost. Checkout writes the exact total
+   * returned by the inventory issue, and every report/reversal must sum this
+   * value directly. Use `lineCostTotal / quantity` only when a physical
+   * return needs a unit cost for a new inventory receipt.
+   */
+  lineCostTotal: number;
   /** Promotion evidence for an automatically issued zero-price gift line. */
   isGift?: boolean;
   promotionPolicyId?: string;
@@ -200,7 +216,8 @@ export interface RetailReturnOriginalSaleLineSnapshot {
   cessRate: number;
   cessAmount: number;
   lineTotal: number;
-  costValue: number;
+  /** Immutable total COGS allocated to the whole original sale line. */
+  lineCostTotal: number;
 }
 
 /**
@@ -214,7 +231,8 @@ export interface RetailReturnValueSnapshot {
   gstAmount: number;
   cessAmount: number;
   lineTotal: number;
-  costValue: number;
+  /** Immutable total COGS allocated to this approved return line. */
+  lineCostTotal: number;
 }
 
 export interface RetailReturnInspection {
@@ -552,6 +570,7 @@ export function retailSaleLineToInvoiceLine(line: RetailSaleLine): QuoteLine {
     unitPrice: line.unitPrice,
     taxableValue: line.taxableValue,
     gstRate: line.gstRate,
+    cessRate: line.cessRate,
     catalogProductId: line.catalogProductId,
     taxCodeId: line.taxCodeId,
     priceListEntryId: line.priceListEntryId,

@@ -372,7 +372,9 @@ export function computeCategorySales({
       row.taxTotal = round2(
         row.taxTotal + (line.lineTotal - line.taxableValue - line.cessAmount),
       );
-      row.costTotal = round2(row.costTotal + line.costValue * line.quantity);
+      // Checkout records a total for the entire sale line. Multiplying by
+      // quantity again would overstate COGS for multi-unit/weighted lines.
+      row.costTotal = round2(row.costTotal + line.lineCostTotal);
     });
   });
 
@@ -511,7 +513,7 @@ export function computeGstSummary({
         rateMap.set(rateKey, row);
       }
       const isIntraState = sale.taxPreview.treatment === 'intra-state';
-      const gstAmount = round2((line.taxableValue * rate) / 100);
+      const gstAmount = line.gstAmount ?? round2((line.taxableValue * rate) / 100);
       const halfGst = round2(gstAmount / 2);
       row.taxableValue = round2(row.taxableValue + line.taxableValue);
       if (isIntraState) {
@@ -610,7 +612,8 @@ export function computeSkuMarginReport({
       };
       existing.quantitySold = round2(existing.quantitySold + line.quantity);
       existing.revenue = round2(existing.revenue + line.lineTotal);
-      existing.costTotal = round2(existing.costTotal + line.costValue * line.quantity);
+      // See Category Sales: this is already the whole-line COGS allocation.
+      existing.costTotal = round2(existing.costTotal + line.lineCostTotal);
       variantMap.set(line.itemVariantId, existing);
     });
   });

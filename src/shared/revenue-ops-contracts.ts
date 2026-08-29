@@ -277,6 +277,8 @@ export interface QuoteLine {
   unitPrice: number;
   taxableValue: number;
   gstRate: number;
+  /** Frozen Cess rate from the verified HSN/SAC basis. Legacy lines imply 0. */
+  cessRate?: number;
   catalogProductId?: string;
   taxCodeId?: string;
   priceListEntryId?: string;
@@ -1114,7 +1116,13 @@ export interface StatutoryExchange {
 }
 
 export interface RevenueOpsState {
-  schemaVersion: 54;
+  /**
+   * v56 freezes a rounded GST amount on every retail sale line. Persisted
+   * v55 receipts are migrated with a deterministic allocation that preserves
+   * their recorded document tax total exactly; this avoids a later report or
+   * return re-rounding historical evidence differently.
+   */
+  schemaVersion: 56;
   revision: number;
   scope: OperatingRecordScope;
   profile: IndiaBusinessProfile;

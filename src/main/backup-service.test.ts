@@ -1,7 +1,25 @@
 import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const electronMocks = vi.hoisted(() => ({
+  app: {
+    relaunch: vi.fn(),
+    quit: vi.fn(),
+  },
+  dialog: {
+    showOpenDialog: vi.fn(),
+    showMessageBox: vi.fn(),
+    showSaveDialog: vi.fn(),
+  },
+}));
+
+vi.mock('electron', () => ({
+  app: electronMocks.app,
+  dialog: electronMocks.dialog,
+}));
+
 import { BusinessDatabase } from './database';
 import { BackupService } from './backup-service';
 import { EncryptedFileEnvelope } from './encrypted-file-envelope';
@@ -10,12 +28,14 @@ let directory = '';
 let database: BusinessDatabase;
 
 beforeEach(async () => {
+  vi.clearAllMocks();
   directory = await mkdtemp(path.join(tmpdir(), 'epic-bos-restore-drill-test-'));
   database = new BusinessDatabase(path.join(directory, 'epic-bos.sqlite3'));
   await database.initialize();
 });
 
 afterEach(async () => {
+  vi.useRealTimers();
   database.close();
   await rm(directory, { recursive: true, force: true });
 });
@@ -64,5 +84,26 @@ describe('isolated restore drill', () => {
     expect(result.entries.map(({ fileName }) => fileName)).toEqual(['old.epicbackup', 'old.sqlite3']);
     expect(EncryptedFileEnvelope.getVersion(await readFile(plaintextPath))).toBe(2);
     expect(EncryptedFileEnvelope.getVersion(await readFile(legacyPath))).toBe(2);
+  });
+
+  it('stages a selected restore in an encrypted candidate and requests graceful sealing before restart', async () => {
+    const sourcePath = path.join(directory, 'selected-restore.sqlite3');
+    const backupDirectory = path.join(directory, 'managed-backups');
+    await database.createOnlineBackup(sourcePath);
+    electronMocks.dialog.showOpenDialog.mockResolvedValue({ canceled: false, filePaths: [sourcePath] });
+    electronMocks.dialog.showMessageBox.mockResolvedValue({ response: 1 });
+    const service = new BackupService(database, backupDirectory, Buffer.alloc(32, 7));
+
+    vi.useFakeTimers();
+    const receipt = await service.restoreInteractive(null);
+
+    expect(receipt).toMatchObject({ fileName: 'selected-restore.sqlite3', restartScheduled: true });
+    const encryptedStagePath = `${database.path}.restore-next.enc`;
+    expect(EncryptedFileEnvelope.isEncrypted(await readFile(encryptedStagePath))).toBe(true);
+    await expect(readFile(`${database.path}.restore-next`)).rejects.toMatchObject({ code: 'ENOENT' });
+
+    await vi.advanceTimersByTimeAsync(300);
+    expect(electronMocks.app.relaunch).toHaveBeenCalledTimes(1);
+    expect(electronMocks.app.quit).toHaveBeenCalledTimes(1);
   });
 });

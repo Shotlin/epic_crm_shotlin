@@ -7,28 +7,30 @@ import { RetailCashOverviewPanel } from './RetailCashOverviewPanel';
 
 const counter = { id: 'counter-1', name: 'Front counter', code: 'C1' } as unknown as RetailCounter;
 const shift = { id: 'shift-1', number: 'SHIFT-001', counterId: 'counter-1', cashierId: 'cashier', openedAt: '2026-08-03T09:00:00Z', openingCash: 1000, status: 'close-requested', expectedCash: 2200, declaredCash: 2100, variance: -100, tenderVariance: -100, version: 1 } as unknown as RetailCashierShift;
-const sale = { id: 'sale-1', cashierShiftId: 'shift-1', status: 'completed', taxPreview: { grandTotal: 1200 }, tenders: [{ id: 't-1', method: 'cash', amount: 1200, reference: 'CASH' }] } as unknown as RetailSale;
+const sale = { id: 'sale-1', cashierShiftId: 'shift-1', status: 'completed', taxPreview: { grandTotal: 1200, totalTax: 120 }, tenders: [{ id: 't-1', method: 'cash', amount: 1200, reference: 'CASH' }] } as unknown as RetailSale;
 const receipt = { id: 'receipt-1', status: 'recorded', amount: 1200 } as unknown as PaymentReceipt;
 
 afterEach(() => cleanup());
 
 describe('RetailCashOverviewPanel', () => {
-  it('shows variance evidence in INR and no dollar values', () => {
+  it('shows a simple INR day-close checklist without dollar values', () => {
     render(<RetailCashOverviewPanel shifts={[shift]} counters={[counter]} sales={[sale]} receipts={[receipt]} onOpenAdvanced={vi.fn()} />);
-    expect(screen.getByRole('heading', { name: /Close cash with confidence/ })).toBeTruthy();
-    expect(screen.getAllByText(/-₹100/).length).toBeGreaterThan(0);
-    expect(screen.getByText('Needs review')).toBeTruthy();
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    expect(screen.getByRole('heading', { level: 1, name: /Close the day by exception, not by spreadsheet/ })).toBeTruthy();
+    expect(screen.getByText('Day close checklist')).toBeTruthy();
+    expect(screen.getByText('Expected cash')).toBeTruthy();
+    expect(screen.getByText('GST output')).toBeTruthy();
     expect(screen.queryByText('$')).toBeNull();
   });
 
-  it('filters and opens governed cash controls', async () => {
+  it('reveals filtered till evidence and opens the governed close workflow', async () => {
     const user = userEvent.setup();
     const onOpenAdvanced = vi.fn();
     render(<RetailCashOverviewPanel shifts={[shift]} counters={[counter]} sales={[sale]} receipts={[receipt]} onOpenAdvanced={onOpenAdvanced} />);
+    await user.click(screen.getByText('Inspect individual till evidence'));
     await user.click(screen.getByRole('button', { name: 'Closed cleanly' }));
     expect(screen.getByText('No tills in this view')).toBeTruthy();
-    await user.click(screen.getByRole('button', { name: 'All tills' }));
-    await user.click(screen.getByRole('button', { name: /Open governed cash action/ }));
+    await user.click(screen.getByRole('button', { name: /Continue day close/ }));
     expect(onOpenAdvanced).toHaveBeenCalledTimes(1);
   });
 

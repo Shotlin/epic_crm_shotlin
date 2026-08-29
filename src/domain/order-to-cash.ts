@@ -119,11 +119,16 @@ function assertCanonicalPaymentJournal(draft: AccountingJournalDraft, receipt: P
 
 function taxPreview(lines: QuoteLine[], treatment: QuoteTaxPreview['treatment'], gstRegistered: boolean, reverseCharge: boolean): QuoteTaxPreview {
   const taxableValue = money(lines.reduce((total, line) => total + line.taxableValue, 0));
-  const totalTax = gstRegistered ? money(lines.reduce((total, line) => total + line.taxableValue * line.gstRate / 100, 0)) : 0;
-  const cgst = treatment === 'intra-state' ? money(totalTax / 2) : 0;
-  const sgst = treatment === 'intra-state' ? money(totalTax - cgst) : 0;
-  const igst = treatment === 'inter-state' ? totalTax : 0;
-  return { treatment, taxableValue, cgst, sgst, igst, totalTax, grandTotal: money(taxableValue + (reverseCharge ? 0 : totalTax)), determination: 'commercial-estimate' };
+  // Recompute only from the line-level frozen rates and round every line
+  // before aggregation. That makes a draft invoice reconcile to its source
+  // quote/retail sale instead of inventing a document-level rounding delta.
+  const gstTotal = gstRegistered ? money(lines.reduce((total, line) => total + money(line.taxableValue * line.gstRate / 100), 0)) : 0;
+  const cess = gstRegistered ? money(lines.reduce((total, line) => total + money(line.taxableValue * (line.cessRate ?? 0) / 100), 0)) : 0;
+  const totalTax = money(gstTotal + cess);
+  const cgst = treatment === 'intra-state' ? money(gstTotal / 2) : 0;
+  const sgst = treatment === 'intra-state' ? money(gstTotal - cgst) : 0;
+  const igst = treatment === 'inter-state' ? gstTotal : 0;
+  return { treatment, taxableValue, cgst, sgst, igst, cess, totalTax, grandTotal: money(taxableValue + (reverseCharge ? 0 : totalTax)), determination: 'commercial-estimate' };
 }
 
 export function createPaymentTerm(state: RevenueOpsState, input: CreatePaymentTermInput, id: string = randomUUID()): RevenueOpsState {
@@ -230,7 +235,7 @@ export function createInvoiceDraft(state: RevenueOpsState, input: CreateInvoiceD
   if (!quote) throw new Error('Source quotation snapshot not found.');
   const selected = invoiceLines(state, input);
   const taxable = input.documentKind === 'tax-invoice';
-  const lines = selected.lines.map((line) => ({ ...line, gstRate: taxable ? line.gstRate : 0 }));
+  const lines = selected.lines.map((line) => ({ ...line, gstRate: taxable ? line.gstRate : 0, cessRate: taxable ? line.cessRate : 0 }));
   const preview = taxPreview(lines, quote.taxPreview.treatment, taxable, input.reverseCharge);
   const subtotal = money(lines.reduce((total, line) => total + (line.listUnitPrice ?? line.unitPrice) * line.quantity, 0));
   const discountTotal = money(lines.reduce((total, line) => total + (line.discountAmount ?? 0), 0));

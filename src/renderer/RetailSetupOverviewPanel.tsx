@@ -1,26 +1,71 @@
-import { ArrowRight, Database, HardDrive, LockKeyhole, Settings2, ShieldCheck, Store, Users } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { ArrowRight, Database, HardDrive, LockKeyhole, Radio, Settings2, ShieldAlert, ShieldCheck, Store, Users, Wrench } from 'lucide-react';
+import { useMemo, type ReactNode } from 'react';
 import type { RetailWorkspaceStatus, SystemInfo } from '../shared/contracts';
 import type { OperationalHealthSnapshot } from '../shared/kernel-contracts';
 import type { RetailDeviceAdapterProfile } from '../shared/retail-device-profile-contracts';
+
+export type RetailSetupDestination = 'organization' | 'access' | 'devices' | 'integration' | 'storage' | 'release';
 
 export interface RetailSetupOverviewPanelProps {
   workspaceStatus: RetailWorkspaceStatus | null;
   systemInfo: SystemInfo | null;
   health: OperationalHealthSnapshot | null;
   deviceProfiles?: readonly RetailDeviceAdapterProfile[];
-  onOpenAdvanced: () => void;
+  /** Exact controlled destination for a visible setup task. */
+  onOpenDestination?: (destination: RetailSetupDestination) => void;
+  /** @deprecated Retained only for existing callers during the route migration. */
+  onOpenAdvanced?: () => void;
 }
 
+type SetupState = 'complete' | 'review' | 'unavailable';
+type SetupCheck = { id: string; label: string; detail: string; state: SetupState; Icon: typeof Store };
+
+const setupDestinationByCheck: Record<string, RetailSetupDestination> = {
+  classification: 'organization',
+  provenance: 'organization',
+  migrations: 'storage',
+  audit: 'access',
+  payments: 'integration',
+  devices: 'devices',
+  access: 'access',
+  recovery: 'storage',
+  hub: 'integration',
+};
+
+const setupDestinationByControl: Record<string, RetailSetupDestination> = {
+  'Access & approvals': 'access',
+  Devices: 'devices',
+  Integrations: 'integration',
+  'Data & backup': 'storage',
+  'Retail Hub': 'integration',
+  Release: 'release',
+};
+
 function healthLabel(health: OperationalHealthSnapshot | null): string {
-  if (!health) return 'Health check not available';
+  if (!health) return 'Health evidence unavailable';
   if (health.status === 'healthy') return 'All local checks are healthy';
   if (health.status === 'degraded') return 'Some checks need attention';
   return 'A critical local check needs attention';
 }
 
-/** A small setup front door. It exposes status and one governed handoff, not fake configuration controls. */
-export function RetailSetupOverviewPanel({ workspaceStatus, systemInfo, health, deviceProfiles = [], onOpenAdvanced }: RetailSetupOverviewPanelProps): ReactNode {
+function stateLabel(state: SetupState): string {
+  return state === 'complete' ? 'Complete' : state === 'review' ? 'Review' : 'Needs setup';
+}
+
+/**
+ * Setup stays a status-led front door: it points to the governed control room
+ * rather than pretending that provider credentials, drivers, or recovery
+ * evidence have been supplied.
+ */
+export function RetailSetupOverviewPanel({
+  workspaceStatus,
+  systemInfo,
+  health,
+  deviceProfiles = [],
+  onOpenDestination,
+  onOpenAdvanced,
+}: RetailSetupOverviewPanelProps): ReactNode {
+  const operationalDevices = deviceProfiles.filter((profile) => profile.status === 'operational').length;
   const isBlocked = workspaceStatus?.externalWritePolicy === 'blocked';
   const dataLabel = workspaceStatus?.dataStatus === 'sample'
     ? 'Legacy sample cleanup required'
@@ -31,43 +76,77 @@ export function RetailSetupOverviewPanel({ workspaceStatus, systemInfo, health, 
         : workspaceStatus?.dataStatus === 'empty'
           ? 'Ready for your first setup'
           : 'Workspace provenance needs review';
-  const operationalDevices = deviceProfiles.filter((profile) => profile.status === 'operational').length;
+  const checks = useMemo<SetupCheck[]>(() => [
+    { id: 'classification', label: 'Workspace classification', detail: workspaceStatus?.status === 'configured' ? workspaceStatus.label : 'Classify the active retail workspace before connecting data.', state: workspaceStatus?.status === 'configured' ? 'complete' : 'review', Icon: Store },
+    { id: 'provenance', label: 'Data provenance', detail: dataLabel, state: workspaceStatus && workspaceStatus.dataStatus !== 'sample' && workspaceStatus.dataStatus !== 'unclassified' ? 'complete' : 'review', Icon: Database },
+    { id: 'migrations', label: 'Database migrations', detail: health ? `${health.appliedMigrations} applied migration${health.appliedMigrations === 1 ? '' : 's'}` : 'Run a local health check to verify migrations.', state: health?.migrationsValid ? 'complete' : health ? 'review' : 'unavailable', Icon: Database },
+    { id: 'audit', label: 'Audit history', detail: health?.auditChainValid ? 'Audit chain checks are valid' : 'Audit-chain evidence needs review.', state: health?.auditChainValid ? 'complete' : health ? 'review' : 'unavailable', Icon: ShieldCheck },
+    { id: 'payments', label: 'Payment methods', detail: 'Review tender and settlement policy in governed money controls.', state: 'unavailable', Icon: LockKeyhole },
+    { id: 'devices', label: 'Printer, scanner & scale', detail: deviceProfiles.length ? `${operationalDevices}/${deviceProfiles.length} device profile${deviceProfiles.length === 1 ? '' : 's'} operational` : 'No device profile is recorded.', state: operationalDevices > 0 ? 'complete' : deviceProfiles.length ? 'review' : 'unavailable', Icon: Wrench },
+    { id: 'access', label: 'Users, roles & approvals', detail: 'Review separation of duties and approval evidence in Access & approvals.', state: 'unavailable', Icon: Users },
+    { id: 'recovery', label: 'Data & recovery', detail: health?.databaseIntegrity ? 'Database integrity is currently valid; verify a restore drill separately.' : 'Recovery evidence has not been verified.', state: health?.databaseIntegrity ? 'review' : 'unavailable', Icon: HardDrive },
+    { id: 'hub', label: 'Retail Hub connection', detail: workspaceStatus?.mode === 'live' ? 'Live workspace mode requires connector conformance evidence.' : 'No live Hub connection is implied by this workspace.', state: 'unavailable', Icon: Radio },
+  ], [dataLabel, deviceProfiles.length, health, operationalDevices, workspaceStatus]);
+  const complete = checks.filter((check) => check.state === 'complete').length;
+  const progress = Math.round((complete / checks.length) * 100);
+  const controls = [
+    { title: 'Access & approvals', detail: 'Roles · SoD · step-up auth', Icon: Users },
+    { title: 'Devices', detail: 'Printer · scanner · drawer · scale', Icon: Wrench },
+    { title: 'Integrations', detail: 'Payments · GST · maps · channels', Icon: Radio },
+    { title: 'Data & backup', detail: 'Encryption · backup · restore', Icon: HardDrive },
+    { title: 'Retail Hub', detail: 'Sync · conflicts · migration', Icon: Database },
+    { title: 'Release', detail: 'Certification · update · rollback', Icon: ShieldCheck },
+  ] as const;
+  const openDestination = (destination: RetailSetupDestination): void => {
+    if (onOpenDestination) {
+      onOpenDestination(destination);
+      return;
+    }
+    onOpenAdvanced?.();
+  };
 
   return <section className="retail-setup-overview" data-testid="retail-setup-overview" aria-labelledby="retail-setup-overview-title">
     <header className="retail-setup-overview__header">
       <div>
-        <span className="eyebrow"><Settings2 size={14} aria-hidden="true" /> Setup / keep the store safe</span>
-        <h2 id="retail-setup-overview-title">Set up Epic BOS with confidence</h2>
-        <p>Configure stores, people, devices, backups, and integrations from one governed control room. Nothing is sent to Bakaloo or a provider from this summary.</p>
+        <span className="eyebrow"><Settings2 size={14} aria-hidden="true" /> Store setup</span>
+        <h1 id="retail-setup-overview-title" className="retail-front-door__title">Configure once. Operate safely every day.</h1>
+        <p>A guided setup checklist; complex control-room functions stay out of the daily store path.</p>
       </div>
-      <button type="button" className="button button--primary" onClick={onOpenAdvanced}>Open full setup <ArrowRight size={14} aria-hidden="true" /></button>
+      <div className="retail-setup-overview__progress" aria-label={`${progress}% of setup evidence complete`}>
+        <strong>{progress}% complete</strong><span>{complete} / {checks.length} checks evidenced</span>
+      </div>
     </header>
 
-    <div className="retail-setup-overview__status" aria-label="Workspace setup status">
-      <article className="retail-setup-overview__status-card">
-        <span className="retail-setup-overview__icon"><Store size={18} aria-hidden="true" /></span>
-        <div><span className="eyebrow">Workspace</span><strong>{workspaceStatus?.label ?? 'Status unavailable'}</strong><small>{dataLabel}</small></div>
-      </article>
-      <article className="retail-setup-overview__status-card">
-        <span className="retail-setup-overview__icon"><HardDrive size={18} aria-hidden="true" /></span>
-        <div><span className="eyebrow">Devices</span><strong>{deviceProfiles.length ? `${operationalDevices}/${deviceProfiles.length} operational` : 'No device profiles'}</strong><small>{deviceProfiles.length ? 'USB, Bluetooth, network, or manual evidence' : 'Add a scanner, printer, drawer, or scale through governed setup.'}</small></div>
-      </article>
-      <article className="retail-setup-overview__status-card">
-        <span className="retail-setup-overview__icon"><ShieldCheck size={18} aria-hidden="true" /></span>
-        <div><span className="eyebrow">Safe boundary</span><strong>{isBlocked ? 'External writes blocked' : 'Governed writes enabled'}</strong><small>{workspaceStatus?.nextAction ?? 'Review workspace provenance before connecting data.'}</small></div>
-      </article>
-      <article className="retail-setup-overview__status-card">
-        <span className="retail-setup-overview__icon"><Database size={18} aria-hidden="true" /></span>
-        <div><span className="eyebrow">Local health</span><strong>{healthLabel(health)}</strong><small>{health ? `${health.appliedMigrations} migrations · ${health.pendingOutboxEvents} pending sync events` : 'Run the full setup control room to inspect health.'}</small></div>
-      </article>
+    <section className="retail-setup-overview__status" aria-label="Workspace safety status">
+      <StatusCard icon={<Store size={18} aria-hidden="true" />} label="Workspace" value={workspaceStatus?.label ?? 'Status unavailable'} detail={dataLabel} />
+      <StatusCard icon={<HardDrive size={18} aria-hidden="true" />} label="Devices" value={deviceProfiles.length ? `${operationalDevices}/${deviceProfiles.length} operational` : 'No device profiles'} detail={deviceProfiles.length ? 'Profile status, not a claimed driver certification.' : 'Add a scanner, printer, drawer, or scale through setup.'} />
+      <StatusCard icon={isBlocked ? <ShieldCheck size={18} aria-hidden="true" /> : <ShieldAlert size={18} aria-hidden="true" />} label="External writes" value={isBlocked ? 'Blocked' : workspaceStatus ? 'Governed' : 'Unknown'} detail={workspaceStatus?.nextAction ?? 'Review workspace provenance before connecting data.'} />
+      <StatusCard icon={<Database size={18} aria-hidden="true" />} label="Local health" value={healthLabel(health)} detail={health ? `${health.appliedMigrations} migrations · ${health.pendingOutboxEvents} pending sync event${health.pendingOutboxEvents === 1 ? '' : 's'}` : 'Run the full setup control room to inspect health.'} />
+    </section>
+
+    <div className="retail-setup-overview__main">
+      <section className="retail-setup-overview__tasks" aria-labelledby="setup-checklist-title">
+        <header><span className="eyebrow">Setup checklist</span><h2 id="setup-checklist-title">Evidence before go-live</h2></header>
+        {checks.map((check, index) => <button type="button" key={check.id} className="retail-setup-overview__check" data-state={check.state} onClick={() => openDestination(setupDestinationByCheck[check.id] ?? 'organization')}>
+          <span className="retail-setup-overview__index">{index + 1}</span>
+          <span className="retail-setup-overview__icon"><check.Icon size={17} aria-hidden="true" /></span>
+          <span className="retail-setup-overview__check-copy"><strong>{check.label}</strong><small>{check.detail}</small></span>
+          <em>{stateLabel(check.state)}</em><ArrowRight size={15} aria-hidden="true" />
+        </button>)}
+      </section>
+      <aside className="retail-setup-overview__tasks" aria-labelledby="admin-controls-title">
+        <header><span className="eyebrow">Admin & controls</span><h2 id="admin-controls-title">Keep advanced work separate</h2><p>Open a control only when it is needed.</p></header>
+        {controls.map(({ title, detail, Icon }) => <button type="button" key={title} className="retail-setup-overview__control" onClick={() => openDestination(setupDestinationByControl[title] ?? 'organization')}>
+          <span className="retail-setup-overview__icon"><Icon size={17} aria-hidden="true" /></span><span><strong>{title}</strong><small>{detail}</small></span><ArrowRight size={15} aria-hidden="true" />
+        </button>)}
+        <p className="retail-setup-overview__guard"><LockKeyhole size={14} aria-hidden="true" /> Provider secrets never enter renderer code.</p>
+      </aside>
     </div>
 
-    <div className="retail-setup-overview__tasks" aria-label="Setup areas">
-      <div><Users size={17} aria-hidden="true" /><strong>People & access</strong><span>Roles, approvals, and separation of duties.</span></div>
-      <div><HardDrive size={17} aria-hidden="true" /><strong>Backups & recovery</strong><span>Verified backups and restore evidence.</span></div>
-      <div><LockKeyhole size={17} aria-hidden="true" /><strong>Integrations & devices</strong><span>Credential versions and hardware certification.</span></div>
-    </div>
-
-    <footer className="retail-setup-overview__footer">Setup actions remain approval-gated. Provider credentials, device drivers, and live imports are never implied by this screen. {systemInfo ? `Epic BOS ${systemInfo.version} · ${systemInfo.platform} · ${systemInfo.dataMode}` : 'Build information unavailable.'}</footer>
+    <details className="retail-setup-overview__footer"><summary>Technical context</summary><p>Setup actions remain approval-gated. Provider credentials, device drivers, recovery drills, and live imports are never implied by this screen. {systemInfo ? `Epic BOS ${systemInfo.version} · ${systemInfo.platform} · ${systemInfo.dataMode}.` : 'Build information unavailable.'}</p></details>
   </section>;
+}
+
+function StatusCard({ icon, label, value, detail }: { icon: ReactNode; label: string; value: string; detail: string }): ReactNode {
+  return <article className="retail-setup-overview__status-card"><span className="retail-setup-overview__icon">{icon}</span><div><span className="eyebrow">{label}</span><strong>{value}</strong><small>{detail}</small></div></article>;
 }

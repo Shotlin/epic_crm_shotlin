@@ -67,7 +67,7 @@ const submodulesByRoute = {
   sell: [
     { id: 'pos', label: 'Point of sale', description: 'Start a counter sale', icon: ShoppingBag },
     { id: 'orders', label: 'Online orders', description: 'Review and pack orders', icon: PackageCheck },
-    { id: 'returns', label: 'Returns & exchanges', description: 'Resolve customer returns', icon: ClipboardCheck },
+    { id: 'returns', label: 'Returns and exchange', description: 'Resolve customer returns', icon: ClipboardCheck },
     { id: 'pricing', label: 'Products & pricing', description: 'Catalog, GST and price rules', icon: Boxes },
   ],
   stock: [
@@ -162,6 +162,9 @@ export function RetailWorkspaceNavigation({
 }: RetailWorkspaceNavigationProps): ReactNode {
   const selectedRoute = resolveRetailWorkspaceRoute(activeRoute);
   const navigationClassName = ['retail-workspace-navigation', className].filter(Boolean).join(' ');
+  // Keep one calm task group open at a time. This keeps the rail compact and
+  // lets a cashier understand the current context immediately; every other
+  // group remains one click away.
   const [expandedRoutes, setExpandedRoutes] = useState<Set<RetailWorkspaceRouteId>>(() => new Set([selectedRoute.id]));
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const permittedAdvancedWorkspaceIds = new Set(advancedWorkspaceIds ?? []);
@@ -169,21 +172,12 @@ export function RetailWorkspaceNavigation({
   const canOpenRetailExtensions = Boolean(onAdvancedNavigate) && permittedAdvancedWorkspaces.length > 0;
 
   useEffect(() => {
-    setExpandedRoutes((current) => {
-      if (current.has(selectedRoute.id)) return current;
-      const next = new Set(current);
-      next.add(selectedRoute.id);
-      return next;
-    });
+    // Route changes can come from keyboard shortcuts and the command palette.
+    setExpandedRoutes(new Set([selectedRoute.id]));
   }, [selectedRoute.id]);
 
   function toggleRoute(routeId: RetailWorkspaceRouteId): void {
-    setExpandedRoutes((current) => {
-      const next = new Set(current);
-      if (next.has(routeId)) next.delete(routeId);
-      else next.add(routeId);
-      return next;
-    });
+    setExpandedRoutes(new Set([routeId]));
   }
 
   return (

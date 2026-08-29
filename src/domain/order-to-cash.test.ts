@@ -75,6 +75,45 @@ describe('order-to-cash revenue ledger', () => {
     expect(issued.serviceMilestones[0]).toMatchObject({ status: 'invoiced', version: 4 });
   });
 
+  it('keeps a draft invoice and accounting handoff equal to separately rounded source lines', () => {
+    const source = fulfilledState();
+    const order = source.salesOrders[0]!;
+    const baseLine = order.lines[0]!;
+    const microLines = ['1', '2', '3'].map((suffix) => ({
+      ...baseLine,
+      id: `invoice-rounding-line-${suffix}`,
+      description: `Micro service ${suffix}`,
+      quantity: 1,
+      unitPrice: 0.01,
+      listUnitPrice: 0.01,
+      taxableValue: 0.01,
+      discountAmount: 0,
+      gstRate: 18,
+      cessRate: 1,
+    }));
+    const state = {
+      ...source,
+      salesOrders: source.salesOrders.map((candidate) => candidate.id === order.id ? { ...candidate, lines: microLines } : candidate),
+    };
+
+    const drafted = createInvoiceDraft(state, {
+      salesOrderId: order.id,
+      documentKind: 'tax-invoice',
+      invoiceDate: '2026-10-01',
+      paymentTermId: 'payment-term-net-15',
+      reverseCharge: false,
+      basis: 'order-completion',
+      milestoneIds: [],
+    }, 'user-avery', 'invoice-rounding', '2026-10-01T08:00:00.000Z');
+
+    expect(drafted.invoices[0]).toMatchObject({
+      taxPreview: { taxableValue: 0.03, cgst: 0, sgst: 0, cess: 0, totalTax: 0, grandTotal: 0.03 },
+      amountDue: 0.03,
+    });
+    const issued = issueInvoice(drafted, { id: 'invoice-rounding', expectedVersion: 1 }, 'user-priya', '2026-10-01T09:00:00.000Z');
+    expect(issued.journalDrafts[0]).toMatchObject({ totalDebit: 0.03, totalCredit: 0.03 });
+  });
+
   it('handles full-order invoicing, credit notes, cash allocation, reconciliation, and journal export', () => {
     const drafted = createInvoiceDraft(fulfilledState(), { salesOrderId: 'order-otc-1', documentKind: 'tax-invoice', invoiceDate: '2026-10-01', paymentTermId: 'payment-term-net-15', reverseCharge: false, basis: 'order-completion', milestoneIds: [] }, 'user-avery', 'invoice-full', '2026-10-01T08:00:00.000Z');
     const issued = issueInvoice(drafted, { id: 'invoice-full', expectedVersion: 1 }, 'user-priya', '2026-10-01T09:00:00.000Z');

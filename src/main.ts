@@ -59,11 +59,18 @@ if (started) {
 const isSmokeProcess = process.env.EPIC_BOS_SMOKE === '1';
 const e2eUserData = process.env.EPIC_BOS_E2E_USER_DATA?.trim();
 const isE2eProcess = process.env.EPIC_BOS_E2E === '1' && Boolean(e2eUserData);
+const isVisibleE2eProcess = isE2eProcess && process.env.EPIC_BOS_E2E_SHOW_WINDOW === '1';
 const isIsolatedAutomationProcess = isSmokeProcess || isE2eProcess;
 // Packaged smoke is a headless launch probe, not a graphics certification.
 // Disable Chromium hardware acceleration only for the disposable smoke
 // profile so a missing/unstable GPU driver cannot hide renderer regressions.
-if (isSmokeProcess) app.disableHardwareAcceleration();
+if (isSmokeProcess) {
+  // Electron can still initialise a GPU process on Windows even after
+  // hardware acceleration is disabled. The smoke profile is intentionally a
+  // headless functional probe, so force Chromium's software path as well.
+  app.disableHardwareAcceleration();
+  app.commandLine.appendSwitch('disable-gpu');
+}
 // Packaged automation runs must never open the operator's real profile. The
 // launcher supplies a disposable absolute directory and this override is
 // applied before Electron creates its session or resolves app.getPath().
@@ -274,7 +281,12 @@ function createWindow(): BrowserWindow {
         finishSmoke(1);
       },
     );
-  } else if (!isE2eProcess) {
+  } else if (isVisibleE2eProcess) {
+    // Only the visual evidence scenario presents the disposable E2E window;
+    // ordinary interaction journeys stay hidden and deterministic. Showing
+    // this isolated window lets Chromium's compositor produce real pixels.
+    mainWindow.once('ready-to-show', () => mainWindow.show());
+  } else {
     mainWindow.once('ready-to-show', () => {
       mainWindow.maximize();
       mainWindow.show();
@@ -319,8 +331,14 @@ app.whenReady().then(async () => {
   );
   const protectedDatabase = new ProtectedDatabaseFile(databasePath, masterKey);
   await protectedDatabase.prepareRuntime();
-  const archivedRestorePath = BusinessDatabase.applyStagedRestore(protectedDatabase.runtimePath);
-  if (archivedRestorePath) await protectedDatabase.removePlaintextPath(archivedRestorePath);
+  await protectedDatabase.reconcileLegacyRestoreArchives();
+  const stagedRestore = await protectedDatabase.prepareStagedRestore();
+  if (stagedRestore !== 'none') {
+    if (!(await protectedDatabase.applyPreparedStagedRestore())) {
+      throw new Error('Prepared restore stage disappeared before it could be applied.');
+    }
+    await protectedDatabase.finalizeStagedRestore();
+  }
   const database = new BusinessDatabase(protectedDatabase.runtimePath);
   await database.initialize();
   const crmStore = new CrmStore(database, dataDirectory);

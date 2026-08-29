@@ -300,8 +300,8 @@ describe('governed retail counter returns', () => {
         retailSaleLineId: sale.saleLineId,
         sourceLineQuantity: 2,
         quantity: 1,
-        original: expect.objectContaining({ taxableValue: 270, discountAmount: 30, cessAmount: 2.7, costValue: 200 }),
-        returnValues: { taxableValue: 135, discountAmount: 15, gstAmount: 24.3, cessAmount: 1.35, lineTotal: 160.65, costValue: 100 },
+        original: expect.objectContaining({ taxableValue: 270, discountAmount: 30, cessAmount: 2.7, lineCostTotal: 200 }),
+        returnValues: { taxableValue: 135, discountAmount: 15, gstAmount: 24.3, cessAmount: 1.35, lineTotal: 160.65, lineCostTotal: 100 },
       })],
     });
     expect(requested.binBalances.find(({ binId }) => binId === 'bin-store-shelf')).toMatchObject({ quantity: 18, available: 18 });

@@ -12,10 +12,12 @@ const party = { accounts: [] } as unknown as Pick<PartySnapshot, 'accounts'>;
 afterEach(() => cleanup());
 
 describe('RetailInsightsOverviewPanel', () => {
-  it('stays honest and empty without governed records', () => {
+  it('stays honest and visual without governed records', () => {
     render(<RetailInsightsOverviewPanel dashboard={dashboard} revenue={revenue} party={party} onOpenAdvanced={vi.fn()} />);
-    expect(screen.getByRole('heading', { name: /See what needs your attention/ })).toBeTruthy();
-    expect(screen.getByText('No sales chart yet')).toBeTruthy();
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    expect(screen.getByRole('heading', { level: 1, name: /See the business. Then see the reason behind the numbers/ })).toBeTruthy();
+    expect(screen.getAllByText('No governed data yet').length).toBeGreaterThan(0);
+    expect(screen.getByText('Evidence coverage')).toBeTruthy();
     expect(screen.queryByText('$')).toBeNull();
   });
 });

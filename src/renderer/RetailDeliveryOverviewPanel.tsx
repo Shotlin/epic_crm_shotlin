@@ -1,31 +1,144 @@
-import { AlertTriangle, CheckCircle2, Clock3, MapPin, PackageCheck, RotateCcw, ShieldCheck, Truck } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import { AlertTriangle, ArrowRight, CheckCircle2, Clock3, MapPin, PackageCheck, Radio, RotateCcw, ShieldCheck, Truck } from 'lucide-react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { computeRetailDeliveryOverview } from '../domain/retail-delivery-overview';
 import type { RevenueOpsSnapshot } from '../shared/revenue-ops-contracts';
-import { RetailDeliveryMapSurface } from './RetailDeliveryMapSurface';
 import { RetailCoverageMapSurface } from './RetailCoverageMapSurface';
+import { RetailDeliveryMapSurface } from './RetailDeliveryMapSurface';
 import type { RetailHubCoverageMap } from '../shared/retail-hub-coverage-map-contracts';
 
 const dateFormatter = new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', timeZone: 'Asia/Kolkata' });
+const inr = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
 
-export function RetailDeliveryOverviewPanel({ revenue, onOpenAdvanced, coverageMap, coverageMapBusy, coverageMapError, onFetchCoverageMap }: { revenue: RevenueOpsSnapshot; onOpenAdvanced: () => void; coverageMap?: RetailHubCoverageMap; coverageMapBusy?: boolean; coverageMapError?: string; onFetchCoverageMap?: (input: { baseUrl: string; shopId: string }) => Promise<void> }): ReactNode {
+export interface RetailDeliveryOverviewPanelProps {
+  revenue: RevenueOpsSnapshot;
+  onOpenAdvanced: () => void;
+  coverageMap?: RetailHubCoverageMap;
+  coverageMapBusy?: boolean;
+  coverageMapError?: string;
+  onFetchCoverageMap?: (input: { baseUrl: string; shopId: string }) => Promise<void>;
+}
+
+/**
+ * The dispatch-manager front door deliberately makes uncertainty visible.
+ * It renders only local delivery evidence or an explicitly labelled Hub snapshot;
+ * it never manufactures a rider route, ETA, or customer map pin.
+ */
+export function RetailDeliveryOverviewPanel({
+  revenue,
+  onOpenAdvanced,
+  coverageMap,
+  coverageMapBusy = false,
+  coverageMapError,
+  onFetchCoverageMap,
+}: RetailDeliveryOverviewPanelProps): ReactNode {
   const [hubBaseUrl, setHubBaseUrl] = useState('');
   const [shopId, setShopId] = useState('');
-  const report = computeRetailDeliveryOverview({ ...revenue, now: revenue.generatedAt });
+  const report = useMemo(() => computeRetailDeliveryOverview({ ...revenue, now: revenue.generatedAt }), [revenue]);
+  const onTimeRate = report.summary.activePromises > 0
+    ? Math.round(((report.summary.activePromises - report.summary.overduePromises) / report.summary.activePromises) * 1000) / 10
+    : undefined;
+  const codCustody = revenue.codCollectionCases
+    .filter((item) => item.status !== 'bank-matched' && item.status !== 'cancelled')
+    .reduce((sum, item) => sum + item.expectedAmount, 0);
+  const riderRows = useMemo(() => {
+    const byRider = new Map<string, { riderId: string; observations: number; state: 'live' | 'stale' | 'awaiting' | 'blocked'; observedAt?: string }>();
+    for (const signal of revenue.retailDeliveryMapSignals ?? []) {
+      const current = byRider.get(signal.riderId);
+      const nextState = signal.status === 'live-evidence'
+        ? 'live'
+        : signal.status === 'stale'
+          ? 'stale'
+          : signal.status === 'blocked'
+            ? 'blocked'
+            : 'awaiting';
+      const priority = { live: 1, awaiting: 2, stale: 3, blocked: 4 } as const;
+      if (!current || priority[nextState] >= priority[current.state]) {
+        byRider.set(signal.riderId, { riderId: signal.riderId, observations: (current?.observations ?? 0) + 1, state: nextState, observedAt: signal.observedAt ?? current?.observedAt });
+      } else {
+        byRider.set(signal.riderId, { ...current, observations: current.observations + 1 });
+      }
+    }
+    return [...byRider.values()].sort((left, right) => left.riderId.localeCompare(right.riderId));
+  }, [revenue.retailDeliveryMapSignals]);
+  const queue = report.promiseRows.slice(0, 5);
   const cards = [
-    ['Due today', report.summary.dueTodayPromises, Clock3, 'blue'],
-    ['Dispatch queue', report.summary.dispatchBacklog, PackageCheck, 'blue'],
-    ['In transit', report.summary.inTransit, Truck, 'blue'],
-    ['COD to evidence', report.summary.codOpen, ShieldCheck, report.summary.codAttention ? 'amber' : 'blue'],
+    { label: 'Awaiting dispatch', value: report.summary.dispatchBacklog.toLocaleString('en-IN'), detail: report.summary.dispatchBacklog ? 'Packed or ready to leave' : 'No package waiting', Icon: PackageCheck, tone: 'amber' },
+    { label: 'In transit', value: report.summary.inTransit.toLocaleString('en-IN'), detail: report.summary.inTransit ? 'Shipment evidence open' : 'No active shipment', Icon: Truck, tone: 'blue' },
+    { label: 'On-time promise', value: onTimeRate === undefined ? '—' : `${onTimeRate}%`, detail: onTimeRate === undefined ? 'No active promises yet' : `${report.summary.overduePromises} overdue`, Icon: Clock3, tone: onTimeRate !== undefined && onTimeRate < 90 ? 'amber' : 'green' },
+    { label: 'Returns / RTO', value: report.summary.returnsAttention.toLocaleString('en-IN'), detail: report.summary.returnsAttention ? 'Need review' : 'No return exception', Icon: RotateCcw, tone: report.summary.returnsAttention ? 'red' : 'green' },
+    { label: 'COD custody', value: inr.format(codCustody), detail: `${report.summary.codOpen} open case${report.summary.codOpen === 1 ? '' : 's'}`, Icon: ShieldCheck, tone: report.summary.codAttention ? 'amber' : 'blue' },
   ] as const;
+
   return <section className="retail-delivery-overview" data-testid="retail-delivery-overview" aria-labelledby="retail-delivery-overview-title">
-    <header className="retail-delivery-overview__header"><div><span className="eyebrow"><Truck size={14} aria-hidden="true" /> Deliver / Control</span><h2 id="retail-delivery-overview-title">Keep every promise visible</h2><p>Commitments, dispatch custody, COD, and returns are shown from Epic BOS evidence. Carrier GPS and live ETA are intentionally not inferred.</p></div><button type="button" className="button button--quiet" onClick={onOpenAdvanced}>Open delivery controls <Truck size={14} aria-hidden="true" /></button></header>
-    <div className="retail-delivery-overview__cards" aria-label="Delivery control summary">{cards.map(([label, value, Icon, tone]) => <div key={label} data-tone={tone}><Icon size={16} aria-hidden="true" /><span>{label}</span><strong>{value}</strong></div>)}</div>
-    {report.attention.length ? <div className="retail-delivery-overview__attention" role="status"><AlertTriangle size={16} aria-hidden="true" /><div><strong>Review before promising more</strong><p>{report.attention.join(' · ')}</p></div></div> : <div className="retail-delivery-overview__clear"><CheckCircle2 size={16} aria-hidden="true" /><span>No delivery exception is recorded in this local view.</span></div>}
-    <RetailDeliveryMapSurface signals={revenue.retailDeliveryMapSignals} now={report.generatedAt} />
-    <form className="retail-coverage-map__connect" onSubmit={(event) => { event.preventDefault(); if (onFetchCoverageMap) void onFetchCoverageMap({ baseUrl: hubBaseUrl.trim(), shopId: shopId.trim() }); }}><div><span className="eyebrow">Bakaloo Hub / coverage</span><strong>Review real customer coverage</strong><small>Enter the credential-free Hub URL and shop UUID. The Hub remains the authority; this app only reads the projection.</small></div><label>Hub URL<input type="url" value={hubBaseUrl} onChange={(event) => setHubBaseUrl(event.target.value)} placeholder="https://hub.example/api" required /></label><label>Shop UUID<input value={shopId} onChange={(event) => setShopId(event.target.value)} placeholder="11111111-1111-4111-8111-111111111111" required /></label><button type="submit" className="button button--primary" disabled={!onFetchCoverageMap || coverageMapBusy}>{coverageMapBusy ? 'Loading…' : 'Load coverage'}</button>{coverageMapError ? <p role="alert">{coverageMapError}</p> : null}</form>
-    <RetailCoverageMapSurface coverage={coverageMap} />
-    <div className="retail-delivery-overview__lower"><div><header><div><span className="eyebrow">Promise calendar</span><h3>Next customer commitments</h3></div><span>{report.summary.activePromises} active</span></header>{report.promiseRows.slice(0, 6).map((row) => <div className="retail-delivery-overview__promise" key={row.id} data-state={row.state}><span>{row.state === 'overdue' ? <AlertTriangle size={14} /> : <Clock3 size={14} />}</span><div><strong>{row.orderNumber}</strong><small>{row.paymentMode === 'cod' ? 'COD' : 'Prepaid'} · deliver by {dateFormatter.format(new Date(row.deliveryTo))}</small></div><em>{row.state.replace('-', ' ')}</em></div>)}{!report.promiseRows.length ? <p className="bharat-empty"><Clock3 size={18} />No active delivery promises are recorded.</p> : null}</div><aside><header><div><span className="eyebrow">Serviceability</span><h3>Can we promise?</h3></div><MapPin size={17} /></header><strong>{report.summary.serviceablePincodes}</strong><p>active pincode policies</p><small>Policy evidence only. Carrier coverage and route ETA still require certified provider data.</small><button type="button" className="button button--quiet" onClick={onOpenAdvanced}>Review policy and custody <RotateCcw size={14} /></button></aside></div>
+    <header className="retail-delivery-overview__header">
+      <div>
+        <span className="eyebrow"><Truck size={14} aria-hidden="true" /> Delivery control</span>
+        <h1 id="retail-delivery-overview-title" className="retail-front-door__title">Promise realistically. Dispatch visibly. Reconcile COD.</h1>
+        <p>Orders, rider freshness, customer promises and cash custody are shown from recorded evidence—not assumed carrier data.</p>
+      </div>
+      <button type="button" className="button button--quiet" onClick={onOpenAdvanced}>Open delivery controls <ArrowRight size={14} aria-hidden="true" /></button>
+    </header>
+
+    <div className="retail-delivery-overview__cards" aria-label="Delivery control summary" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))' }}>
+      {cards.map(({ label, value, detail, Icon, tone }) => <div key={label} data-tone={tone}>
+        <Icon size={16} aria-hidden="true" />
+        <span>{label}</span><strong>{value}</strong><small>{detail}</small>
+      </div>)}
+    </div>
+
+    {report.attention.length ? <div className="retail-delivery-overview__attention" role="status">
+      <AlertTriangle size={16} aria-hidden="true" />
+      <div><strong>Resolve an exception before promising more</strong><p>{report.attention.join(' · ')}</p></div>
+    </div> : <div className="retail-delivery-overview__clear" role="status"><CheckCircle2 size={16} aria-hidden="true" /><span>No delivery exception is recorded in this local view.</span></div>}
+
+    <div className="retail-delivery-overview__lower">
+      <div>
+        <header><div><span className="eyebrow">Live dispatch map</span><h3>Rider evidence, not a simulated route</h3></div><span><Radio size={13} aria-hidden="true" /> refreshed from recorded signals</span></header>
+        <RetailDeliveryMapSurface signals={revenue.retailDeliveryMapSignals} now={report.generatedAt} />
+      </div>
+      <aside aria-labelledby="dispatch-queue-title">
+        <header><div><span className="eyebrow">Dispatch queue</span><h3 id="dispatch-queue-title">Next commitments</h3></div><Clock3 size={17} aria-hidden="true" /></header>
+        {queue.length ? <div className="retail-delivery-overview__queue" role="list" style={{ display: 'grid', gap: 8 }}>
+          {queue.map((row) => <article key={row.id} role="listitem" data-state={row.state} style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr) auto', alignItems: 'center', gap: 9, padding: '10px 0', borderTop: '1px solid var(--line)' }}>
+            <span>{row.state === 'overdue' ? <AlertTriangle size={14} aria-hidden="true" /> : <MapPin size={14} aria-hidden="true" />}</span>
+            <div><strong>{row.orderNumber}</strong><small>{row.paymentMode === 'cod' ? 'COD' : 'Prepaid'} · deliver by {dateFormatter.format(new Date(row.deliveryTo))}</small></div>
+            <em>{row.state.replace('-', ' ')}</em>
+          </article>)}
+        </div> : <p className="bharat-empty"><PackageCheck size={18} aria-hidden="true" />No active delivery promises are recorded.</p>}
+        <button type="button" className="button button--quiet" onClick={onOpenAdvanced}>Review dispatch queue <ArrowRight size={14} aria-hidden="true" /></button>
+      </aside>
+    </div>
+
+    <div className="retail-delivery-overview__lower">
+      <div>
+        <header><div><span className="eyebrow">Rider workload</span><h3>Signal freshness by rider</h3></div><span>{riderRows.length} rider{riderRows.length === 1 ? '' : 's'}</span></header>
+        {riderRows.length ? <div className="retail-delivery-overview__promise" role="list" style={{ display: 'grid' }}>
+          {riderRows.slice(0, 6).map((rider) => <div className="retail-delivery-overview__promise" key={rider.riderId} role="listitem" data-state={rider.state === 'blocked' ? 'overdue' : undefined}>
+            <span><Radio size={14} aria-hidden="true" /></span><div><strong>{rider.riderId}</strong><small>{rider.observations} recorded observation{rider.observations === 1 ? '' : 's'}{rider.observedAt ? ` · ${dateFormatter.format(new Date(rider.observedAt))}` : ''}</small></div><em>{rider.state}</em>
+          </div>)}
+        </div> : <p className="bharat-empty"><Radio size={18} aria-hidden="true" />No rider-device observation is recorded.</p>}
+      </div>
+      <aside>
+        <header><div><span className="eyebrow">Serviceability</span><h3>Can we promise?</h3></div><MapPin size={17} aria-hidden="true" /></header>
+        <strong>{report.summary.serviceablePincodes}</strong><p>active pincode policies</p><small>Policy evidence is available locally. Carrier coverage and ETA still require certified provider evidence.</small>
+        <button type="button" className="button button--quiet" onClick={onOpenAdvanced}>Review policy and custody <RotateCcw size={14} aria-hidden="true" /></button>
+      </aside>
+    </div>
+
+    <details className="retail-delivery-overview__disclosure">
+      <summary>Connect or inspect Bakaloo Hub coverage</summary>
+      <div className="retail-coverage-map__connect">
+        <div><span className="eyebrow">Bakaloo Hub / coverage</span><strong>Review real customer coverage</strong><small>Enter a credential-free Hub URL and shop UUID. The Hub stays authoritative; this app only reads the projection.</small></div>
+        <label>Hub URL<input type="url" value={hubBaseUrl} onChange={(event) => setHubBaseUrl(event.target.value)} placeholder="https://hub.example/api" required /></label>
+        <label>Shop UUID<input value={shopId} onChange={(event) => setShopId(event.target.value)} placeholder="11111111-1111-4111-8111-111111111111" required /></label>
+        <button type="button" className="button button--primary" disabled={!onFetchCoverageMap || coverageMapBusy || !hubBaseUrl.trim() || !shopId.trim()} onClick={() => {
+          if (onFetchCoverageMap) void onFetchCoverageMap({ baseUrl: hubBaseUrl.trim(), shopId: shopId.trim() });
+        }}>{coverageMapBusy ? 'Loading coverage…' : 'Load coverage'}</button>
+        {coverageMapError ? <p role="alert">{coverageMapError}</p> : null}
+      </div>
+      <RetailCoverageMapSurface coverage={coverageMap} />
+    </details>
+
     <footer className="retail-delivery-overview__footer"><ShieldCheck size={14} aria-hidden="true" /> Last local evidence read {dateFormatter.format(new Date(report.generatedAt))}. Nothing here writes to Bakaloo or a carrier.</footer>
   </section>;
 }

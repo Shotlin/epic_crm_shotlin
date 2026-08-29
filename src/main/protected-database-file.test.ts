@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { once } from 'node:events';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -172,6 +172,158 @@ describe('ProtectedDatabaseFile', () => {
 
       await expect(protection.prepareRuntime()).rejects.toThrow(/integrity check failed|not a database/i);
       expect(EncryptedFileEnvelope.isEncrypted(await readFile(protection.encryptedPath))).toBe(true);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('applies an encrypted restore candidate and removes it only after the local swap consumes it', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'epic-bos-protected-db-encrypted-restore-'));
+    const databasePath = path.join(directory, 'epic-bos.sqlite3');
+    const restoreSourcePath = path.join(directory, 'restore-source.sqlite3');
+    const key = randomBytes(32);
+    try {
+      const original = new BusinessDatabase(databasePath);
+      await original.initialize();
+      original.close();
+
+      const protection = new ProtectedDatabaseFile(databasePath, key);
+      expect(await protection.prepareRuntime()).toBe('legacy-plaintext-migrated');
+
+      const restoreSource = new DatabaseSync(restoreSourcePath);
+      restoreSource.exec("CREATE TABLE restored_marker(value TEXT NOT NULL); INSERT INTO restored_marker VALUES ('encrypted-stage');");
+      restoreSource.close();
+      const restoreEnvelope = EncryptedFileEnvelope.forArtifact(key, 'database-backup');
+      await restoreEnvelope.seal(restoreSourcePath, protection.encryptedStagedRestorePath);
+
+      const sealedCandidate = await readFile(protection.encryptedStagedRestorePath);
+      expect(EncryptedFileEnvelope.isEncrypted(sealedCandidate)).toBe(true);
+      expect(sealedCandidate.includes(Buffer.from('encrypted-stage'))).toBe(false);
+      expect(await protection.prepareStagedRestore()).toBe('encrypted-staged');
+
+      expect(await protection.applyPreparedStagedRestore()).toBe(true);
+      await protection.finalizeStagedRestore();
+
+      await expect(readFile(protection.stagedRestorePath)).rejects.toMatchObject({ code: 'ENOENT' });
+      await expect(readFile(protection.encryptedStagedRestorePath)).rejects.toMatchObject({ code: 'ENOENT' });
+      const restored = new DatabaseSync(protection.runtimePath, { readOnly: true, allowExtension: false });
+      expect((restored.prepare('SELECT value FROM restored_marker').get() as { value: string }).value).toBe('encrypted-stage');
+      restored.close();
+      await protection.removePlaintextArtifacts();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('checkpoints a recovered WAL before sealing so committed data survives the encrypted restart', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'epic-bos-protected-db-wal-seal-'));
+    const databasePath = path.join(directory, 'epic-bos.sqlite3');
+    const key = randomBytes(32);
+    const protection = new ProtectedDatabaseFile(databasePath, key);
+    const childScript = `
+      const { DatabaseSync } = require('node:sqlite');
+      const database = new DatabaseSync(process.argv[1]);
+      database.exec("PRAGMA journal_mode=WAL; CREATE TABLE seal_marker(value TEXT NOT NULL); INSERT INTO seal_marker VALUES ('checkpointed-before-seal');");
+      process.stdout.write('ready\\n');
+      setInterval(() => {}, 1000);
+    `;
+    const child = spawn(process.execPath, ['-e', childScript, protection.runtimePath], {
+      stdio: ['ignore', 'pipe', 'ignore'],
+      windowsHide: true,
+    });
+    try {
+      await once(child.stdout!, 'data');
+      child.kill('SIGKILL');
+      await once(child, 'exit');
+
+      expect(await protection.prepareRuntime()).toBe('recovered-runtime');
+      expect(await protection.sealRuntime()).not.toBeNull();
+      const reopened = new ProtectedDatabaseFile(databasePath, key);
+      expect(await reopened.prepareRuntime()).toBe('encrypted-persisted');
+      const verified = new DatabaseSync(reopened.runtimePath, { readOnly: true, allowExtension: false });
+      expect((verified.prepare('SELECT value FROM seal_marker').get() as { value: string }).value).toBe('checkpointed-before-seal');
+      verified.close();
+      await reopened.removePlaintextArtifacts();
+    } finally {
+      if (!child.killed) child.kill('SIGKILL');
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('retires an old plaintext restore archive only after sealing the current runtime', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'epic-bos-protected-db-archive-cleanup-'));
+    const databasePath = path.join(directory, 'epic-bos.sqlite3');
+    const key = randomBytes(32);
+    try {
+      const initial = new BusinessDatabase(databasePath);
+      await initial.initialize();
+      initial.close();
+
+      const protection = new ProtectedDatabaseFile(databasePath, key);
+      expect(await protection.prepareRuntime()).toBe('legacy-plaintext-migrated');
+      expect(await protection.sealRuntime()).not.toBeNull();
+      expect(await protection.prepareRuntime()).toBe('encrypted-persisted');
+      const archivePath = `${protection.runtimePath}.before-restore-legacy`;
+      await copyFile(protection.runtimePath, archivePath);
+
+      await protection.reconcileLegacyRestoreArchives();
+
+      await expect(readFile(archivePath)).rejects.toMatchObject({ code: 'ENOENT' });
+      expect(EncryptedFileEnvelope.isEncrypted(await readFile(protection.encryptedPath))).toBe(true);
+      await protection.removePlaintextArtifacts();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('recovers an interrupted encrypted-stage materialization only when the two candidates match', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'epic-bos-protected-db-stage-recovery-'));
+    const databasePath = path.join(directory, 'epic-bos.sqlite3');
+    const sourcePath = path.join(directory, 'restore-source.sqlite3');
+    const key = randomBytes(32);
+    try {
+      const source = new DatabaseSync(sourcePath);
+      source.exec("CREATE TABLE recovery_marker(value TEXT NOT NULL); INSERT INTO recovery_marker VALUES ('same-candidate');");
+      source.close();
+
+      const protection = new ProtectedDatabaseFile(databasePath, key);
+      const restoreEnvelope = EncryptedFileEnvelope.forArtifact(key, 'database-backup');
+      await restoreEnvelope.seal(sourcePath, protection.encryptedStagedRestorePath);
+      // This models a power loss after the encrypted stage was opened but
+      // before the atomic restore swap began.
+      await restoreEnvelope.open(protection.encryptedStagedRestorePath, protection.stagedRestorePath);
+
+      expect(await protection.prepareStagedRestore()).toBe('encrypted-staged');
+      const recovered = new DatabaseSync(protection.stagedRestorePath, { readOnly: true, allowExtension: false });
+      expect((recovered.prepare('SELECT value FROM recovery_marker').get() as { value: string }).value).toBe('same-candidate');
+      recovered.close();
+      await protection.removePlaintextPath(protection.stagedRestorePath);
+      await protection.finalizeStagedRestore();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('fails closed and retains both candidates when interrupted restore staging diverges', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'epic-bos-protected-db-stage-conflict-'));
+    const databasePath = path.join(directory, 'epic-bos.sqlite3');
+    const sourcePath = path.join(directory, 'restore-source.sqlite3');
+    const key = randomBytes(32);
+    try {
+      const source = new DatabaseSync(sourcePath);
+      source.exec("CREATE TABLE recovery_marker(value TEXT NOT NULL); INSERT INTO recovery_marker VALUES ('sealed-candidate');");
+      source.close();
+
+      const protection = new ProtectedDatabaseFile(databasePath, key);
+      const restoreEnvelope = EncryptedFileEnvelope.forArtifact(key, 'database-backup');
+      await restoreEnvelope.seal(sourcePath, protection.encryptedStagedRestorePath);
+      const divergent = new DatabaseSync(protection.stagedRestorePath);
+      divergent.exec("CREATE TABLE recovery_marker(value TEXT NOT NULL); INSERT INTO recovery_marker VALUES ('different-plaintext');");
+      divergent.close();
+
+      await expect(protection.prepareStagedRestore()).rejects.toThrow(/copies differ/i);
+      await expect(readFile(protection.stagedRestorePath)).resolves.toBeInstanceOf(Buffer);
+      await expect(readFile(protection.encryptedStagedRestorePath)).resolves.toBeInstanceOf(Buffer);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

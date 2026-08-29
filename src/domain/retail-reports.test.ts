@@ -127,7 +127,7 @@ const makeSale = (
         cessRate: 0,
         cessAmount: 0,
         lineTotal: grandTotal,
-        costValue: cost,
+        lineCostTotal: cost,
       },
     ],
     subtotal: taxableValue,
@@ -844,6 +844,43 @@ describe('computeCategorySales', () => {
     const uncatRow = report.rows.find((r) => r.categoryName === 'Uncategorised');
     expect(uncatRow).toBeDefined();
     expect(uncatRow?.lineCount).toBe(3);
+  });
+
+  it('reconciles multi-unit line COGS exactly once across category and SKU reporting', () => {
+    const multiUnitSale: RetailSale = {
+      ...sale1,
+      id: 'sale-multi-unit-cost',
+      number: 'sale-multi-unit-cost',
+      costTotal: 500,
+      lines: [{
+        ...sale1.lines[0]!,
+        id: 'line-multi-unit-cost',
+        quantity: 4,
+        lineTotal: 1_180,
+        taxableValue: 1_000,
+        lineCostTotal: 500,
+      }],
+    };
+    const category = computeCategorySales({
+      allSales: [multiUnitSale],
+      fromDate: '2025-01-15',
+      toDate: '2025-01-15',
+      merchandisingProfiles,
+      categories,
+      variantItemMap: { 'var-1': 'item-1' },
+    });
+    const sku = computeSkuMarginReport({
+      allSales: [multiUnitSale],
+      fromDate: '2025-01-15',
+      toDate: '2025-01-15',
+      variants,
+      binBalances,
+    });
+
+    expect(category.rows[0]?.costTotal).toBe(multiUnitSale.costTotal);
+    expect(sku.rows[0]?.costTotal).toBe(multiUnitSale.costTotal);
+    expect(category.rows[0]?.grossProfit).toBe(680);
+    expect(sku.rows[0]?.grossProfit).toBe(680);
   });
 });
 

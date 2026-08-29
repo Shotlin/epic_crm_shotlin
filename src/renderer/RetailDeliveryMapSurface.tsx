@@ -3,7 +3,25 @@ import type { ReactNode } from 'react';
 import { buildRetailDeliveryMapSurface } from '../domain/retail-delivery-map';
 import type { RetailDeliveryMapSignal } from '../shared/retail-delivery-map-contracts';
 
-function coordinate(value: number, min: number, range: number): number {
+interface CoordinateBounds {
+  min: number;
+  range: number;
+}
+
+/**
+ * Bounds must be based on the observed pins themselves. Adding zero as an
+ * artificial world-origin makes every positive Indian coordinate appear in a
+ * tiny cluster in the upper-right of this evidence surface.
+ */
+function coordinateBounds(values: readonly number[]): CoordinateBounds {
+  const observed = values.filter(Number.isFinite);
+  if (!observed.length) return { min: 0, range: 0 };
+
+  const min = Math.min(...observed);
+  return { min, range: Math.max(...observed) - min };
+}
+
+function coordinate(value: number, { min, range }: CoordinateBounds): number {
   return range === 0 ? 50 : ((value - min) / range) * 100;
 }
 
@@ -12,10 +30,8 @@ export function RetailDeliveryMapSurface({ signals, now }: { signals?: readonly 
   const pins = surface.pins.flatMap((signal) => signal.mapPin ? [{ signal, pin: signal.mapPin }] : []);
   const latitudes = pins.map(({ pin }) => pin.latitude);
   const longitudes = pins.map(({ pin }) => pin.longitude);
-  const minLat = Math.min(...latitudes, 0);
-  const minLong = Math.min(...longitudes, 0);
-  const latRange = Math.max(...latitudes, 0) - minLat;
-  const longRange = Math.max(...longitudes, 0) - minLong;
+  const latitudeBounds = coordinateBounds(latitudes);
+  const longitudeBounds = coordinateBounds(longitudes);
   const heading = surface.status === 'live-evidence'
     ? 'Live rider signals'
     : surface.status === 'stale'
@@ -33,7 +49,7 @@ export function RetailDeliveryMapSurface({ signals, now }: { signals?: readonly 
       <div className="retail-delivery-map__canvas" role="img" aria-label={`${pins.length} verified delivery map pin${pins.length === 1 ? '' : 's'}`}>
         <svg viewBox="0 0 100 100" aria-hidden="true" preserveAspectRatio="none">
           <path d="M0 25H100M0 50H100M0 75H100M25 0V100M50 0V100M75 0V100" />
-          {pins.map(({ signal, pin }) => <circle key={signal.id} cx={coordinate(pin.longitude, minLong, longRange)} cy={100 - coordinate(pin.latitude, minLat, latRange)} r="3.2" data-state={signal.status} />)}
+          {pins.map(({ signal, pin }) => <circle key={signal.id} cx={coordinate(pin.longitude, longitudeBounds)} cy={100 - coordinate(pin.latitude, latitudeBounds)} r="3.2" data-state={signal.status} />)}
         </svg>
         <span className="retail-delivery-map__legend"><Radio size={12} aria-hidden="true" /> Evidence points · no route line</span>
       </div>

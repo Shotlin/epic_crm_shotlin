@@ -80,17 +80,14 @@ import { RetailCommandCenterPanel } from './RetailCommandCenterPanel';
 import { BakalooRetailCommandCenter } from './BakalooRetailCommandCenter';
 import { BakalooRetailDemoResetPanel } from './BakalooRetailDemoResetPanel';
 import { RetailWorkspaceNavigation, type AdvancedWorkspaceId, type RetailWorkspaceSubmoduleKey, type RetailWorkspaceSubmoduleNavigation } from './RetailWorkspaceNavigation';
-import { RetailWorkspaceStatusBadge } from './RetailWorkspaceStatusBadge';
 import { RetailShadowImportReviewPanel } from './RetailShadowImportReviewPanel';
-import { RetailCustomer360Panel } from './RetailCustomer360Panel';
-import { RetailOrderQueueFromRevenue } from './RetailOrderQueuePanel';
+import { RetailCustomer360Panel, type RetailCustomerTab } from './RetailCustomer360Panel';
 import { RetailDeliveryOverviewPanel } from './RetailDeliveryOverviewPanel';
-import { RetailChannelHealthOverviewPanel } from './RetailChannelHealthOverviewPanel';
-import { RetailStockOverviewFromRevenue } from './RetailStockOverviewPanel';
+import { RetailStockOverviewFromRevenue, type RetailStockDestination } from './RetailStockOverviewPanel';
 import { RetailCashOverviewFromRevenue } from './RetailCashOverviewPanel';
 import { RetailInsightsOverviewPanel } from './RetailInsightsOverviewPanel';
 import { RetailSellOverviewFromRevenue } from './RetailSellOverviewPanel';
-import { RetailSetupOverviewPanel } from './RetailSetupOverviewPanel';
+import { RetailSetupOverviewPanel, type RetailSetupDestination } from './RetailSetupOverviewPanel';
 import { RetailCutoverGuardPanel } from './RetailCutoverGuardPanel';
 import { CreditPolicySimulationPanel } from './CreditPolicySimulationPanel';
 import { RETAIL_WORKSPACE_ROUTES, type RetailWorkspaceRoute, type RetailWorkspaceRouteId } from './RetailWorkspaceRoute';
@@ -1649,7 +1646,7 @@ function IntelligenceEvidencePanel({ anomalies, executions, deliveryPlans, deliv
 }
 
 type BharatRevenueTab = 'network' | 'pursuits' | 'segments' | 'quotes' | 'commerce' | 'warehouse' | 'procurement' | 'manufacturing' | 'assets' | 'maintenance' | 'delivery' | 'people' | 'fulfilment' | 'statutory' | 'cash' | 'ledger' | 'close' | 'collections' | 'treasury' | 'intelligence';
-type CommerceSurface = 'overview' | 'pos' | 'orders' | 'returns' | 'products' | 'devices' | 'channels' | 'reports' | 'branches';
+type CommerceSurface = 'overview' | 'pos' | 'orders' | 'sales-order-readiness' | 'sales-orders' | 'returns' | 'products' | 'pricing' | 'devices' | 'channels' | 'reports' | 'branches';
 
 const INTELLIGENCE_ANOMALY_POLICIES: AnomalyPolicy[] = [
   { id: 'overdue-receivables', label: 'Overdue receivables', metric: 'overdueReceivables', comparator: 'gte', threshold: 100_000, severity: 'high', destination: 'collections', ownerRole: 'finance', recommendation: 'Review collection commitments and dunning evidence.', policyVersion: '2026.07.1' },
@@ -1722,9 +1719,10 @@ const workspaceDefinitions: WorkspaceDefinition[] = [
     description: 'Take counter sales, manage online orders, handle returns and protect retail prices.',
     defaultDestination: { kind: 'bharat', tab: 'commerce' },
     shortcuts: [
-      { label: 'Point of sale', description: 'Sell at the counter with GST and tender controls', icon: ShoppingBag, destination: { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'pos' } },
+      { label: 'Open Point of sale', description: 'Sell at the counter with GST and tender controls', icon: ShoppingBag, destination: { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'pos' } },
       { label: 'Online orders', description: 'Review orders before stock is reserved or packed', icon: PackageCheck, destination: { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'orders' } },
-      { label: 'Returns and exchange', description: 'Resolve a return or exchange with evidence', icon: RotateCcw, destination: { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'returns' } },
+      { label: 'Order readiness', description: 'Check barcode, tax and payment evidence before fulfilment', icon: ShieldCheck, destination: { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'sales-order-readiness' } },
+      { label: 'Open Returns & exchanges', description: 'Resolve a return or exchange with evidence', icon: RotateCcw, destination: { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'returns' } },
       { label: 'Products and prices', description: 'Maintain retail catalogue, GST and price rules', icon: Factory, destination: { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'products' } },
       { label: 'Quotations', description: 'Advanced quote, approval and PDF controls', icon: FileClock, destination: { kind: 'bharat', tab: 'quotes', workspace: 'sales' } },
       { label: 'Sales pipeline', description: 'Advanced opportunity and commercial planning controls', icon: Target, destination: { kind: 'bharat', tab: 'pursuits', workspace: 'sales' } },
@@ -1949,8 +1947,11 @@ const commerceSurfacePresentation: Record<CommerceSurface, {
   overview: { label: 'Commerce home', title: 'Choose the task in front of you', description: 'Open one retail desk at a time so selling, customer returns, stock records and devices stay clear and accountable.', icon: LayoutDashboard },
   pos: { label: 'Point of sale', title: 'Sell at the counter', description: 'Start or resume a governed counter sale with stock, GST, tender and cashier controls.', icon: ShoppingBag },
   orders: { label: 'Online orders', title: 'Pack and manage online orders', description: 'Review one unified order queue before reserving, picking, packing or dispatching.', icon: PackageCheck },
+  'sales-order-readiness': { label: 'Order readiness', title: 'Check sales-order evidence', description: 'Review barcode, tax, payment and return evidence before a sales order enters fulfilment.', icon: ShieldCheck },
+  'sales-orders': { label: 'Sales-order fulfilment', title: 'Fulfil approved sales orders', description: 'Move an approved promise through accountable readiness checks, task ownership and completion.', icon: HandCoins },
   returns: { label: 'Returns & exchanges', title: 'Resolve a return or exchange', description: 'Work from the original receipt, inspect goods and keep a different approver in control.', icon: RotateCcw },
-  products: { label: 'Products & pricing', title: 'Manage products and prices', description: 'Maintain catalogue, barcode, GST, pricing, promotions and shelf information.', icon: Factory },
+  products: { label: 'Products & catalogue', title: 'Manage products and catalogue', description: 'Maintain retail categories, brands, barcodes, labels, variants and shelf information.', icon: Factory },
+  pricing: { label: 'Pricing & tax', title: 'Govern prices, tax and promotions', description: 'Maintain effective GST references, price books and promotions through controlled approvals.', icon: IndianRupee },
   devices: { label: 'Devices', title: 'Set up store devices', description: 'Govern printers, scanners, cash drawers and weighing scales with real acknowledgement evidence.', icon: Settings2 },
   channels: { label: 'Sales channels', title: 'Connect marketplace and online channels', description: 'Review connector, mapping, sync and settlement evidence without exposing unrelated retail tasks.', icon: Route },
   reports: { label: 'Reports', title: 'Review retail performance', description: 'Use governed X/Z, GST, margin, tender, outlet and readiness reports.', icon: Activity },
@@ -4990,9 +4991,9 @@ function CommercialFoundry({ revenue, party, kernel, actorId, busy, operationalH
 
     {activeSurface === 'branches' ? <RetailInterBranchWorkbench revenue={revenue} busy={busy} activeActorId={actorId} onCreate={retailActions.onCreateRetailInterBranchTransfer} onDecide={retailActions.onDecideRetailInterBranchTransfer} onDispatch={retailActions.onDispatchRetailInterBranchTransfer} onReceive={retailActions.onReceiveRetailInterBranchTransfer} /> : null}
 
-    {activeSurface === 'orders' ? <article className="foundry-panel foundry-panel--retail"><div className="foundry-panel__head"><div><span>Order readiness</span><h3>Delivery-order evidence gate</h3></div><HandCoins size={20} /></div><p className="foundry-boundary">This is the existing sales-order delivery path, separate from counter POS. Barcode identity, verified GST references, payment reconciliation and return review remain evidence gates; UPI/card settlement is never fabricated locally.</p><div className="order-loom">{retailReadiness.length ? retailReadiness.map((item) => <section key={item.orderId}><header><div><span>{item.orderNumber} · {item.paymentMethods.join(', ') || 'no payment evidence'}</span><strong>{item.barcodeLineCount} barcode-ready · {item.taxReadyLineCount} tax-ready</strong><small>{item.paidAmount ? `₹${item.paidAmount.toLocaleString('en-IN')} evidenced` : 'No payment captured'} · {item.returnCount} return cases</small></div><em data-status={item.readiness}>{item.nextAction}</em></header>{item.blockers.length ? <footer><small>{item.blockers.join(' · ')}</small></footer> : <footer><small>Order meets local POS evidence gates; provider settlement remains external.</small></footer>}</section>) : <div className="bharat-empty">No in-scope sales orders are available for retail readiness.</div>}</div></article> : null}
+    {activeSurface === 'sales-order-readiness' ? <article className="foundry-panel foundry-panel--retail"><div className="foundry-panel__head"><div><span>Order readiness</span><h3>Delivery-order evidence gate</h3></div><ShieldCheck size={20} /></div><p className="foundry-boundary">This is the existing sales-order delivery path, separate from counter POS. Barcode identity, verified GST references, payment reconciliation and return review remain evidence gates; UPI/card settlement is never fabricated locally.</p><div className="order-loom">{retailReadiness.length ? retailReadiness.map((item) => <section key={item.orderId}><header><div><span>{item.orderNumber} · {item.paymentMethods.join(', ') || 'no payment evidence'}</span><strong>{item.barcodeLineCount} barcode-ready · {item.taxReadyLineCount} tax-ready</strong><small>{item.paidAmount ? `₹${item.paidAmount.toLocaleString('en-IN')} evidenced` : 'No payment captured'} · {item.returnCount} return cases</small></div><em data-status={item.readiness}>{item.nextAction}</em></header>{item.blockers.length ? <footer><small>{item.blockers.join(' · ')}</small></footer> : <footer><small>Order meets local POS evidence gates; provider settlement remains external.</small></footer>}</section>) : <div className="bharat-empty">No in-scope sales orders are available for retail readiness.</div>}</div></article> : null}
 
-    {activeSurface === 'products' ? <>
+    {activeSurface === 'pricing' ? <>
     <article className="foundry-panel foundry-panel--catalog">
       <div className="foundry-panel__head"><div><span>01 / Governed masters</span><h3>Products and GST setup</h3></div><Factory size={20} /></div>
       <div className="foundry-split">
@@ -5006,9 +5007,9 @@ function CommercialFoundry({ revenue, party, kernel, actorId, busy, operationalH
         </form>
         <form className="bharat-form" onSubmit={(event) => { event.preventDefault(); const data = new FormData(event.currentTarget); void onCreateCatalogProduct({ sku: String(data.get('sku')), name: String(data.get('name')), description: String(data.get('description')), kind: String(data.get('kind')) as CreateCatalogProductInput['kind'], uom: String(data.get('uom')), taxCodeId: String(data.get('taxCodeId')), effectiveFrom: String(data.get('effectiveFrom')) }); event.currentTarget.reset(); }}>
           <span className="foundry-form-title">Release catalog product</span>
-          <div className="bharat-form__row"><label>SKU<input name="sku" placeholder="BOS-OPS-IN" required /></label><label>Kind<select name="kind"><option value="service">Service</option><option value="goods">Goods</option></select></label></div>
-          <label>Name<input name="name" placeholder="India operations suite" required /></label><label>Description<input name="description" placeholder="Commercial catalog definition" required /></label>
-          <div className="bharat-form__row"><label>UOM<input name="uom" defaultValue="LICENSE" required /></label><label>Tax reference<select name="taxCodeId">{revenue.taxCodes.filter(({ reviewStatus }) => reviewStatus === 'verified').map((tax) => <option value={tax.id} key={tax.id}>{tax.kind} {tax.code} · {tax.gstRate}%</option>)}</select></label></div>
+          <div className="bharat-form__row"><label>SKU<input name="sku" placeholder="e.g. ATTA-5KG" required /></label><label>Kind<select name="kind"><option value="goods">Goods</option><option value="service">Service</option></select></label></div>
+          <label>Name<input name="name" placeholder="Product name" required /></label><label>Description<input name="description" placeholder="What the product is and how it is sold" required /></label>
+          <div className="bharat-form__row"><label>UOM<input name="uom" placeholder="e.g. kg, pack, piece" required /></label><label>Tax reference<select name="taxCodeId">{revenue.taxCodes.filter(({ reviewStatus }) => reviewStatus === 'verified').map((tax) => <option value={tax.id} key={tax.id}>{tax.kind} {tax.code} · {tax.gstRate}%</option>)}</select></label></div>
           <label>Effective from<input name="effectiveFrom" type="date" defaultValue="2026-07-15" required /></label>
           <button className="button button--primary" type="submit" disabled={busy}>Release product version</button>
         </form>
@@ -5020,12 +5021,12 @@ function CommercialFoundry({ revenue, party, kernel, actorId, busy, operationalH
       <div className="foundry-panel__head"><div><span>02 / Effective pricing</span><h3>Price lists and rules</h3></div><IndianRupee size={20} /></div>
       <div className="foundry-split">
         <form className="bharat-form" onSubmit={(event) => { event.preventDefault(); const data = new FormData(event.currentTarget); void onCreatePriceList({ code: String(data.get('code')), name: String(data.get('name')), channel: String(data.get('channel')) as CreatePriceListInput['channel'], effectiveFrom: String(data.get('effectiveFrom')), effectiveTo: String(data.get('effectiveTo')) || undefined }); event.currentTarget.reset(); }}>
-          <span className="foundry-form-title">Open price book</span><label>Code<input name="code" placeholder="IN-DIRECT-2728" required /></label><label>Name<input name="name" placeholder="India direct FY 2027-28" required /></label><label>Channel<select name="channel"><option value="direct">Direct</option><option value="retail">Retail counter</option><option value="partner">Partner</option><option value="all">All</option></select></label>
-          <div className="bharat-form__row"><label>From<input name="effectiveFrom" type="date" defaultValue="2027-04-01" required /></label><label>To<input name="effectiveTo" type="date" defaultValue="2028-03-31" /></label></div><button className="button button--quiet" type="submit" disabled={busy}>Open versioned book</button>
+          <span className="foundry-form-title">Open price book</span><label>Code<input name="code" placeholder="e.g. PARK-RETAIL" required /></label><label>Name<input name="name" placeholder="Store price book" required /></label><label>Channel<select name="channel"><option value="retail">Retail counter</option><option value="direct">Direct</option><option value="partner">Partner</option><option value="all">All</option></select></label>
+          <div className="bharat-form__row"><label>From<input name="effectiveFrom" type="date" defaultValue={currentIndiaBusinessDate()} required /></label><label>To<input name="effectiveTo" type="date" /></label></div><button className="button button--quiet" type="submit" disabled={busy}>Open versioned book</button>
         </form>
         <form className="bharat-form" onSubmit={(event) => { event.preventDefault(); const data = new FormData(event.currentTarget); void onCreatePriceListEntry({ priceListId: String(data.get('priceListId')), productId: String(data.get('productId')), unitPrice: Number(data.get('unitPrice')), taxMode: String(data.get('taxMode')) as CreatePriceListEntryInput['taxMode'], minimumQuantity: Number(data.get('minimumQuantity')), effectiveFrom: String(data.get('effectiveFrom')), effectiveTo: String(data.get('effectiveTo')) || undefined }); event.currentTarget.reset(); }}>
           <span className="foundry-form-title">Add effective price tier</span><label>Price book<select name="priceListId">{revenue.priceLists.map((list) => <option value={list.id} key={list.id}>{list.code} · {list.name}</option>)}</select></label><label>Product<select name="productId">{revenue.products.map((product) => <option value={product.id} key={product.id}>{product.sku} · {product.name}</option>)}</select></label>
-          <div className="bharat-form__row"><label>Unit price ₹<input name="unitPrice" type="number" min="0" defaultValue="5000000" required /></label><label>Min qty<input name="minimumQuantity" type="number" min="1" defaultValue="1" required /></label></div><label>GST pricing<select name="taxMode" defaultValue="exclusive"><option value="exclusive">Exclusive GST — B2B / trade</option><option value="inclusive">Inclusive GST — B2C shelf price</option></select></label><div className="bharat-form__row"><label>From<input name="effectiveFrom" type="date" defaultValue="2027-04-01" required /></label><label>To<input name="effectiveTo" type="date" defaultValue="2028-03-31" /></label></div><button className="button button--primary" type="submit" disabled={busy}>Commit price tier</button>
+          <div className="bharat-form__row"><label>Unit price ₹<input name="unitPrice" type="number" min="0" placeholder="Enter approved shelf price" required /></label><label>Min qty<input name="minimumQuantity" type="number" min="1" defaultValue="1" required /></label></div><label>GST pricing<select name="taxMode" defaultValue="inclusive"><option value="inclusive">Inclusive GST — B2C shelf price</option><option value="exclusive">Exclusive GST — B2B / trade</option></select></label><div className="bharat-form__row"><label>From<input name="effectiveFrom" type="date" defaultValue={currentIndiaBusinessDate()} required /></label><label>To<input name="effectiveTo" type="date" /></label></div><button className="button button--primary" type="submit" disabled={busy}>Commit price tier</button>
         </form>
       </div>
       <div className="price-ledger">{revenue.priceListEntries.map((entry) => { const product = revenue.products.find(({ id }) => id === entry.productId); const list = revenue.priceLists.find(({ id }) => id === entry.priceListId); return <div key={entry.id}><span>{list?.code}</span><strong>{product?.name}</strong><em>{inrFormatter.format(entry.unitPrice)}</em><small>{entry.taxMode === 'inclusive' ? 'GST incl.' : 'GST excl.'} · Qty ≥ {entry.minimumQuantity} · {entry.effectiveFrom} → {entry.effectiveTo ?? 'open'}</small></div>; })}</div>
@@ -5035,18 +5036,18 @@ function CommercialFoundry({ revenue, party, kernel, actorId, busy, operationalH
     <article className="foundry-panel foundry-panel--discount">
       <div className="foundry-panel__head"><div><span>03 / Guardrailed concessions</span><h3>Discounts and promotions</h3></div><ShieldCheck size={20} /></div>
       <form className="bharat-form" onSubmit={(event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const scope = String(data.get('scope')) as CreateDiscountPolicyInput['scope']; const promotionType = String(data.get('promotionType')) as CreateDiscountPolicyInput['promotionType']; void onCreateDiscountPolicy({ code: String(data.get('code')), name: String(data.get('name')), scope, productId: scope === 'product' ? String(data.get('productId')) : undefined, method: 'percentage', value: Number(data.get('value')), minimumTaxableValue: Number(data.get('minimumTaxableValue')), maximumDiscountAmount: Number(data.get('maximumDiscountAmount')), stackable: false, approvalThresholdPercent: Number(data.get('approvalThresholdPercent')), promotionType, buyQuantity: promotionType === 'bogo' ? Number(data.get('buyQuantity')) : undefined, freeQuantity: promotionType === 'bogo' ? Number(data.get('freeQuantity')) : undefined, campaignCode: String(data.get('campaignCode')).trim() || undefined, effectiveFrom: String(data.get('effectiveFrom')), effectiveTo: String(data.get('effectiveTo')) || undefined }); event.currentTarget.reset(); }}>
-        <label>Policy identity<input name="code" placeholder="ENTERPRISE-2728" required /><input name="name" placeholder="Enterprise scale concession" required /></label><div className="bharat-form__row"><label>Scope<select name="scope"><option value="order">Order</option><option value="product">Product</option></select></label><label>Product<select name="productId">{revenue.products.map((product) => <option value={product.id} key={product.id}>{product.name}</option>)}</select></label></div><div className="bharat-form__row"><label>Promotion<select name="promotionType"><option value="discount">Discount</option><option value="bogo">Buy X, get Y</option></select></label><label>Shelf category<select name="categoryId"><option value="">All categories</option>{revenue.retailCatalogCategories.filter(({ active }) => active).map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label><label>Brand<select name="brandId"><option value="">All brands</option>{revenue.retailCatalogBrands.filter(({ active }) => active).map((brand) => <option value={brand.id} key={brand.id}>{brand.name}</option>)}</select></label><label>Rack / bin<select name="rackBinId"><option value="">All racks</option>{revenue.storageBins.filter(({ status }) => status === 'available').map((bin) => <option value={bin.id} key={bin.id}>{bin.code} · {bin.name}</option>)}</select></label></div>
-        <div className="bharat-form__row"><label>Discount %<input name="value" type="number" min="0.01" max="100" defaultValue="3" required /></label><label>Approval above %<input name="approvalThresholdPercent" type="number" min="0" max="100" defaultValue="2" required /></label></div><label>Minimum taxable ₹<input name="minimumTaxableValue" type="number" min="0" defaultValue="1000000" required /></label><label>Maximum discount ₹<input name="maximumDiscountAmount" type="number" min="0" defaultValue="200000" required /></label><div className="bharat-form__row"><label>From<input name="effectiveFrom" type="date" defaultValue="2027-04-01" required /></label><label>To<input name="effectiveTo" type="date" defaultValue="2028-03-31" /></label></div><button className="button button--primary" type="submit" disabled={busy}>Publish controlled policy</button>
+        <label>Policy identity<input name="code" placeholder="e.g. WEEKEND-10" required /><input name="name" placeholder="Clear customer-facing policy name" required /></label><div className="bharat-form__row"><label>Scope<select name="scope"><option value="order">Order</option><option value="product">Product</option></select></label><label>Product<select name="productId">{revenue.products.map((product) => <option value={product.id} key={product.id}>{product.name}</option>)}</select></label></div><div className="bharat-form__row"><label>Promotion<select name="promotionType"><option value="discount">Discount</option><option value="bogo">Buy X, get Y</option></select></label><label>Shelf category<select name="categoryId"><option value="">All categories</option>{revenue.retailCatalogCategories.filter(({ active }) => active).map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label><label>Brand<select name="brandId"><option value="">All brands</option>{revenue.retailCatalogBrands.filter(({ active }) => active).map((brand) => <option value={brand.id} key={brand.id}>{brand.name}</option>)}</select></label><label>Rack / bin<select name="rackBinId"><option value="">All racks</option>{revenue.storageBins.filter(({ status }) => status === 'available').map((bin) => <option value={bin.id} key={bin.id}>{bin.code} · {bin.name}</option>)}</select></label></div>
+        <div className="bharat-form__row"><label>Discount %<input name="value" type="number" min="0.01" max="100" placeholder="Enter discount" required /></label><label>Approval above %<input name="approvalThresholdPercent" type="number" min="0" max="100" placeholder="Enter threshold" required /></label></div><label>Minimum taxable ₹<input name="minimumTaxableValue" type="number" min="0" placeholder="Enter minimum order value" required /></label><label>Maximum discount ₹<input name="maximumDiscountAmount" type="number" min="0" placeholder="Enter cap" required /></label><div className="bharat-form__row"><label>From<input name="effectiveFrom" type="date" defaultValue={currentIndiaBusinessDate()} required /></label><label>To<input name="effectiveTo" type="date" /></label></div><button className="button button--primary" type="submit" disabled={busy}>Publish controlled policy</button>
       </form>
       <div className="discount-stack">{revenue.discountPolicies.map((policy) => <div key={policy.id}><span>{policy.code}</span><strong>{policy.name}</strong><em>{policy.value}%</em><small>{policy.scope} · cap {inrFormatter.format(policy.maximumDiscountAmount)} · checker above {policy.approvalThresholdPercent}%</small></div>)}</div>
     </article>
 
     <form className="bharat-form bharat-form--campaign" onSubmit={(event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const categoryId = String(data.get('categoryId') ?? ''); const brandId = String(data.get('brandId') ?? ''); const rackBinId = String(data.get('rackBinId') ?? ''); void onCreateDiscountPolicy({ code: String(data.get('code')), name: String(data.get('name')), scope: 'order', method: 'percentage', value: Number(data.get('value')), minimumTaxableValue: Number(data.get('minimumTaxableValue')), maximumDiscountAmount: Number(data.get('maximumDiscountAmount')), stackable: false, approvalThresholdPercent: 0, eligibleRetailCategoryIds: categoryId ? [categoryId] : undefined, eligibleRetailBrandIds: brandId ? [brandId] : undefined, eligibleRetailRackBinIds: rackBinId ? [rackBinId] : undefined, campaignCode: String(data.get('campaignCode')).trim() || undefined, effectiveFrom: String(data.get('effectiveFrom')), effectiveTo: String(data.get('effectiveTo')) || undefined }); event.currentTarget.reset(); }}>
       <span className="foundry-form-title">Publish shelf / rack campaign</span>
-      <div className="bharat-form__row"><label>Code<input name="code" placeholder="AISLE-DIWALI" required /></label><label>Name<input name="name" placeholder="Diwali aisle savings" required /></label></div>
+      <div className="bharat-form__row"><label>Code<input name="code" placeholder="e.g. AISLE-SAVING" required /></label><label>Name<input name="name" placeholder="Customer-facing campaign name" required /></label></div>
       <div className="bharat-form__row"><label>Category<select name="categoryId"><option value="">All categories</option>{revenue.retailCatalogCategories.filter(({ active }) => active).map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label><label>Brand<select name="brandId"><option value="">All brands</option>{revenue.retailCatalogBrands.filter(({ active }) => active).map((brand) => <option value={brand.id} key={brand.id}>{brand.name}</option>)}</select></label><label>Rack / bin<select name="rackBinId"><option value="">All racks</option>{revenue.storageBins.filter(({ status }) => status === 'available').map((bin) => <option value={bin.id} key={bin.id}>{bin.code} · {bin.name}</option>)}</select></label></div>
       <div className="bharat-form__row"><label>Discount %<input name="value" type="number" min="0.01" max="100" defaultValue="10" required /></label><label>Minimum taxable<input name="minimumTaxableValue" type="number" min="0" defaultValue="500" required /></label><label>Maximum discount<input name="maximumDiscountAmount" type="number" min="0" defaultValue="1000" required /></label></div>
-      <div className="bharat-form__row"><label>Campaign code<input name="campaignCode" placeholder="DIWALI-2026" /></label><label>From<input name="effectiveFrom" type="date" defaultValue="2026-10-01" required /></label><label>To<input name="effectiveTo" type="date" defaultValue="2026-11-15" /></label></div>
+      <div className="bharat-form__row"><label>Campaign code<input name="campaignCode" placeholder="Optional campaign identifier" /></label><label>From<input name="effectiveFrom" type="date" defaultValue={currentIndiaBusinessDate()} required /></label><label>To<input name="effectiveTo" type="date" /></label></div>
       <button className="button button--quiet" type="submit" disabled={busy}>Publish shelf campaign</button>
     </form>
 
@@ -5054,13 +5055,13 @@ function CommercialFoundry({ revenue, party, kernel, actorId, busy, operationalH
       <span className="foundry-form-title">Configure gift-SKU promotion</span>
       <div className="bharat-form__row"><label>Code<input name="code" placeholder="TEA-SUGAR-GIFT" required /></label><label>Name<input name="name" placeholder="Buy tea, receive sugar" required /></label></div>
       <div className="bharat-form__row"><label>Qualifying product<select name="productId" required>{revenue.products.filter(({ active, kind }) => active && kind === 'goods').map((product) => <option value={product.id} key={product.id}>{product.name}</option>)}</select></label><label>Gift SKU<select name="giftItemVariantId" required>{revenue.itemVariants.filter(({ active }) => active).map((variant) => <option value={variant.id} key={variant.id}>{variant.sku} · {variant.name}</option>)}</select></label><label>Gift quantity<input name="giftQuantity" type="number" min="1" step="1" defaultValue="1" required /></label></div>
-      <div className="bharat-form__row"><label>Minimum taxable<input name="minimumTaxableValue" type="number" min="0" defaultValue="500" required /></label><label>Campaign code<input name="campaignCode" placeholder="FESTIVE-GIFT-2026" /></label><label>From<input name="effectiveFrom" type="date" defaultValue="2026-10-01" required /></label><label>To<input name="effectiveTo" type="date" defaultValue="2026-11-15" /></label></div>
+      <div className="bharat-form__row"><label>Minimum taxable<input name="minimumTaxableValue" type="number" min="0" placeholder="Enter minimum order value" required /></label><label>Campaign code<input name="campaignCode" placeholder="Optional campaign identifier" /></label><label>From<input name="effectiveFrom" type="date" defaultValue={currentIndiaBusinessDate()} required /></label><label>To<input name="effectiveTo" type="date" /></label></div>
       <button className="button button--quiet" type="submit" disabled={busy}>Publish gift promotion</button>
     </form>
 
     </> : null}
 
-    {activeSurface === 'orders' ? <article className="foundry-panel foundry-panel--orders">
+    {activeSurface === 'sales-orders' ? <article className="foundry-panel foundry-panel--orders">
       <div className="foundry-panel__head"><div><span>04 / Promise execution</span><h3>Sales order follow-through</h3></div><HandCoins size={20} /></div>
       {revenue.salesOrders.length ? <div className="order-loom">{revenue.salesOrders.map((order) => { const tasks = revenue.fulfilmentTasks.filter(({ salesOrderId }) => salesOrderId === order.id); return <section key={order.id}><header><div><span>{order.number}</span><strong>{party.accounts.find(({ id }) => id === order.accountId)?.displayName ?? order.accountId}</strong><small>From {order.quoteNumber} · required {order.requiredBy}</small></div><em data-status={order.fulfilmentStatus}>{order.fulfilmentStatus}</em></header><div className="order-value"><strong>{inrFormatter.format(order.taxPreview.grandTotal)}</strong><span>{order.status}</span></div><div className="fulfilment-rail">{tasks.map((task, index) => { const next = task.status === 'planned' ? 'ready' : task.status === 'ready' ? 'in-progress' : task.status === 'in-progress' ? 'completed' : task.status === 'blocked' ? 'ready' : null; return <div key={task.id} data-status={task.status}><i>{index + 1}</i><div><strong>{task.title}</strong><small>{task.status} · {kernel.users.find(({ id }) => id === task.ownerUserId)?.displayName ?? task.ownerUserId}</small></div>{next ? <button type="button" disabled={busy} onClick={() => void onUpdateFulfilmentTask({ id: task.id, toStatus: next, expectedVersion: task.version })}>{next}</button> : <Check size={16} />}</div>; })}</div><footer>{order.status === 'confirmed' ? <button type="button" disabled={busy} onClick={() => void onTransitionSalesOrder({ id: order.id, toStatus: 'fulfilling', expectedVersion: order.version })}>Begin fulfilment</button> : null}{order.fulfilmentStatus === 'completed' && order.status === 'fulfilling' ? <button type="button" disabled={busy} onClick={() => void onTransitionSalesOrder({ id: order.id, toStatus: 'completed', expectedVersion: order.version })}>Close order</button> : null}</footer></section>; })}</div> : <div className="bharat-empty"><Factory size={24} /><strong>No sales orders on the loom</strong><span>An independently approved quotation becomes a fulfilment-ready promise here.</span></div>}
     </article> : null}
@@ -6435,6 +6436,10 @@ function AppShell({
     () => initialRetailShellState(roleHomeWorkspace).bharatTab,
   );
   const [activeCommerceSurface, setActiveCommerceSurface] = useState<CommerceSurface>('overview');
+  // Customer 360 is a single retail desk with evidence tabs. Keeping this
+  // outside the panel allows a rail task such as "Loyalty" to open the exact
+  // tab rather than resetting back to a generic CRM screen.
+  const [retailCustomerTab, setRetailCustomerTab] = useState<RetailCustomerTab>('overview');
   const [attentionOpen, setAttentionOpen] = useState(false);
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const mobileNavigationToggleRef = useRef<HTMLButtonElement>(null);
@@ -6551,6 +6556,7 @@ function AppShell({
    */
   function navigateRetailWorkspace(route: RetailWorkspaceRoute): void {
     setRetailOverviewOpen(true);
+    if (route.id === 'customers') setRetailCustomerTab('overview');
     const { target } = route.adapter;
     const handoff = `${route.label} is ready. ${route.description}`;
     if (target.kind === 'command') {
@@ -6588,6 +6594,18 @@ function AppShell({
       setNavigationMessage('Attention queue is open. Review the next accountable action.');
       return;
     }
+    if (key === 'customers:customer-360' || key === 'customers:loyalty') {
+      setRetailOverviewOpen(true);
+      setRetailCustomerTab(key === 'customers:loyalty' ? 'loyalty' : 'overview');
+      navigateTo({ kind: 'crm-surface', surface: 'party' });
+      setNavigationMessage(`${submodule.label} is open. ${submodule.description}`);
+      return;
+    }
+    if (key === 'insights:executive') {
+      navigateRetailWorkspace(route);
+      setNavigationMessage(`${submodule.label} is open. ${submodule.description}`);
+      return;
+    }
 
     const destinations: Record<Exclude<RetailWorkspaceSubmoduleKey, 'home:attention'>, WorkspaceDestination> = {
       'home:overview': { kind: 'command', surface: 'overview' },
@@ -6595,7 +6613,7 @@ function AppShell({
       'sell:pos': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'pos' },
       'sell:orders': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'orders' },
       'sell:returns': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'returns' },
-      'sell:pricing': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'products' },
+      'sell:pricing': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'pricing' },
       'stock:products': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'products' },
       'stock:control': { kind: 'bharat', tab: 'warehouse', workspace: 'operations' },
       'stock:purchasing': { kind: 'bharat', tab: 'procurement', workspace: 'operations' },
@@ -6612,7 +6630,7 @@ function AppShell({
       'money:settlements': { kind: 'bharat', tab: 'cash', workspace: 'finance' },
       'money:gst': { kind: 'bharat', tab: 'statutory', workspace: 'finance' },
       'money:close': { kind: 'bharat', tab: 'close', workspace: 'finance' },
-      'insights:executive': { kind: 'command', surface: 'overview' },
+      'insights:executive': { kind: 'bharat', tab: 'intelligence', workspace: 'intelligence' },
       'insights:sales-margin': { kind: 'bharat', tab: 'intelligence', workspace: 'intelligence' },
       'insights:stock-risk': { kind: 'bharat', tab: 'warehouse', workspace: 'operations' },
       'insights:outlets': { kind: 'bharat', tab: 'intelligence', workspace: 'intelligence' },
@@ -6778,6 +6796,13 @@ function AppShell({
     openAdvancedRetailWorkbench(primaryAction.destination);
   }
 
+  // The eight retailer-facing routes own their own compact, task-specific
+  // headings. Showing the legacy ERP heading and a second horizontal task
+  // rail above them made each page feel like two applications stacked
+  // together. Advanced workbenches retain that context map; daily store work
+  // starts directly with its one clear workspace.
+  const isRetailFrontDoor = retailOverviewOpen;
+
   return (
     <div className={`app-shell app-shell--${responsiveLayout.viewport}`} data-viewport={responsiveLayout.viewport} data-navigation-mode={responsiveLayout.navigation} data-action-density={responsiveLayout.actionDensity}>
       <a className="skip-link" href="#workspace-canvas">Skip to workspace</a>
@@ -6872,7 +6897,7 @@ function AppShell({
               <small>{workspaceIdentity.detail}</small>
             </div>
           </div>
-          <button type="button" className="global-search" onClick={onOpenCommands}>
+          <button type="button" className="global-search" onClick={onOpenCommands} aria-label="Find an action">
             <Search size={17} aria-hidden="true" />
             <span>Search anything or run a command</span>
             <kbd>Ctrl K</kbd>
@@ -6893,9 +6918,9 @@ function AppShell({
           </div>
         </header>
 
-        <main ref={mainContentRef} id="main-content" className="main-content" tabIndex={-1}>
+        <main ref={mainContentRef} id="main-content" className={isRetailFrontDoor ? 'main-content main-content--retail-front-door' : 'main-content'} tabIndex={-1}>
           <p className="sr-only" aria-live="polite" aria-atomic="true">Current workspace: {activeWorkspace.label}. {navigationMessage}</p>
-          <section className="page-heading">
+          {!isRetailFrontDoor ? <section className="page-heading">
             <div>
               <div className="live-signal">
                 <span />
@@ -6920,8 +6945,7 @@ function AppShell({
                 {primaryAction.label}
               </button>
             </div>
-          </section>
-
+          </section> : null}
           <section className="workspace-rail" aria-label={activeWorkspace.label + ' submodules'}>
             <div className="workspace-rail__intro">
               <span>WORK AREA</span>
@@ -6949,7 +6973,7 @@ function AppShell({
             </div>
           </section> : null}
 
-          <div id="workspace-canvas" className="workspace-canvas" tabIndex={-1}>
+          <div id="workspace-canvas" className={isRetailFrontDoor ? 'workspace-canvas workspace-canvas--retail-front-door' : 'workspace-canvas'} tabIndex={-1}>
           {workspace === 'command' && commandSurface === 'overview' ? <>
           <BakalooRetailCommandCenter
             revenue={revenueOpsSnapshot}
@@ -6961,7 +6985,12 @@ function AppShell({
             onCustomers={() => openAdvancedRetailWorkbench({ kind: 'crm-surface', surface: 'party' })}
             onSetup={() => openAdvancedRetailWorkbench({ kind: 'command', surface: 'control', controlTab: 'organization' })}
           />
-          {retailWorkspaceStatus ? <RetailWorkspaceStatusBadge projection={retailWorkspaceStatus} /> : null}
+          <details className="bakaloo-command__advanced">
+            <summary>
+              <span>Advanced controls and evidence</span>
+              <small>Approvals, recovery, integrations and technical readiness</small>
+            </summary>
+            <div className="bakaloo-command__advanced-content">
           <RetailCutoverGuardPanel
             plans={retailCutoverPlans}
             scope={revenueOpsSnapshot.scope}
@@ -6979,13 +7008,13 @@ function AppShell({
             message={retailDemoResetMessage}
             onApply={onApplyRetailDemoReset}
           />
-          <RetailShadowImportReviewPanel busy={retailCutoverBusy} onFetchHubPreflight={onFetchRetailHubShadowImportPreflight} onFetchHubSourceStatus={onFetchRetailHubShadowImportSourceStatus} onFetchHubPullReceipts={onFetchRetailHubShadowImportPullReceipts} onFetchHubWorkerMetrics={onFetchRetailHubStoreEdgeWorkerMetrics} />
-          <details className="bakaloo-command__advanced">
-            <summary>
-              <span>Advanced controls and evidence</span>
-              <small>Approvals, recovery, integrations and technical readiness</small>
-            </summary>
-            <div className="bakaloo-command__advanced-content">
+          <RetailShadowImportReviewPanel
+            busy={retailCutoverBusy}
+            onFetchHubPreflight={onFetchRetailHubShadowImportPreflight}
+            onFetchHubSourceStatus={onFetchRetailHubShadowImportSourceStatus}
+            onFetchHubPullReceipts={onFetchRetailHubShadowImportPullReceipts}
+            onFetchHubWorkerMetrics={onFetchRetailHubStoreEdgeWorkerMetrics}
+          />
           <IndiaExecutiveDashboard
             dashboard={snapshot}
             revenue={revenueOpsSnapshot}
@@ -7048,7 +7077,7 @@ function AppShell({
           </details>
           </> : null}
 
-          {workspace === 'crm' && crmSurface === 'party' ? <RetailCustomer360Panel party={partySnapshot} sales={revenueOpsSnapshot.retailSales} loyaltyAccounts={revenueOpsSnapshot.retailLoyaltyAccounts} visits={revenueOpsSnapshot.retailCustomerVisits} onOpenCustomerData={() => navigateTo({ kind: 'crm', tab: 'data' })} /> : null}
+          {workspace === 'crm' && crmSurface === 'party' ? <RetailCustomer360Panel party={partySnapshot} sales={revenueOpsSnapshot.retailSales} loyaltyAccounts={revenueOpsSnapshot.retailLoyaltyAccounts} visits={revenueOpsSnapshot.retailCustomerVisits} initialTab={retailCustomerTab} onOpenCustomerData={() => navigateTo({ kind: 'crm', tab: 'data' })} /> : null}
 
           {workspace === 'crm' && crmSurface === 'control' ? <CrmControlDeck
             crm={snapshot}
@@ -7074,7 +7103,7 @@ function AppShell({
             onTabChange={setActiveCrmTab}
           /> : null}
 
-          {retailOverviewOpen && activeRetailRoute === 'deliver' ? <>
+          {retailOverviewOpen && activeRetailRoute === 'deliver' ?
             <RetailDeliveryOverviewPanel
               revenue={revenueOpsSnapshot}
               coverageMap={retailCoverageMap}
@@ -7083,23 +7112,42 @@ function AppShell({
               onFetchCoverageMap={onFetchRetailHubCoverageMap}
               onOpenAdvanced={() => openAdvancedRetailWorkbench({ kind: 'bharat', tab: 'fulfilment', workspace: 'operations', handoff: 'Fulfilment controls are open. Review delivery evidence before writing.' })}
             />
-            <RetailChannelHealthOverviewPanel
-              revenue={revenueOpsSnapshot}
-              onOpenAdvanced={() => openAdvancedRetailWorkbench({ kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'channels', handoff: 'Channel controls are open. Review provider evidence and conflicts before writing.' })}
-            />
-            <RetailOrderQueueFromRevenue
-              revenue={revenueOpsSnapshot}
-              onOpenAdvanced={() => openAdvancedRetailWorkbench({ kind: 'bharat', tab: 'fulfilment', workspace: 'operations', handoff: 'Fulfilment controls are open. Review the selected order before writing evidence.' })}
-            />
-          </> : retailOverviewOpen && activeRetailRoute === 'sell' ? <RetailSellOverviewFromRevenue
+          : retailOverviewOpen && activeRetailRoute === 'sell' ? <RetailSellOverviewFromRevenue
             revenue={revenueOpsSnapshot}
-            onOpenAdvanced={() => openAdvancedRetailWorkbench({ kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'pos', handoff: 'POS controls are open. Start or resume a governed sale.' })}
+            onOpenDestination={(destination) => {
+              if (destination === 'returns') {
+                openAdvancedRetailWorkbench({ kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'returns', handoff: 'Returns and exchange is open. Start from an immutable receipt and record inspection evidence before any decision.' });
+                return;
+              }
+              if (destination === 'devices') {
+                openAdvancedRetailWorkbench({ kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'devices', handoff: 'Counter and device setup is open. Use only acknowledged profiles for store operations.' });
+                return;
+              }
+              openAdvancedRetailWorkbench({ kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'pos', handoff: destination === 'recovery' ? 'POS recovery is open. Resolve queued sales through the governed offline-sync controls.' : 'POS controls are open. Start or resume a governed sale.' });
+            }}
           /> : retailOverviewOpen && activeRetailRoute === 'stock' ? <RetailStockOverviewFromRevenue
             revenue={revenueOpsSnapshot}
             onOpenAdvanced={() => openAdvancedRetailWorkbench({ kind: 'bharat', tab: 'warehouse', workspace: 'operations', handoff: 'Warehouse controls are open. Review quantities, batches and replenishment before writing evidence.' })}
+            onOpenDestination={(destination: RetailStockDestination) => {
+              if (destination === 'procurement') {
+                openAdvancedRetailWorkbench({ kind: 'bharat', tab: 'procurement', workspace: 'operations', handoff: 'Procurement controls are open. Review suppliers, receiving and matching evidence.' });
+                return;
+              }
+              openAdvancedRetailWorkbench({ kind: 'bharat', tab: 'warehouse', workspace: 'operations', handoff: destination === 'expiry' ? 'Expiry controls are open. Review batch evidence before recording a disposition.' : 'Warehouse controls are open. Review quantities, bins and replenishment before writing evidence.' });
+            }}
           /> : retailOverviewOpen && activeRetailRoute === 'money' ? <RetailCashOverviewFromRevenue
             revenue={revenueOpsSnapshot}
-            onOpenAdvanced={() => openAdvancedRetailWorkbench({ kind: 'bharat', tab: 'cash', workspace: 'finance', handoff: 'Cash controls are open. Review the selected till before recording close evidence.' })}
+            onOpenDestination={(destination) => {
+              if (destination === 'close') {
+                openAdvancedRetailWorkbench({ kind: 'bharat', tab: 'close', workspace: 'finance', handoff: 'Day close is open. Review every tender and exception before recording close evidence.' });
+                return;
+              }
+              if (destination === 'settlements') {
+                openAdvancedRetailWorkbench({ kind: 'bharat', tab: 'treasury', workspace: 'finance', handoff: 'Bank matching is open. Reconcile only imported settlement evidence.' });
+                return;
+              }
+              openAdvancedRetailWorkbench({ kind: 'bharat', tab: 'cash', workspace: 'finance', handoff: 'Cash controls are open. Review the selected till before recording close evidence.' });
+            }}
           /> : retailOverviewOpen && activeRetailRoute === 'insights' ? <RetailInsightsOverviewPanel
             dashboard={snapshot}
             revenue={revenueOpsSnapshot}
@@ -7110,7 +7158,13 @@ function AppShell({
             systemInfo={systemInfo}
             health={operationalHealth}
             deviceProfiles={revenueOpsSnapshot.retailDeviceAdapterProfiles}
-            onOpenAdvanced={() => openAdvancedRetailWorkbench({ kind: 'command', surface: 'control', controlTab: 'organization' })}
+            onOpenDestination={(destination: RetailSetupDestination) => {
+              if (destination === 'devices') {
+                openAdvancedRetailWorkbench({ kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'devices', handoff: 'Device setup is open. Profiles remain evidence-led until a tested driver acknowledges the device.' });
+                return;
+              }
+              openAdvancedRetailWorkbench({ kind: 'command', surface: 'control', controlTab: destination });
+            }}
           /> : workspace !== 'command' && workspace !== 'crm' ? <BharatRevenueGrid
             crm={snapshot}
             revenue={revenueOpsSnapshot}

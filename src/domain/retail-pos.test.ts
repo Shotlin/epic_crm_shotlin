@@ -19,6 +19,7 @@ import {
   decideRetailCashierShiftClose,
   decideRetailCashierShiftVarianceResolution,
   openRetailCashierShift,
+  priceRetailReplacementLines,
   requestRetailCashierShiftClose,
   requestRetailCashierShiftVarianceResolution,
 } from './retail-pos';
@@ -229,6 +230,45 @@ function checkoutInput(counter: ReadyCounter, tenders: CheckoutRetailSaleInput['
     tenders,
   };
 }
+
+it('reconciles GST preview exactly to the separately rounded retail receipt lines', () => {
+  const counter = readyCounter();
+  const baseVariant = counter.state.itemVariants.find(({ id }) => id === 'variant-retail-tea');
+  if (!baseVariant) throw new Error('Retail pricing fixture requires its base variant.');
+
+  // Distinct variants permit a three-line receipt while deliberately sharing
+  // the same verified retail product and 18% GST configuration. At â‚¹0.01
+  // per line each line tax rounds to â‚¹0.00; a global unrounded sum would
+  // incorrectly manufacture one paisa of GST.
+  const state: RevenueOpsState = {
+    ...counter.state,
+    itemVariants: [
+      baseVariant,
+      { ...baseVariant, id: 'variant-retail-tea-2', sku: 'RETAIL-TEA-200G', barcode: '8901234567891' },
+      { ...baseVariant, id: 'variant-retail-tea-3', sku: 'RETAIL-TEA-300G', barcode: '8901234567892' },
+    ],
+    priceListEntries: counter.state.priceListEntries.map((entry) => ({ ...entry, unitPrice: 0.01 })),
+  };
+
+  const priced = priceRetailReplacementLines(state, {
+    counterId: counter.counterId,
+    saleAt: SALE_AT,
+    lines: [
+      { itemVariantId: 'variant-retail-tea', binId: 'bin-store-shelf', serialUnitIds: [], quantity: 1 },
+      { itemVariantId: 'variant-retail-tea-2', binId: 'bin-store-shelf', serialUnitIds: [], quantity: 1 },
+      { itemVariantId: 'variant-retail-tea-3', binId: 'bin-store-shelf', serialUnitIds: [], quantity: 1 },
+    ],
+  });
+
+  const lineTax = priced.lines.reduce(
+    (total, line) => total + (line.gstAmount ?? Math.round(line.taxableValue * line.gstRate) / 100) + line.cessAmount,
+    0,
+  );
+  const lineGrandTotal = priced.lines.reduce((total, line) => total + line.lineTotal, 0);
+  expect(priced.taxPreview.totalTax).toBe(lineTax);
+  expect(priced.taxPreview.grandTotal).toBe(lineGrandTotal);
+  expect(priced.taxPreview).toMatchObject({ taxableValue: 0.03, totalTax: 0, grandTotal: 0.03 });
+});
 
 describe('retail POS checkout', () => {
   it('completes a valued GST checkout as one traceable invoice, tender, stock, and COGS event', () => {

@@ -50,14 +50,16 @@ export interface RetailExchangeReplacementLine {
   unitPrice: number;
   taxableValue: number;
   gstRate: number;
+  /** Rounded GST evidence carried from the governed replacement price. */
+  gstAmount?: number;
   taxCodeId: string;
   priceListEntryId: string;
   discountAmount: number;
   cessRate: number;
   cessAmount: number;
   lineTotal: number;
-  /** Actual cost of the replacement item for COGS purposes. */
-  costValue: number;
+  /** Actual total cost of the whole replacement line for COGS purposes. */
+  lineCostTotal: number;
 }
 
 // ---------------------------------------------------------------------------

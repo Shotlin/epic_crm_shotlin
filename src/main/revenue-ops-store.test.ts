@@ -10,7 +10,7 @@ describe('revenue operations state migration', () => {
     legacy.revision = 41;
     for (const key of ['gstRegistrations', 'placeOfSupplyReviews', 'stockLocations', 'stockPositions', 'stockMovements', 'stockReservations', 'shipmentPackages', 'shipmentEvents', 'carrierAdapters', 'returnAuthorizations', 'statutoryExchanges']) delete legacy[key];
     const upgraded = upgradeStoredState(legacy);
-    expect(upgraded).toMatchObject({ schemaVersion: 54, revision: 42, scope: current.scope });
+    expect(upgraded).toMatchObject({ schemaVersion: 56, revision: 42, scope: current.scope });
     expect(upgraded?.paymentTerms).toEqual(current.paymentTerms.map((term) => ({
       ...term,
       scope: current.scope,
@@ -30,7 +30,7 @@ describe('revenue operations state migration', () => {
     legacy.stockPositions = [{ id: 'position-legacy', locationId: 'loc-legacy', productId: 'product-distributor-platform', onHand: 12, reserved: 2, available: 10, version: 1 }];
     for (const key of ['uoms', 'uomConversions', 'inventoryItems', 'itemVariants', 'warehouses', 'warehouseZones', 'storageBins', 'inventoryBatches', 'serialUnits', 'binBalances', 'inventoryCostLayers', 'inventoryLedger', 'warehouseTasks', 'inventoryTransfers', 'cycleCountPlans', 'reorderPolicies', 'reorderProposals', 'inventoryValuationReviews']) delete legacy[key];
     const upgraded = upgradeStoredState(legacy);
-    expect(upgraded).toMatchObject({ schemaVersion: 54, revision: 10 });
+    expect(upgraded).toMatchObject({ schemaVersion: 56, revision: 10 });
     expect(upgraded?.stockLocations[0]).toMatchObject({ id: 'loc-legacy', code: 'LEGACY' });
     expect(upgraded?.stockPositions[0]).toMatchObject({ onHand: 12, reserved: 2, available: 10 });
     expect(upgraded?.uoms).toHaveLength(3);
@@ -46,7 +46,7 @@ describe('revenue operations state migration', () => {
     legacy.inventoryLedger = [{ id: 'ledger-legacy', type: 'receipt', warehouseId: 'wh-legacy', binId: 'bin-1', itemVariantId: 'variant-1', quantity: 5, unitCost: 100, totalCost: 500, reference: 'GRN-1', occurredAt: '2026-07-15T00:00:00.000Z', actorId: 'user-1', checksum: 'abc' }];
     for (const key of ['statutoryAdapters', 'statutoryOperations', 'consolidatedEwayBills', 'digitalSignatureEvidence', 'portalReconciliationRuns']) delete legacy[key];
     const upgraded = upgradeStoredState(legacy);
-    expect(upgraded).toMatchObject({ schemaVersion: 54, revision: 19 });
+    expect(upgraded).toMatchObject({ schemaVersion: 56, revision: 19 });
     expect(upgraded?.warehouses[0]).toMatchObject({ id: 'wh-legacy', code: 'LEGACY' });
     expect(upgraded?.inventoryLedger[0]).toMatchObject({ reference: 'GRN-1', totalCost: 500 });
     expect(upgraded?.statutoryAdapters).toEqual([]);
@@ -61,7 +61,7 @@ describe('revenue operations state migration', () => {
     legacy.statutoryOperations = [{ id: 'operation-legacy', number: 'SOP-26-27-00001', exchangeId: 'exchange-1', adapterId: 'adapter-1', operation: 'cancel', reasonCode: 'DATA-ERROR', remarks: 'Legacy cancellation evidence', status: 'accepted', attempts: 1, requestedBy: 'user-1', requestedAt: '2026-07-15T00:00:00.000Z', version: 2 }];
     for (const key of ['creditLimitControls', 'dunningCases', 'collectionActivities', 'receivableDisputes', 'writeOffRequests', 'withholdingPolicies', 'withholdingEntries', 'zeroRatedSupplyReviews', 'bankAccounts', 'bankStatementImports', 'bankStatementLines']) delete legacy[key];
     const upgraded = upgradeStoredState(legacy);
-    expect(upgraded).toMatchObject({ schemaVersion: 54, revision: 28 });
+    expect(upgraded).toMatchObject({ schemaVersion: 56, revision: 28 });
     expect(upgraded?.statutoryOperations[0]).toMatchObject({ id: 'operation-legacy', status: 'accepted' });
     expect(upgraded?.creditLimitControls).toEqual([]);
     expect(upgraded?.bankStatementLines).toEqual([]);
@@ -75,7 +75,7 @@ describe('revenue operations state migration', () => {
     legacy.creditLimitControls = [{ id: 'credit-legacy', number: 'CRL-26-27-00001', accountId: 'account-sahyadri', currency: 'INR', creditLimit: 500000, warningThresholdPercent: 80, graceDays: 15, blockNewOrders: true, riskGrade: 'B', rationale: 'Legacy control history', status: 'approved', requestedBy: 'user-1', requestedAt: '2026-07-15T00:00:00.000Z', version: 2 }];
     for (const key of ['suppliers', 'requestForQuotations', 'supplierQuotations', 'purchaseOrders', 'goodsReceipts', 'landedCostAllocations', 'supplierInvoices', 'threeWayMatches']) delete legacy[key];
     const upgraded = upgradeStoredState(legacy);
-    expect(upgraded).toMatchObject({ schemaVersion: 54, revision: 32 });
+    expect(upgraded).toMatchObject({ schemaVersion: 56, revision: 32 });
     expect(upgraded?.creditLimitControls[0]).toMatchObject({ id: 'credit-legacy', status: 'approved' });
     expect(upgraded?.purchaseOrders).toEqual([]);
   });
@@ -88,7 +88,7 @@ describe('revenue operations state migration', () => {
     legacy.suppliers = [{ id: 'supplier-legacy', code: 'LEGACY', legalName: 'Legacy Supplier Private Limited', stateCode: '27', email: 'ops@example.com', paymentTermDays: 30, categories: ['materials'], riskRating: 'low', qualificationEvidence: 'Legacy evidence reference', status: 'approved', requestedBy: 'user-1', requestedAt: '2026-07-15T00:00:00.000Z', version: 2 }];
     for (const key of ['treasuryPositions', 'cashForecastRuns', 'paymentProposals', 'bankCharges', 'settlementExceptions', 'liquiditySweeps']) delete legacy[key];
     const upgraded = upgradeStoredState(legacy);
-    expect(upgraded).toMatchObject({ schemaVersion: 54, revision: 53 });
+    expect(upgraded).toMatchObject({ schemaVersion: 56, revision: 53 });
     expect(upgraded?.suppliers[0]).toMatchObject({ id: 'supplier-legacy', status: 'approved' });
     expect(upgraded?.cashForecastRuns).toEqual([]);
     expect(upgraded?.paymentProposals).toEqual([]);
@@ -102,7 +102,7 @@ describe('revenue operations state migration', () => {
     legacy.treasuryPositions = [{ id: 'position-legacy', number: 'TCP-26-27-00001', bankAccountId: 'bank-1', asOfDate: '2026-07-15', availableBalance: 125000, source: 'bank-statement', evidenceReference: 'STM-260715', recordedBy: 'user-1', recordedAt: '2026-07-15T00:00:00.000Z', version: 1 }];
     for (const key of ['workCenters', 'bomRevisions', 'qualityPlans', 'workOrders', 'productionMaterialIssues', 'qualityInspections', 'nonconformances', 'productionOutputs']) delete legacy[key];
     const upgraded = upgradeStoredState(legacy);
-    expect(upgraded).toMatchObject({ schemaVersion: 54, revision: 65 });
+    expect(upgraded).toMatchObject({ schemaVersion: 56, revision: 65 });
     expect(upgraded?.treasuryPositions[0]).toMatchObject({ id: 'position-legacy', availableBalance: 125000 });
     expect(upgraded?.workOrders).toEqual([]);
     expect(upgraded?.productionOutputs).toEqual([]);
@@ -116,7 +116,7 @@ describe('revenue operations state migration', () => {
     legacy.workCenters = [{ id: 'center-legacy', code: 'LEGACY', name: 'Legacy assembly line', warehouseId: 'warehouse-1', dailyCapacityHours: 40, efficiencyPercent: 85, hourlyCost: 900, active: true, version: 2 }];
     for (const key of ['deliveryProjects', 'projectTasks', 'timeEntries', 'serviceAgreements', 'supportTickets', 'fieldServiceJobs']) delete legacy[key];
     const upgraded = upgradeStoredState(legacy);
-    expect(upgraded).toMatchObject({ schemaVersion: 54, revision: 76 });
+    expect(upgraded).toMatchObject({ schemaVersion: 56, revision: 76 });
     expect(upgraded?.workCenters[0]).toMatchObject({ id: 'center-legacy', code: 'LEGACY', active: true });
     expect(upgraded?.deliveryProjects).toEqual([]);
     expect(upgraded?.fieldServiceJobs).toEqual([]);
@@ -131,7 +131,7 @@ describe('revenue operations state migration', () => {
     legacy.timeEntries = [{ id: 'time-legacy', number: 'TIM-26-27-00001', projectId: 'project-legacy', projectTaskId: 'task-legacy', workDate: '2026-07-16', hours: 3, billable: true, notes: 'Legacy approved work.', status: 'approved', submittedBy: 'user-1', submittedAt: '2026-07-16T00:00:00.000Z', version: 2 }];
     for (const key of ['workforceProfiles', 'workforceAvailabilities', 'workforceAllocations']) delete legacy[key];
     const upgraded = upgradeStoredState(legacy);
-    expect(upgraded).toMatchObject({ schemaVersion: 54, revision: 89 });
+    expect(upgraded).toMatchObject({ schemaVersion: 56, revision: 89 });
     expect(upgraded?.deliveryProjects[0]).toMatchObject({ id: 'project-legacy', status: 'active' });
     expect(upgraded?.timeEntries[0]).toMatchObject({ id: 'time-legacy', hourlyCost: 0, costAmount: 0 });
     expect(upgraded?.workforceProfiles).toEqual([]);
@@ -144,7 +144,7 @@ describe('revenue operations state migration', () => {
     legacy.revision = 101;
     for (const key of ['projectBillingPlans', 'projectBillingClaims', 'revenueRecognitionEvents', 'serviceEntitlementUsage', 'accountingClosePeriods']) delete legacy[key];
     const upgraded = upgradeStoredState(legacy);
-    expect(upgraded).toMatchObject({ schemaVersion: 54, revision: 102 });
+    expect(upgraded).toMatchObject({ schemaVersion: 56, revision: 102 });
     expect(upgraded?.workforceProfiles).toHaveLength(3);
     expect(upgraded?.projectBillingPlans).toEqual([]);
     expect(upgraded?.accountingClosePeriods).toEqual([]);
@@ -160,7 +160,7 @@ describe('revenue operations state migration', () => {
     legacy.projectBillingPlans = [{ id: 'plan-legacy', number: 'BPL-26-27-00001', projectId: 'project-1', salesOrderId: 'order-1', salesOrderLineId: 'line-1', billingModel: 'time-and-materials', billRate: 1000, effectiveFrom: '2026-07-01', effectiveTo: '2026-07-31', status: 'active', requestedBy: 'user-1', requestedAt: '2026-07-01T00:00:00.000Z', version: 2 }];
     for (const key of ['employerRegistrations', 'payrollPolicies', 'payrollCompensations', 'benefitPlans', 'benefitEnrollments', 'payrollRuns', 'payrollSlips', 'payrollStatutoryObligations', 'expenseClaims']) delete legacy[key];
     const upgraded = upgradeStoredState(legacy);
-    expect(upgraded).toMatchObject({ schemaVersion: 54, revision: 144 });
+    expect(upgraded).toMatchObject({ schemaVersion: 56, revision: 144 });
     expect(upgraded?.projectBillingPlans[0]).toMatchObject({ id: 'plan-legacy', status: 'active' });
     expect(upgraded?.payrollPolicies).toEqual([]);
     expect(upgraded?.payrollStatutoryObligations).toEqual([]);
@@ -174,7 +174,7 @@ describe('revenue operations state migration', () => {
     legacy.payrollRuns = [{ id: 'run-legacy', number: 'PAY-26-27-00001', periodFrom: '2026-07-01', periodTo: '2026-07-31', paymentDate: '2026-08-01', workforceProfileIds: ['workforce-avery'], policySnapshots: [], slipIds: [], totalGrossPay: 0, totalEmployeeDeductions: 0, totalEmployerContributions: 0, totalNetPay: 0, status: 'finalized', requestedBy: 'user-1', requestedAt: '2026-08-01T00:00:00.000Z', version: 2 }];
     for (const key of ['attendanceRecords', 'leaveTypes', 'leaveApplications', 'payrollAdjustments', 'taxDeclarations', 'payslipDeliveries']) delete legacy[key];
     const upgraded = upgradeStoredState(legacy);
-    expect(upgraded).toMatchObject({ schemaVersion: 54, revision: 169 });
+    expect(upgraded).toMatchObject({ schemaVersion: 56, revision: 169 });
     expect(upgraded?.payrollRuns[0]).toMatchObject({ id: 'run-legacy', adjustmentIds: [] });
     expect(upgraded?.attendanceRecords).toEqual([]);
     expect(upgraded?.payslipDeliveries).toEqual([]);
@@ -187,7 +187,7 @@ describe('revenue operations state migration', () => {
     legacy.revision = 181;
     for (const key of ['providerConnectors', 'providerConformanceCases', 'providerSubmissions', 'providerReconciliationRuns']) delete legacy[key];
     const upgraded = upgradeStoredState(legacy);
-    expect(upgraded).toMatchObject({ schemaVersion: 54, revision: 182 });
+    expect(upgraded).toMatchObject({ schemaVersion: 56, revision: 182 });
     expect(upgraded?.attendanceRecords).toEqual([]);
     expect(upgraded?.providerConnectors).toEqual([]);
     expect(upgraded?.providerSubmissions).toEqual([]);
@@ -200,7 +200,7 @@ describe('revenue operations state migration', () => {
     legacy.revision = 205;
     for (const key of ['projectExchangeRates', 'projectCurrencyProfiles', 'projectContractVariations', 'projectRetainers', 'retainerDrawdowns', 'projectResourcePlans', 'projectMarginReviews']) delete legacy[key];
     const upgraded = upgradeStoredState(legacy);
-    expect(upgraded).toMatchObject({ schemaVersion: 54, revision: 206 });
+    expect(upgraded).toMatchObject({ schemaVersion: 56, revision: 206 });
     expect(upgraded?.providerConnectors).toEqual(current.providerConnectors);
     expect(upgraded?.projectExchangeRates).toEqual([]);
     expect(upgraded?.projectMarginReviews).toEqual([]);
@@ -215,7 +215,7 @@ describe('revenue operations state migration', () => {
 
     const upgraded = upgradeStoredState(legacy);
 
-    expect(upgraded).toMatchObject({ schemaVersion: 54, revision: 206, scope: current.scope });
+    expect(upgraded).toMatchObject({ schemaVersion: 56, revision: 206, scope: current.scope });
   });
 
   it('materializes record scope across the commercial document chain when upgrading schema v18', () => {
@@ -232,7 +232,7 @@ describe('revenue operations state migration', () => {
 
     const upgraded = upgradeStoredState(legacy);
 
-    expect(upgraded).toMatchObject({ schemaVersion: 54, revision: 301 });
+    expect(upgraded).toMatchObject({ schemaVersion: 56, revision: 301 });
     expect(upgraded?.quotes[0]?.scope).toEqual(current.scope);
     expect(upgraded?.salesOrders[0]?.scope).toEqual(current.scope);
     expect(upgraded?.invoices[0]?.scope).toEqual(current.scope);
@@ -253,7 +253,7 @@ describe('revenue operations state migration', () => {
 
     const upgraded = upgradeStoredState(legacy);
 
-    expect(upgraded).toMatchObject({ schemaVersion: 54, revision: 402 });
+    expect(upgraded).toMatchObject({ schemaVersion: 56, revision: 402 });
     expect(upgraded?.warehouses[0]?.scope).toEqual(current.scope);
     expect(upgraded?.storageBins[0]?.scope).toEqual(current.scope);
     expect(upgraded?.inventoryLedger[0]?.scope).toEqual(current.scope);
@@ -274,7 +274,7 @@ describe('revenue operations state migration', () => {
 
     const upgraded = upgradeStoredState(legacy);
 
-    expect(upgraded).toMatchObject({ schemaVersion: 54, revision: 501 });
+    expect(upgraded).toMatchObject({ schemaVersion: 56, revision: 501 });
     expect(upgraded?.suppliers[0]?.scope).toEqual(current.scope);
     expect(upgraded?.requestForQuotations[0]?.scope).toEqual(current.scope);
     expect(upgraded?.purchaseOrders[0]?.scope).toEqual(current.scope);
@@ -295,7 +295,7 @@ describe('revenue operations state migration', () => {
 
     const upgraded = upgradeStoredState(legacy);
 
-    expect(upgraded).toMatchObject({ schemaVersion: 54, revision: 602, scope: current.scope });
+    expect(upgraded).toMatchObject({ schemaVersion: 56, revision: 602, scope: current.scope });
     expect(upgraded?.assetCategories).toEqual([]);
     expect(upgraded?.managedAssets).toEqual([]);
     expect(upgraded?.assetCapitalizations).toEqual([]);
@@ -313,7 +313,7 @@ describe('revenue operations state migration', () => {
 
     const upgraded = upgradeStoredState(legacy);
 
-    expect(upgraded).toMatchObject({ schemaVersion: 54, revision: 703, scope: current.scope });
+    expect(upgraded).toMatchObject({ schemaVersion: 56, revision: 703, scope: current.scope });
     expect(upgraded?.assetDepreciationPolicies).toEqual([]);
     expect(upgraded?.assetDepreciationRuns).toEqual([]);
   });
@@ -327,7 +327,7 @@ describe('revenue operations state migration', () => {
 
     const upgraded = upgradeStoredState(legacy);
 
-    expect(upgraded).toMatchObject({ schemaVersion: 54, revision: 704, scope: current.scope });
+    expect(upgraded).toMatchObject({ schemaVersion: 56, revision: 704, scope: current.scope });
     expect(upgraded?.assetRetirements).toEqual([]);
     expect(upgraded?.assetDepreciationRuns).toEqual(current.assetDepreciationRuns);
   });
@@ -341,7 +341,7 @@ describe('revenue operations state migration', () => {
 
     const upgraded = upgradeStoredState(legacy);
 
-    expect(upgraded).toMatchObject({ schemaVersion: 54, revision: 705, scope: current.scope });
+    expect(upgraded).toMatchObject({ schemaVersion: 56, revision: 705, scope: current.scope });
     expect(upgraded?.assetCustodyTransfers).toEqual([]);
     expect(upgraded?.assetRetirements).toEqual(current.assetRetirements);
   });
@@ -355,7 +355,7 @@ describe('revenue operations state migration', () => {
 
     const upgraded = upgradeStoredState(legacy);
 
-    expect(upgraded).toMatchObject({ schemaVersion: 54, revision: 707, scope: current.scope });
+    expect(upgraded).toMatchObject({ schemaVersion: 56, revision: 707, scope: current.scope });
     expect(upgraded?.assetComponentizations).toEqual([]);
     expect(upgraded?.assetCustodyTransfers).toEqual(current.assetCustodyTransfers);
   });
@@ -369,7 +369,7 @@ describe('revenue operations state migration', () => {
 
     const upgraded = upgradeStoredState(legacy);
 
-    expect(upgraded).toMatchObject({ schemaVersion: 54, revision: 708, scope: current.scope });
+    expect(upgraded).toMatchObject({ schemaVersion: 56, revision: 708, scope: current.scope });
     expect(upgraded?.assetComponentAllocations).toEqual([]);
     expect(upgraded?.assetComponentizations).toEqual(current.assetComponentizations);
   });
@@ -381,7 +381,7 @@ describe('revenue operations state migration', () => {
     legacy.revision = 708;
     delete legacy.assetTransferAccountings;
     const upgraded = upgradeStoredState(legacy);
-    expect(upgraded).toMatchObject({ schemaVersion: 54, revision: 709, scope: current.scope });
+    expect(upgraded).toMatchObject({ schemaVersion: 56, revision: 709, scope: current.scope });
     expect(upgraded?.assetTransferAccountings).toEqual([]);
     expect(upgraded?.assetComponentAllocations).toEqual(current.assetComponentAllocations);
   });
@@ -393,7 +393,7 @@ describe('revenue operations state migration', () => {
     legacy.revision = 709;
     delete legacy.assetSaleDisposals;
     const upgraded = upgradeStoredState(legacy);
-    expect(upgraded).toMatchObject({ schemaVersion: 54, revision: 710, scope: current.scope });
+    expect(upgraded).toMatchObject({ schemaVersion: 56, revision: 710, scope: current.scope });
     expect(upgraded?.assetSaleDisposals).toEqual([]);
     expect(upgraded?.assetTransferAccountings).toEqual(current.assetTransferAccountings);
   });
@@ -405,7 +405,7 @@ describe('revenue operations state migration', () => {
     legacy.revision = 710;
     for (const key of ['assetImpairmentReviews', 'assetRevaluations', 'assetWarranties', 'assetAmcContracts', 'assetMeters', 'assetMeterReadings', 'correctiveMaintenanceRequests', 'assetCalibrations', 'assetSpareParts', 'assetSpareIssues', 'fleetVehicles', 'fleetTrips', 'assetInstalledBaseEvents']) delete legacy[key];
     const upgraded = upgradeStoredState(legacy);
-    expect(upgraded).toMatchObject({ schemaVersion: 54, revision: 711, scope: current.scope });
+    expect(upgraded).toMatchObject({ schemaVersion: 56, revision: 711, scope: current.scope });
     expect(upgraded?.assetImpairmentReviews).toEqual([]);
     expect(upgraded?.assetInstalledBaseEvents).toEqual([]);
   });
@@ -417,7 +417,7 @@ describe('revenue operations state migration', () => {
     legacy.revision = 711;
     delete legacy.purchaseRequisitions;
     const upgraded = upgradeStoredState(legacy);
-    expect(upgraded).toMatchObject({ schemaVersion: 54, revision: 712, scope: current.scope });
+    expect(upgraded).toMatchObject({ schemaVersion: 56, revision: 712, scope: current.scope });
     expect(upgraded?.purchaseRequisitions).toEqual([]);
     expect(upgraded?.assetInstalledBaseEvents).toEqual(current.assetInstalledBaseEvents);
   });
@@ -432,7 +432,7 @@ describe('revenue operations state migration', () => {
 
     const upgraded = upgradeStoredState(legacy);
 
-    expect(upgraded).toMatchObject({ schemaVersion: 54, revision: 714, scope: current.scope });
+    expect(upgraded).toMatchObject({ schemaVersion: 56, revision: 714, scope: current.scope });
     expect(upgraded?.pincodeServiceabilityRules).toEqual([]);
     expect(upgraded?.deliveryPromises).toEqual([]);
     expect(upgraded?.carrierAdapters).toEqual(current.carrierAdapters);
@@ -455,7 +455,7 @@ describe('revenue operations state migration', () => {
 
     const upgraded = upgradeStoredState(legacy);
 
-    expect(upgraded).toMatchObject({ schemaVersion: 54, revision: 715 });
+    expect(upgraded).toMatchObject({ schemaVersion: 56, revision: 715 });
     expect(upgraded?.stockLocations[0]?.scope).toEqual(current.scope);
     expect(upgraded?.stockLocations[1]?.scope).toEqual(foreignScope);
     expect(upgraded?.stockPositions[0]?.scope).toEqual(current.scope);
@@ -476,7 +476,7 @@ describe('revenue operations state migration', () => {
 
     const upgraded = upgradeStoredState(legacy);
 
-    expect(upgraded).toMatchObject({ schemaVersion: 54, revision: 716, scope: current.scope });
+    expect(upgraded).toMatchObject({ schemaVersion: 56, revision: 716, scope: current.scope });
     expect(upgraded?.codCollectionCases).toEqual([]);
     expect(upgraded?.paymentReceipts).toEqual(current.paymentReceipts);
     expect(upgraded?.bankStatementLines).toEqual(current.bankStatementLines);
@@ -491,9 +491,71 @@ describe('revenue operations state migration', () => {
 
     const upgraded = upgradeStoredState(legacy);
 
-    expect(upgraded).toMatchObject({ schemaVersion: 54, revision: 717, scope: current.scope });
+    expect(upgraded).toMatchObject({ schemaVersion: 56, revision: 717, scope: current.scope });
     expect(upgraded?.inventoryDispositions).toEqual([]);
     expect(upgraded?.inventoryLedger).toEqual(current.inventoryLedger);
     expect(upgraded?.stockPositions).toEqual(current.stockPositions);
+  });
+
+  it('upgrades v54 whole-line retail cost evidence without changing any monetary allocation', () => {
+    const current = createInitialRevenueOpsState();
+    const legacy = structuredClone(current) as unknown as Record<string, unknown>;
+    legacy.schemaVersion = 54;
+    legacy.revision = 900;
+    legacy.retailSales = [{
+      id: 'sale-legacy',
+      scope: current.scope,
+      taxPreview: { cgst: 9, sgst: 9, igst: 0 },
+      lines: [{ id: 'sale-line-legacy', quantity: 4, taxableValue: 100, gstRate: 18, costValue: 120 }],
+    }];
+    legacy.retailReturns = [{
+      id: 'return-legacy',
+      scope: current.scope,
+      lines: [{
+        original: { id: 'return-original-legacy', quantity: 4, costValue: 120 },
+        returnValues: { id: 'return-value-legacy', quantity: 2, costValue: 60 },
+      }],
+    }];
+    legacy.retailExchanges = [{
+      id: 'exchange-legacy',
+      scope: current.scope,
+      replacementLines: [{ id: 'exchange-line-legacy', quantity: 3, costValue: 75 }],
+    }];
+
+    const upgraded = upgradeStoredState(legacy);
+
+    expect(upgraded).toMatchObject({ schemaVersion: 56, revision: 901, scope: current.scope });
+    expect(upgraded?.retailSales[0]?.lines[0]).toMatchObject({ lineCostTotal: 120 });
+    expect(upgraded?.retailSales[0]?.lines[0]).toMatchObject({ gstAmount: 18 });
+    expect(upgraded?.retailReturns[0]?.lines[0]?.original).toMatchObject({ lineCostTotal: 120 });
+    expect(upgraded?.retailReturns[0]?.lines[0]?.returnValues).toMatchObject({ lineCostTotal: 60 });
+    expect(upgraded?.retailExchanges[0]?.replacementLines[0]).toMatchObject({ lineCostTotal: 75 });
+    expect(upgraded?.retailSales[0]?.lines[0]).not.toHaveProperty('costValue');
+    expect(upgraded?.retailReturns[0]?.lines[0]?.returnValues).not.toHaveProperty('costValue');
+    expect(upgraded?.retailExchanges[0]?.replacementLines[0]).not.toHaveProperty('costValue');
+  });
+
+  it('freezes legacy line GST without changing the recorded receipt total', () => {
+    const current = createInitialRevenueOpsState();
+    const legacy = structuredClone(current) as unknown as Record<string, unknown>;
+    legacy.schemaVersion = 55;
+    legacy.revision = 901;
+    legacy.retailSales = [{
+      id: 'sale-paisa-allocation',
+      scope: current.scope,
+      taxPreview: { cgst: 0, sgst: 0, igst: 0 },
+      lines: [
+        { id: 'line-1', quantity: 1, taxableValue: 0.01, gstRate: 18, lineCostTotal: 0 },
+        { id: 'line-2', quantity: 1, taxableValue: 0.01, gstRate: 18, lineCostTotal: 0 },
+        { id: 'line-3', quantity: 1, taxableValue: 0.01, gstRate: 18, lineCostTotal: 0 },
+      ],
+    }];
+
+    const upgraded = upgradeStoredState(legacy);
+
+    expect(upgraded).toMatchObject({ schemaVersion: 56, revision: 902 });
+    const sale = upgraded?.retailSales[0];
+    expect(sale?.lines.map((line) => line.gstAmount)).toEqual([0, 0, 0]);
+    expect(sale?.lines.reduce((total, line) => total + (line.gstAmount ?? 0), 0)).toBe(0);
   });
 });

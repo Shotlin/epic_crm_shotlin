@@ -104,9 +104,11 @@ export function requireElectronE2eExecutable(): string {
 export async function launchPackagedElectronApp({
   executable,
   profile,
+  showWindow = false,
 }: {
   executable: string;
   profile: string;
+  showWindow?: boolean;
 }): Promise<PackagedElectronApp> {
   await mkdir(profile, { recursive: true });
   const port = await reserveLoopbackPort();
@@ -125,6 +127,7 @@ export async function launchPackagedElectronApp({
         ...parentEnvironment,
         EPIC_BOS_E2E: '1',
         EPIC_BOS_E2E_USER_DATA: profile,
+        EPIC_BOS_E2E_SHOW_WINDOW: showWindow ? '1' : '0',
         // Never allow a developer's ambient release feed to cause a test
         // process to contact an update provider.
         EPIC_BOS_UPDATE_FEED_URL: '',
@@ -366,6 +369,11 @@ export async function captureScreenshot(
   const screenshot = await app.cdp.send<{ data: string }>('Page.captureScreenshot', {
     format: 'png',
     captureBeyondViewport: options.fullPage ?? true,
+    // The isolated E2E window is shown by the main process, so capture the
+    // compositor surface. Capturing the view surface is required for real
+    // pixels; the hidden-window path produces a valid-size black bitmap.
+    fromSurface: true,
+    ...(options.fullPage === false ? { clip: { x: 0, y: 0, width: 1600, height: 1000, scale: 1 } } : {}),
   });
   await writeFile(destination, Buffer.from(screenshot.data, 'base64'));
 }

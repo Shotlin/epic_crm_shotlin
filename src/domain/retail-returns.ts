@@ -115,14 +115,14 @@ function originalSnapshot(line: RetailSaleLine): RetailReturnOriginalSaleLineSna
     unitPrice: line.unitPrice,
     taxableValue: line.taxableValue,
     gstRate: line.gstRate,
-    gstAmount: money(line.taxableValue * line.gstRate / 100),
+    gstAmount: line.gstAmount ?? money(line.taxableValue * line.gstRate / 100),
     taxCodeId: line.taxCodeId,
     priceListEntryId: line.priceListEntryId,
     discountAmount: line.discountAmount,
     cessRate: line.cessRate,
     cessAmount: line.cessAmount,
     lineTotal: line.lineTotal,
-    costValue: line.costValue,
+    lineCostTotal: line.lineCostTotal,
   };
 }
 
@@ -169,7 +169,7 @@ function allocatedValue(
     gstAmount: portion(original.gstAmount, 'gstAmount'),
     cessAmount: portion(original.cessAmount, 'cessAmount'),
     lineTotal: portion(original.lineTotal, 'lineTotal'),
-    costValue: portion(original.costValue, 'costValue'),
+    lineCostTotal: portion(original.lineCostTotal, 'lineCostTotal'),
   };
 }
 
@@ -195,7 +195,7 @@ function returnTaxPreview(sale: RetailSale, lines: RetailReturnLine[]): QuoteTax
 }
 
 function cogsReversalDraft(returnCase: RetailReturn, postingDate: string): AccountingJournalDraft {
-  const totalCost = money(returnCase.lines.reduce((total, line) => total + line.returnValues.costValue, 0));
+  const totalCost = money(returnCase.lines.reduce((total, line) => total + line.returnValues.lineCostTotal, 0));
   if (totalCost <= 0) throw new Error('Retail return requires positive original cost evidence before COGS can be reversed.');
   const lines: JournalLine[] = [
     { accountCode: 'inventory-asset', debit: totalCost, credit: 0, memo: returnCase.number },
@@ -666,7 +666,7 @@ export function decideRetailReturn(
   let next = state;
   for (const line of returnCase.lines) {
     if (!line.inspection) throw new Error('Retail return cannot be approved before every line is inspected.');
-    if (line.returnValues.costValue <= 0) throw new Error('Retail return requires positive original cost evidence before stock can be re-entered.');
+    if (line.returnValues.lineCostTotal <= 0) throw new Error('Retail return requires positive original cost evidence before stock can be re-entered.');
     const receipt = returnRetailInventoryAtCounter(next, {
       warehouseId: returnCase.warehouseId,
       destinationBinId: line.inspection.destinationBinId,
@@ -674,12 +674,12 @@ export function decideRetailReturn(
       batchId: line.original.batchId,
       serialUnitIds: line.inspection.serialUnitIds,
       quantity: line.quantity,
-      unitCost: line.returnValues.costValue / line.quantity,
+      unitCost: line.returnValues.lineCostTotal / line.quantity,
       reference: returnCase.number,
       occurredAt: now,
       outcome: line.inspection.outcome,
     }, actorId);
-    if (money(receipt.totalCost) !== money(line.returnValues.costValue)) {
+    if (money(receipt.totalCost) !== money(line.returnValues.lineCostTotal)) {
       throw new Error('Retail return physical cost does not reconcile to its immutable sale-line cost evidence.');
     }
     next = receipt.state;

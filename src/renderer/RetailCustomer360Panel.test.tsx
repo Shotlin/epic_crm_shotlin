@@ -23,9 +23,11 @@ afterEach(() => cleanup());
 describe('RetailCustomer360Panel', () => {
   it('shows a simple customer profile with INR history and consent', () => {
     render(<RetailCustomer360Panel party={party} sales={[sale]} loyaltyAccounts={[]} visits={[]} onOpenCustomerData={vi.fn()} />);
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    expect(screen.getByRole('heading', { level: 1, name: 'Know the customer without losing the retail context.' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Asha Retail' })).toBeTruthy();
     expect(screen.getByText('Marketing consent')).toBeTruthy();
-    expect(screen.getByText(/₹1,250/)).toBeTruthy();
+    expect(screen.getAllByText(/1,250/).length).toBeGreaterThan(0);
     expect(screen.queryByText('$')).toBeNull();
   });
 
@@ -38,6 +40,17 @@ describe('RetailCustomer360Panel', () => {
     await user.clear(screen.getByRole('textbox', { name: 'Search customers' }));
     await user.click(screen.getByRole('button', { name: /Open customer data/ }));
     expect(onOpenCustomerData).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses progressive customer tabs instead of mixing every record on one screen', async () => {
+    const user = userEvent.setup();
+    render(<RetailCustomer360Panel party={party} sales={[sale]} loyaltyAccounts={[]} visits={[]} onOpenCustomerData={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Orders' }));
+    expect(screen.getByRole('heading', { name: 'Completed retail orders' })).toBeTruthy();
+    expect(screen.getAllByText('sale-1')[0]).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Consent' }));
+    expect(screen.getByRole('heading', { name: 'Recorded communication permission' })).toBeTruthy();
   });
 
   it('shows a truthful import-empty state instead of fictional retail customers', async () => {

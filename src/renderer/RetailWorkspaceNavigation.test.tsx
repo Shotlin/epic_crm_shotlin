@@ -40,6 +40,19 @@ describe('RetailWorkspaceNavigation', () => {
     });
   });
 
+  it('keeps one compact submodule group open instead of turning the rail into a second page', async () => {
+    const user = userEvent.setup();
+    render(<RetailWorkspaceNavigation activeRoute="home" onNavigate={vi.fn()} />);
+
+    expect(screen.getByRole('button', { name: 'Open Attention queue' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Open Point of sale' })).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Sell' }));
+
+    expect(screen.getByRole('button', { name: 'Open Point of sale' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Open Attention queue' })).toBeNull();
+  });
+
   it('keeps selection understandable when a stale route is supplied', () => {
     render(<RetailWorkspaceNavigation activeRoute="legacy-crm" onNavigate={vi.fn()} />);
 
@@ -101,7 +114,7 @@ describe('RetailWorkspaceNavigation', () => {
 
     const tasks: Array<[string, string, string]> = [
       ['Home', 'Overview', 'overview'], ['Home', 'Attention queue', 'attention'], ['Home', 'Store pulse', 'store-pulse'],
-      ['Sell', 'Point of sale', 'pos'], ['Sell', 'Online orders', 'orders'], ['Sell', 'Returns & exchanges', 'returns'], ['Sell', 'Products & pricing', 'pricing'],
+      ['Sell', 'Point of sale', 'pos'], ['Sell', 'Online orders', 'orders'], ['Sell', 'Returns and exchange', 'returns'], ['Sell', 'Products & pricing', 'pricing'],
       ['Stock', 'Products & variants', 'products'], ['Stock', 'Stock control', 'control'], ['Stock', 'Purchasing', 'purchasing'], ['Stock', 'Replenishment', 'replenishment'],
       ['Deliver', 'Order queue', 'queue'], ['Deliver', 'Delivery control', 'dispatch'], ['Deliver', 'Branch transfers', 'branches'], ['Deliver', 'RTO & returns', 'returns'],
       ['Customers', 'Customer 360', 'customer-360'], ['Customers', 'Loyalty & vouchers', 'loyalty'], ['Customers', 'Campaigns', 'campaigns'], ['Customers', 'Data quality', 'data-quality'],

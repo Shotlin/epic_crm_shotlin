@@ -84,7 +84,7 @@ export function createInitialRevenueOpsState(): RevenueOpsState {
   const opportunityIds = Array.from({ length: 11 }, (_unused, index) => `opp-${201 + index}`);
   const assignmentTerritories = ['territory-west', 'territory-north', 'territory-south', 'territory-west', 'territory-south', 'territory-north', 'territory-west', 'territory-south', 'territory-national', 'territory-east-ne', 'territory-west'];
   return {
-    schemaVersion: 54,
+    schemaVersion: 56,
     revision: 1,
     scope: { companyId: 'company-northstar-us', branchId: 'branch-northstar-hq' },
     profile: { id: 'india-profile-primary', legalName: 'Epic BOS India Private Limited', tradeName: 'Epic BOS India', gstRegistered: false, gstin: '', pan: '', udyamNumber: '', defaultStateCode: '27', currency: 'INR', fiscalYearStartMonth: 4, version: 1 },
@@ -703,7 +703,7 @@ export function createQuote(state: RevenueOpsState, input: CreateQuoteInput, con
     const priceEntry = priceList && product ? [...state.priceListEntries].filter(({ priceListId, productId, minimumQuantity, effectiveFrom, effectiveTo }) => priceListId === priceList.id && productId === product.id && minimumQuantity <= interest.quantity && activeOn(effectiveFrom, effectiveTo)).sort((left, right) => right.minimumQuantity - left.minimumQuantity)[0] : undefined;
     if (priceList && product && !priceEntry) throw new Error(`No effective ${priceList.name} price exists for ${product.name}.`);
     const listUnitPrice = priceEntry?.unitPrice ?? interest.unitPrice;
-    return { id: crypto.randomUUID(), productInterestId: interest.id, description: product?.name ?? interest.name, hsnSac: taxCode?.code ?? interest.hsnSac, quantity: interest.quantity, unitPrice: listUnitPrice, taxableValue: money(interest.quantity * listUnitPrice), gstRate: taxCode?.gstRate ?? interest.gstRate, catalogProductId: product?.id, taxCodeId: taxCode?.id, priceListEntryId: priceEntry?.id, listUnitPrice, discountAmount: 0 } satisfies QuoteLine;
+    return { id: crypto.randomUUID(), productInterestId: interest.id, description: product?.name ?? interest.name, hsnSac: taxCode?.code ?? interest.hsnSac, quantity: interest.quantity, unitPrice: listUnitPrice, taxableValue: money(interest.quantity * listUnitPrice), gstRate: taxCode?.gstRate ?? interest.gstRate, cessRate: taxCode?.cessRate ?? 0, catalogProductId: product?.id, taxCodeId: taxCode?.id, priceListEntryId: priceEntry?.id, listUnitPrice, discountAmount: 0 } satisfies QuoteLine;
   });
   const subtotal = money(provisionalLines.reduce((total, line) => total + line.taxableValue, 0));
   const selectedPolicies = [...new Set(input.discountPolicyIds ?? [])].map((id) => state.discountPolicies.find((policy) => policy.id === id)).filter((policy): policy is NonNullable<typeof policy> => Boolean(policy && policy.active && activeOn(policy.effectiveFrom, policy.effectiveTo)));
@@ -724,12 +724,17 @@ export function createQuote(state: RevenueOpsState, input: CreateQuoteInput, con
     return { ...line, discountAmount, unitPrice: money((line.taxableValue - discountAmount) / line.quantity), taxableValue: money(line.taxableValue - discountAmount) };
   });
   const taxableValue = money(lines.reduce((total, line) => total + line.taxableValue, 0));
-  const totalTax = state.profile.gstRegistered ? money(lines.reduce((total, line) => total + line.taxableValue * line.gstRate / 100, 0)) : 0;
+  // GST and Cess are frozen and rounded at the commercial line boundary.
+  // A document-level raw calculation can differ by paisa from its future
+  // invoice lines, credit notes, journals and settlement amount.
+  const gstTotal = state.profile.gstRegistered ? money(lines.reduce((total, line) => total + money(line.taxableValue * line.gstRate / 100), 0)) : 0;
+  const cess = state.profile.gstRegistered ? money(lines.reduce((total, line) => total + money(line.taxableValue * (line.cessRate ?? 0) / 100), 0)) : 0;
+  const totalTax = money(gstTotal + cess);
   const intraState = input.recipientTreatment !== 'export' && state.profile.defaultStateCode === input.placeOfSupplyStateCode;
-  const cgst = intraState ? money(totalTax / 2) : 0;
-  const sgst = intraState ? money(totalTax - cgst) : 0;
-  const igst = intraState ? 0 : totalTax;
-  const quote: QuoteDraft = { id, number: quoteNumber(state.quotes.length + 1, now), opportunityId: opportunity.id, accountId, contactId: input.contactId, placeOfSupplyStateCode: input.placeOfSupplyStateCode, recipientTreatment: input.recipientTreatment, recipientGstin, currency: 'INR', status: 'draft', validUntil: input.validUntil, lines, taxPreview: { treatment: intraState ? 'intra-state' : 'inter-state', taxableValue, cgst, sgst, igst, totalTax, grandTotal: money(taxableValue + totalTax), determination: 'commercial-estimate' }, priceListId: priceList?.id, discountPolicyIds: selectedPolicies.map(({ id }) => id), subtotal, discountTotal, pricingAsOf, revisionNumber: 1, createdBy: actorId, createdAt: now, scope: structuredClone(state.scope), version: 1 };
+  const cgst = intraState ? money(gstTotal / 2) : 0;
+  const sgst = intraState ? money(gstTotal - cgst) : 0;
+  const igst = intraState ? 0 : gstTotal;
+  const quote: QuoteDraft = { id, number: quoteNumber(state.quotes.length + 1, now), opportunityId: opportunity.id, accountId, contactId: input.contactId, placeOfSupplyStateCode: input.placeOfSupplyStateCode, recipientTreatment: input.recipientTreatment, recipientGstin, currency: 'INR', status: 'draft', validUntil: input.validUntil, lines, taxPreview: { treatment: intraState ? 'intra-state' : 'inter-state', taxableValue, cgst, sgst, igst, cess, totalTax, grandTotal: money(taxableValue + totalTax), determination: 'commercial-estimate' }, priceListId: priceList?.id, discountPolicyIds: selectedPolicies.map(({ id }) => id), subtotal, discountTotal, pricingAsOf, revisionNumber: 1, createdBy: actorId, createdAt: now, scope: structuredClone(state.scope), version: 1 };
   return { ...state, revision: state.revision + 1, quotes: [quote, ...state.quotes] };
 }
 

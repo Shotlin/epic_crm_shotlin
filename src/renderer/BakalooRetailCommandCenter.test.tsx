@@ -45,16 +45,15 @@ describe('BakalooRetailCommandCenter', () => {
     );
 
     await user.click(screen.getByRole('button', { name: 'Open POS' }));
-    await user.click(screen.getByRole('button', { name: 'Open orders' }));
-    await user.click(screen.getByRole('button', { name: 'View order queue' }));
+    await user.click(screen.getAllByRole('button', { name: 'Open orders' })[0]!);
     await user.click(screen.getByRole('button', { name: 'Review stock' }));
     await user.click(screen.getByRole('button', { name: 'Open delivery' }));
     await user.click(screen.getByRole('button', { name: 'Close cash' }));
     await user.click(screen.getByRole('button', { name: 'Open customers' }));
-    await user.click(screen.getByRole('button', { name: 'Open setup' }));
+    await user.click(screen.getByRole('button', { name: /^Set up store/ }));
 
     expect(onPos).toHaveBeenCalledTimes(1);
-    expect(onOrders).toHaveBeenCalledTimes(2);
+    expect(onOrders).toHaveBeenCalledTimes(1);
     expect(onStock).toHaveBeenCalledTimes(1);
     expect(onDelivery).toHaveBeenCalledTimes(1);
     expect(onCash).toHaveBeenCalledTimes(1);
@@ -77,14 +76,16 @@ describe('BakalooRetailCommandCenter', () => {
     );
 
     const commandCenter = screen.getByTestId('bakaloo-retail-command-center');
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    expect(screen.getByRole('heading', { level: 1, name: 'Your store, made simple.' })).toBeTruthy();
     expect(commandCenter.textContent).toContain('No completed sales recorded today.');
-    expect(commandCenter.textContent).toContain('No online orders are waiting to be packed.');
-    expect(commandCenter.textContent).toContain('Set up a counter to begin selling.');
+    expect(commandCenter.textContent).toContain('No online order needs review.');
+    expect(commandCenter.textContent).toContain('No recorded exception needs a decision.');
     expect(commandCenter.textContent).toContain('₹0');
     expect(commandCenter.textContent).not.toContain('$');
   });
 
-  it('does not draw activity in an empty online channel when another channel has orders', () => {
+  it('shows the actual mapped channel without manufacturing activity for another channel', () => {
     const revenue = cleanRetailRevenue();
     const connector: RetailCommerceConnector = {
       id: 'connector-marketplace',
@@ -130,7 +131,7 @@ describe('BakalooRetailCommandCenter', () => {
       />,
     );
 
-    const whatsappRow = screen.getByText('WhatsApp').closest('li');
-    expect(whatsappRow?.querySelector('.bakaloo-command__channel-progress > b')?.getAttribute('data-empty')).toBe('true');
+    expect(screen.getByText('Marketplace')).toBeTruthy();
+    expect(screen.queryByText('WhatsApp')).toBeNull();
   });
 });

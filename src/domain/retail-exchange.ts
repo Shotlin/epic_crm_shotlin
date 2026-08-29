@@ -44,7 +44,7 @@ function requiredReturn(state: RevenueOpsState, id: string): RetailReturn {
 function replacementLines(state: RevenueOpsState, input: CreateRetailExchangeInput, at: string): { lines: RetailExchangeReplacementLine[]; priced: ReturnType<typeof priceRetailReplacementLines> } {
   if (!input.replacementLines.length) throw new Error('Exchange requires at least one replacement item.');
   const priced = priceRetailReplacementLines(state, { counterId: input.counterId, saleAt: at, lines: input.replacementLines });
-  return { priced, lines: priced.lines.map((line) => ({ ...line, id: line.id, costValue: 0 })) };
+  return { priced, lines: priced.lines.map((line) => ({ ...line, id: line.id, lineCostTotal: 0 })) };
 }
 
 function requestChecksum(input: CreateRetailExchangeInput, lines: RetailExchangeReplacementLine[], creditVersion: number): string {

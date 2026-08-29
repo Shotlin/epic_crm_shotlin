@@ -1098,10 +1098,162 @@ function hasUnscopedPhysicalFulfilmentRecords(state: RevenueOpsState): boolean {
   ].some((record) => !isRevenueOperationsScope(record.scope));
 }
 
+type UnknownRecord = Record<string, unknown>;
+
+function isUnknownRecord(value: unknown): value is UnknownRecord {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isLineCostTotal(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
+function toMinorUnits(value: number): number {
+  return Math.round(value * 100);
+}
+
+function fromMinorUnits(value: number): number {
+  return value / 100;
+}
+
+function recordedSaleGstMinor(sale: UnknownRecord): number | null {
+  if (!isUnknownRecord(sale.taxPreview)) return null;
+  const components = [sale.taxPreview.cgst, sale.taxPreview.sgst, sale.taxPreview.igst];
+  if (!components.every(isLineCostTotal)) return null;
+  return components.reduce((total, amount) => total + toMinorUnits(amount), 0);
+}
+
+/**
+ * v56 freezes a GST amount on each retail sale line. v55 persisted the
+ * document tax preview but not the line allocation, so migration allocates
+ * the recorded document GST total by each line's exact tax share and then
+ * uses a stable largest-remainder distribution for the final paisa. That
+ * preserves the original receipt total without claiming to recalculate it.
+ */
+function migrateRetailSaleLineTaxes(sale: UnknownRecord): UnknownRecord {
+  if (!Array.isArray(sale.lines)) throw new Error('Retail sale evidence is malformed.');
+  const lines = sale.lines.map((line) => {
+    if (!isUnknownRecord(line)) throw new Error('Retail sale line is malformed.');
+    return line;
+  });
+  const missingIndexes: number[] = [];
+  const frozenMinor = lines.map((line, index) => {
+    if (!Object.prototype.hasOwnProperty.call(line, 'gstAmount')) {
+      missingIndexes.push(index);
+      return 0;
+    }
+    if (!isLineCostTotal(line.gstAmount)) throw new Error('Retail sale line GST amount is invalid.');
+    return toMinorUnits(line.gstAmount);
+  });
+  if (!missingIndexes.length) return { ...sale, lines };
+
+  const targetMinor = recordedSaleGstMinor(sale);
+  if (targetMinor === null) throw new Error('Legacy retail sale is missing its recorded GST preview.');
+  const retainedMinor = frozenMinor.reduce((total, amount) => total + amount, 0);
+  const remainingMinor = targetMinor - retainedMinor;
+  if (remainingMinor < 0) throw new Error('Retail sale line GST evidence exceeds its recorded receipt GST total.');
+
+  const shares = missingIndexes.map((index) => {
+    const line = lines[index];
+    if (!line) throw new Error('Legacy retail sale line is missing.');
+    if (!isLineCostTotal(line.taxableValue) || !isLineCostTotal(line.gstRate)) {
+      throw new Error('Legacy retail sale line is missing taxable value or GST rate evidence.');
+    }
+    return { index, exactMinor: line.taxableValue * line.gstRate };
+  });
+  const exactTotal = shares.reduce((total, share) => total + share.exactMinor, 0);
+  if (exactTotal === 0) {
+    if (remainingMinor !== 0) throw new Error('Retail sale GST preview cannot be allocated without taxable evidence.');
+    return { ...sale, lines: lines.map((line, index) => missingIndexes.includes(index) ? { ...line, gstAmount: 0 } : line) };
+  }
+
+  const allocations = shares.map((share) => {
+    const exactAllocation = remainingMinor * share.exactMinor / exactTotal;
+    const minor = Math.floor(exactAllocation);
+    return { ...share, minor, remainder: exactAllocation - minor };
+  });
+  let undistributed = remainingMinor - allocations.reduce((total, allocation) => total + allocation.minor, 0);
+  for (const allocation of [...allocations].sort((left, right) => right.remainder - left.remainder || left.index - right.index)) {
+    if (undistributed <= 0) break;
+    allocation.minor += 1;
+    undistributed -= 1;
+  }
+  if (undistributed !== 0) throw new Error('Retail sale GST allocation could not reconcile to its receipt total.');
+  const amountByIndex = new Map(allocations.map(({ index, minor }) => [index, fromMinorUnits(minor)]));
+  return { ...sale, lines: lines.map((line, index) => amountByIndex.has(index) ? { ...line, gstAmount: amountByIndex.get(index)! } : line) };
+}
+
+/**
+ * v54 named whole-line inventory issue cost as `costValue`. The ambiguous
+ * name was easy for reporting code to accidentally treat as a unit cost.
+ * v55 keeps the identical numeric evidence under the unambiguous
+ * `lineCostTotal` key and rejects malformed records rather than guessing.
+ */
+function migrateLegacyRetailLineCost(record: UnknownRecord): UnknownRecord {
+  if (Object.prototype.hasOwnProperty.call(record, 'lineCostTotal')) {
+    if (!isLineCostTotal(record.lineCostTotal)) throw new Error('Retail line cost total is invalid.');
+    const normalized = { ...record };
+    delete normalized.costValue;
+    return normalized;
+  }
+  if (!Object.prototype.hasOwnProperty.call(record, 'costValue') || !isLineCostTotal(record.costValue)) {
+    throw new Error('Legacy retail line is missing valid whole-line cost evidence.');
+  }
+  const normalized: UnknownRecord = { ...record, lineCostTotal: record.costValue };
+  delete normalized.costValue;
+  return normalized;
+}
+
+function migrateRetailLineCosts(value: UnknownRecord): UnknownRecord {
+  const retailSales = Array.isArray(value.retailSales)
+    ? value.retailSales.map((sale) => {
+      if (!isUnknownRecord(sale) || !Array.isArray(sale.lines)) throw new Error('Retail sale evidence is malformed.');
+      const withCurrentCosts = { ...sale, lines: sale.lines.map((line) => {
+        if (!isUnknownRecord(line)) throw new Error('Retail sale line is malformed.');
+        return migrateLegacyRetailLineCost(line);
+      }) };
+      return migrateRetailSaleLineTaxes(withCurrentCosts);
+    })
+    : value.retailSales;
+  const retailReturns = Array.isArray(value.retailReturns)
+    ? value.retailReturns.map((returnCase) => {
+      if (!isUnknownRecord(returnCase) || !Array.isArray(returnCase.lines)) throw new Error('Retail return evidence is malformed.');
+      return { ...returnCase, lines: returnCase.lines.map((line) => {
+        if (!isUnknownRecord(line) || !isUnknownRecord(line.original) || !isUnknownRecord(line.returnValues)) {
+          throw new Error('Retail return line is malformed.');
+        }
+        return {
+          ...line,
+          original: migrateLegacyRetailLineCost(line.original),
+          returnValues: migrateLegacyRetailLineCost(line.returnValues),
+        };
+      }) };
+    })
+    : value.retailReturns;
+  const retailExchanges = Array.isArray(value.retailExchanges)
+    ? value.retailExchanges.map((exchange) => {
+      if (!isUnknownRecord(exchange) || !Array.isArray(exchange.replacementLines)) throw new Error('Retail exchange evidence is malformed.');
+      return { ...exchange, replacementLines: exchange.replacementLines.map((line) => {
+        if (!isUnknownRecord(line)) throw new Error('Retail exchange replacement line is malformed.');
+        return migrateLegacyRetailLineCost(line);
+      }) };
+    })
+    : value.retailExchanges;
+  return { ...value, retailSales, retailReturns, retailExchanges };
+}
+
+function hasCurrentRetailLineCosts(value: Partial<RevenueOpsState>): boolean {
+  const hasLineCost = (line: unknown) => isUnknownRecord(line) && isLineCostTotal(line.lineCostTotal) && !Object.prototype.hasOwnProperty.call(line, 'costValue');
+  const hasFrozenGst = (line: unknown) => isUnknownRecord(line) && isLineCostTotal(line.gstAmount);
+  return (value.retailSales ?? []).every((sale) => isUnknownRecord(sale) && Array.isArray(sale.lines) && sale.lines.every((line) => hasLineCost(line) && hasFrozenGst(line))) &&
+    (value.retailReturns ?? []).every((returnCase) => isUnknownRecord(returnCase) && Array.isArray(returnCase.lines) && returnCase.lines.every((line) => isUnknownRecord(line) && hasLineCost(line.original) && hasLineCost(line.returnValues))) &&
+    (value.retailExchanges ?? []).every((exchange) => isUnknownRecord(exchange) && Array.isArray(exchange.replacementLines) && exchange.replacementLines.every(hasLineCost));
+}
+
 function isRevenueOpsState(value: unknown): value is RevenueOpsState {
   if (!value || typeof value !== 'object') return false;
   const candidate = value as Partial<RevenueOpsState>;
-  return Number(candidate.schemaVersion) === 54 && typeof candidate.revision === 'number' &&
+  return Number(candidate.schemaVersion) === 56 && typeof candidate.revision === 'number' &&
     Array.isArray(candidate.purchaseRequisitions) &&
     isRevenueOperationsScope(candidate.scope) &&
     Boolean(candidate.profile) && Array.isArray(candidate.territories) &&
@@ -1133,7 +1285,7 @@ function isRevenueOpsState(value: unknown): value is RevenueOpsState {
     Array.isArray(candidate.warehouseTasks) && Array.isArray(candidate.inventoryTransfers) &&
     Array.isArray(candidate.cycleCountPlans) && Array.isArray(candidate.reorderPolicies) &&
     Array.isArray(candidate.reorderProposals) && Array.isArray(candidate.inventoryValuationReviews) && Array.isArray(candidate.inventoryDispositions) &&
-    Array.isArray(candidate.retailCounters) && Array.isArray(candidate.retailCashierShifts) && Array.isArray(candidate.retailSales) && Array.isArray(candidate.retailReturns) && Array.isArray(candidate.retailExchanges) && Array.isArray(candidate.retailCreditNoteReconciliations) && Array.isArray(candidate.retailInterBranchTransfers) && Array.isArray(candidate.retailScaleProfiles) && Array.isArray(candidate.retailPrinterAdapters) && Array.isArray(candidate.retailLabelPrintDispatches) && Array.isArray(candidate.retailCatalogBulkEdits) && Array.isArray(candidate.retailStoreCredits) && Array.isArray(candidate.retailCatalogCategories) && Array.isArray(candidate.retailCatalogBrands) && Array.isArray(candidate.retailMerchandisingProfiles) && Array.isArray(candidate.retailBarcodeSequences) && Array.isArray(candidate.retailLabelPrintRuns) && Array.isArray(candidate.retailProductCombos) && Array.isArray(candidate.retailLoyaltyAccounts) && Array.isArray(candidate.retailLoyaltyLedger) && Array.isArray(candidate.retailVouchers) && Array.isArray(candidate.retailCustomerVisits) && Array.isArray(candidate.retailSalesCommissions) && Array.isArray(candidate.retailCommissionPayoutBatches) && Array.isArray(candidate.retailPromotionRedemptions) && Array.isArray(candidate.retailPurchaseOcrDocuments) && Array.isArray(candidate.retailCommerceConnectors) && Array.isArray(candidate.retailCommerceSyncRuns) && Array.isArray(candidate.retailCommerceOrders) && Array.isArray(candidate.retailCommerceCatalogMappings) && Array.isArray(candidate.retailSettlementReconciliations) && Array.isArray(candidate.retailSettlementAllocationPacks) && Array.isArray(candidate.retailCommerceConflictResolutions) && Array.isArray(candidate.retailSettlementWithholdingEvidence) && Array.isArray(candidate.retailOcrProviderProfiles) && Array.isArray(candidate.retailPurchaseOcrMappings) && Array.isArray(candidate.retailCommercePushBatches) && Array.isArray(candidate.retailCommerceConformanceCases) && Array.isArray(candidate.retailPurchaseExceptions) &&
+    Array.isArray(candidate.retailCounters) && Array.isArray(candidate.retailCashierShifts) && Array.isArray(candidate.retailSales) && Array.isArray(candidate.retailReturns) && Array.isArray(candidate.retailExchanges) && hasCurrentRetailLineCosts(candidate) && Array.isArray(candidate.retailCreditNoteReconciliations) && Array.isArray(candidate.retailInterBranchTransfers) && Array.isArray(candidate.retailScaleProfiles) && Array.isArray(candidate.retailPrinterAdapters) && Array.isArray(candidate.retailLabelPrintDispatches) && Array.isArray(candidate.retailCatalogBulkEdits) && Array.isArray(candidate.retailStoreCredits) && Array.isArray(candidate.retailCatalogCategories) && Array.isArray(candidate.retailCatalogBrands) && Array.isArray(candidate.retailMerchandisingProfiles) && Array.isArray(candidate.retailBarcodeSequences) && Array.isArray(candidate.retailLabelPrintRuns) && Array.isArray(candidate.retailProductCombos) && Array.isArray(candidate.retailLoyaltyAccounts) && Array.isArray(candidate.retailLoyaltyLedger) && Array.isArray(candidate.retailVouchers) && Array.isArray(candidate.retailCustomerVisits) && Array.isArray(candidate.retailSalesCommissions) && Array.isArray(candidate.retailCommissionPayoutBatches) && Array.isArray(candidate.retailPromotionRedemptions) && Array.isArray(candidate.retailPurchaseOcrDocuments) && Array.isArray(candidate.retailCommerceConnectors) && Array.isArray(candidate.retailCommerceSyncRuns) && Array.isArray(candidate.retailCommerceOrders) && Array.isArray(candidate.retailCommerceCatalogMappings) && Array.isArray(candidate.retailSettlementReconciliations) && Array.isArray(candidate.retailSettlementAllocationPacks) && Array.isArray(candidate.retailCommerceConflictResolutions) && Array.isArray(candidate.retailSettlementWithholdingEvidence) && Array.isArray(candidate.retailOcrProviderProfiles) && Array.isArray(candidate.retailPurchaseOcrMappings) && Array.isArray(candidate.retailCommercePushBatches) && Array.isArray(candidate.retailCommerceConformanceCases) && Array.isArray(candidate.retailPurchaseExceptions) &&
     Array.isArray(candidate.statutoryAdapters) && Array.isArray(candidate.statutoryOperations) &&
     Array.isArray(candidate.consolidatedEwayBills) && Array.isArray(candidate.digitalSignatureEvidence) &&
     Array.isArray(candidate.portalReconciliationRuns) && Array.isArray(candidate.providerConnectors) &&
@@ -1191,9 +1343,14 @@ function isRevenueOpsState(value: unknown): value is RevenueOpsState {
 export function upgradeStoredState(value: unknown): RevenueOpsState | null {
   if (isRevenueOpsState(value)) return withOperatingRecordScopes(value);
   if (!value || typeof value !== 'object') return null;
-  const candidate = value as Record<string, unknown>;
+  let candidate: UnknownRecord;
+  try {
+    candidate = migrateRetailLineCosts(value as UnknownRecord);
+  } catch {
+    return null;
+  }
   const storedVersion = Number(candidate.schemaVersion);
-  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54].includes(storedVersion) || !Array.isArray(candidate.quotes) || !Array.isArray(candidate.productInterests)) return null;
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56].includes(storedVersion) || !Array.isArray(candidate.quotes) || !Array.isArray(candidate.productInterests)) return null;
   const baseline = createInitialRevenueOpsState();
   const quotes = storedVersion === 1 ? (candidate.quotes as Array<Record<string, unknown>>).map((quote) => {
     const lines = Array.isArray(quote.lines) ? quote.lines as Array<Record<string, unknown>> : [];
@@ -1203,7 +1360,7 @@ export function upgradeStoredState(value: unknown): RevenueOpsState | null {
   return withOperatingRecordScopes({
     ...baseline,
     ...(candidate as Partial<RevenueOpsState>),
-    schemaVersion: 54,
+    schemaVersion: 56,
     revision: Number(candidate.revision ?? 0) + 1,
     scope: isRevenueOperationsScope(candidate.scope) ? candidate.scope : baseline.scope,
     productInterests: storedVersion === 1 ? (candidate.productInterests as RevenueOpsState['productInterests']).map((interest) => interest.hsnSac === '998314' ? { ...interest, catalogProductId: 'product-distributor-platform' } : interest) : candidate.productInterests as RevenueOpsState['productInterests'],

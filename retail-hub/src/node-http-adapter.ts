@@ -17,6 +17,14 @@ export interface NodeHttpRetailHubContext {
   authorization?: RetailHubAuthorization;
 }
 
+export interface RetailHubChannelOrderWebhookVerificationInput {
+  request: IncomingMessage;
+  rawBody: string;
+  signatureHeader: string | undefined;
+  scope: ShadowImportScope;
+  authorization: RetailHubAuthorization;
+}
+
 export interface NodeHttpRetailHubServerOptions {
   service: DurableRetailHubService;
   /**
@@ -39,6 +47,8 @@ export interface NodeHttpRetailHubServerOptions {
   storeEdgeWorkerMetrics?: (scope: ShadowImportScope) => StoreEdgeSyncWorkerMetrics | Promise<StoreEdgeSyncWorkerMetrics>;
   /** Optional authenticated channel-order evidence transport. */
   channelOrderTransport?: RetailHubChannelOrderTransportStore;
+  /** Optional provider signature gate. When supplied, channel-order POSTs fail closed on invalid signatures. */
+  verifyChannelOrderWebhook?: (input: RetailHubChannelOrderWebhookVerificationInput) => boolean | Promise<boolean>;
 }
 
 /**
@@ -59,16 +69,19 @@ export function createNodeHttpRetailHubServer(options: NodeHttpRetailHubServerOp
       const context = options.resolveContext ? await options.resolveContext(request) : undefined;
       const method = (request.method ?? 'GET').toUpperCase();
       const url = request.url ?? '/';
-      const body = method === 'POST' && (isReviewDecisionPath(url) || isStoreEdgeSyncPath(url) || isStoreEdgeWorkerRecoveryPath(url) || isChannelOrderPath(url))
-        ? await readJsonBody(request, maxBodyBytes)
+      const bodyNeedsJson = method === 'POST' && (isReviewDecisionPath(url) || isStoreEdgeSyncPath(url) || isStoreEdgeWorkerRecoveryPath(url) || isChannelOrderPath(url));
+      const parsedBody = bodyNeedsJson && isChannelOrderPath(url)
+        ? await readJsonBodyWithRaw(request, maxBodyBytes)
         : undefined;
+      const body = parsedBody?.body ?? (bodyNeedsJson ? await readJsonBody(request, maxBodyBytes) : undefined);
+      const rawBody = parsedBody?.rawBody;
       if (isStoreEdgeSyncPath(url) || isStoreEdgeWorkerMetricsPath(url) || isStoreEdgeWorkerRecoveryPath(url) || isChannelOrderPath(url)) {
         const storeEdgeResponse = isStoreEdgeWorkerMetricsPath(url)
           ? await handleStoreEdgeWorkerMetricsRequest(method, url, context, options.storeEdgeWorkerMetrics)
           : isStoreEdgeWorkerRecoveryPath(url)
             ? await handleStoreEdgeWorkerRecoveryRequest(method, url, body, context, options.storeEdgeWorkStore)
           : isChannelOrderPath(url)
-            ? await handleChannelOrderRequest(method, url, body, context, options.channelOrderTransport)
+            ? await handleChannelOrderRequest(method, url, body, rawBody, request, context, options.channelOrderTransport, options.verifyChannelOrderWebhook)
             : await handleStoreEdgeRequest(method, url, body, context, options.storeEdgeInbox, options.storeEdgeWorkStore);
         writeResponse(response, storeEdgeResponse.status, storeEdgeResponse.headers, storeEdgeResponse.body);
         return;
@@ -139,8 +152,11 @@ async function handleChannelOrderRequest(
   method: string,
   url: string,
   body: unknown,
+  rawBody: string | undefined,
+  request: IncomingMessage,
   context: NodeHttpRetailHubContext | undefined,
   transport: RetailHubChannelOrderTransportStore | undefined,
+  verifyWebhook: NodeHttpRetailHubServerOptions['verifyChannelOrderWebhook'],
 ): Promise<RetailHubResponse> {
   if (!transport) return jsonResponse(503, { error: 'channel_order_transport_unavailable', message: 'Channel-order transport is not configured for this Hub.' });
   if (!context?.scope || !context.authorization) return jsonResponse(403, { error: 'authorization_required', message: 'An authenticated channel-order actor and scope are required.' });
@@ -154,6 +170,10 @@ async function handleChannelOrderRequest(
   }
   if (method !== 'POST' || parsed.pathname !== '/v1/channel-orders/events') return jsonResponse(405, { error: 'channel_order_method_not_allowed', message: 'Channel-order transport accepts POST events and GET receipts only.' }, { allow: 'GET, POST, OPTIONS' });
   if (!context.authorization.permissions.includes('channel-orders:ingest')) return jsonResponse(403, { error: 'permission_required', message: 'The authenticated actor is not allowed to ingest channel-order evidence.' });
+  if (verifyWebhook) {
+    const verified = await verifyWebhook({ request, rawBody: rawBody ?? '', signatureHeader: headerValue(request.headers['x-epic-webhook-signature']), scope: context.scope, authorization: context.authorization });
+    if (!verified) return jsonResponse(401, { error: 'webhook_signature_invalid', message: 'The channel-order webhook signature could not be verified.' });
+  }
   try {
     const envelope = parseRetailHubChannelOrderEnvelope(body);
     const accepted = await transport.accept(envelope, context.scope, context.authorization.actorId);
@@ -267,6 +287,10 @@ function jsonResponse(status: number, body: unknown, headers: Readonly<Record<st
 }
 
 async function readJsonBody(request: IncomingMessage, maxBodyBytes: number): Promise<unknown> {
+  return (await readJsonBodyWithRaw(request, maxBodyBytes)).body;
+}
+
+async function readJsonBodyWithRaw(request: IncomingMessage, maxBodyBytes: number): Promise<{ body: unknown; rawBody: string }> {
   const declaredLength = request.headers['content-length'];
   if (declaredLength !== undefined) {
     const length = Number(declaredLength);
@@ -283,12 +307,17 @@ async function readJsonBody(request: IncomingMessage, maxBodyBytes: number): Pro
   }
   const contentType = request.headers['content-type'] ?? '';
   if (!contentType.toLowerCase().startsWith('application/json')) throw new RequestBodyError(415, 'json_content_type_required', 'Review requests must use application/json.');
-  if (size === 0) return undefined;
+  if (size === 0) return { body: undefined, rawBody: '' };
+  const rawBody = Buffer.concat(chunks).toString('utf8');
   try {
-    return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
+    return { body: JSON.parse(rawBody) as unknown, rawBody };
   } catch {
     throw new RequestBodyError(400, 'invalid_json', 'Review request body must be valid JSON.');
   }
+}
+
+function headerValue(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
 }
 
 function writeResponse(response: ServerResponse, status: number, headers: Readonly<Record<string, string>>, body?: unknown): void {

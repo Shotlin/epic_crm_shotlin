@@ -88,14 +88,40 @@ export class BackupService {
     await this.createBackupFile(safetyPath);
     await this.inspect(safetyPath, new Date().toISOString());
     const stagedPath = this.database.path + '.restore-next';
+    const encryptedStagedPath = `${stagedPath}.enc`;
     await rm(stagedPath, { force: true });
-    if (await this.isEncryptedPath(sourcePath)) {
-      if (!this.envelope) throw new Error('The selected encrypted backup cannot be opened because the protected key vault is unavailable.');
-      await this.envelope.open(sourcePath, stagedPath);
+    await rm(encryptedStagedPath, { force: true });
+
+    if (this.envelope) {
+      // Do not persist a plaintext restore candidate beside the active Store
+      // Edge runtime. The candidate is only materialized during the immediate
+      // startup swap by ProtectedDatabaseFile, after its envelope has been
+      // authenticated.
+      const stageDirectory = await mkdtemp(path.join(tmpdir(), 'epic-bos-restore-stage-'));
+      const rawStagePath = path.join(stageDirectory, 'candidate.sqlite3');
+      try {
+        if (await this.isEncryptedPath(sourcePath)) {
+          await this.envelope.open(sourcePath, rawStagePath);
+        } else {
+          await copyFile(sourcePath, rawStagePath);
+        }
+        // Re-inspect the exact bytes that will be sealed. This protects the
+        // short interval after the operator selected the source file.
+        await this.inspect(rawStagePath, new Date().toISOString());
+        await this.envelope.seal(rawStagePath, encryptedStagedPath);
+        await this.inspect(encryptedStagedPath, new Date().toISOString());
+      } finally {
+        await rm(stageDirectory, { recursive: true, force: true });
+      }
     } else {
+      // Compatibility only for an older unprotected runtime. The packaged
+      // Electron main process always supplies the OS-protected key.
+      if (await this.isEncryptedPath(sourcePath)) {
+        throw new Error('The selected encrypted backup cannot be opened because the protected key vault is unavailable.');
+      }
       await copyFile(sourcePath, stagedPath);
+      await this.inspect(stagedPath, new Date().toISOString());
     }
-    await this.inspect(stagedPath, new Date().toISOString());
 
     const receipt: RestoreReceipt = {
       fileName: inspected.fileName,
@@ -105,7 +131,12 @@ export class BackupService {
     };
     setTimeout(() => {
       app.relaunch();
-      app.exit(0);
+      // Do not call app.exit() here: Electron bypasses before-quit for that
+      // fast path, which would skip ProtectedDatabaseFile.sealRuntime and
+      // leave the active SQLite runtime plaintext across the restart. The
+      // main-process before-quit handler owns the authenticated seal and then
+      // exits after it succeeds.
+      app.quit();
     }, 300);
     return receipt;
   }

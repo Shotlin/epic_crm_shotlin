@@ -65,7 +65,7 @@ export function buildCustomerPortalSnapshot(state: CustomerPortalSource, account
     status: order.status,
     fulfilmentStatus: order.fulfilmentStatus,
     amount: order.subtotal + order.taxPreview.totalTax - order.discountTotal,
-    lines: order.lines.map((line) => ({ description: line.description, quantity: line.quantity, unitPrice: line.unitPrice, totalAmount: line.taxableValue + line.taxableValue * line.gstRate / 100 })),
+    lines: order.lines.map((line) => ({ description: line.description, quantity: line.quantity, unitPrice: line.unitPrice, totalAmount: line.taxableValue + line.taxableValue * (line.gstRate + (line.cessRate ?? 0)) / 100 })),
     fulfilment: state.fulfilmentTasks.filter((task) => task.salesOrderId === order.id && inScope(state, task)).map((task) => ({ kind: task.kind, title: task.title, status: task.status, dueAt: task.dueAt })),
     deliveryEvidence: state.deliveryEvidence.filter((evidence) => evidence.salesOrderId === order.id && inScope(state, evidence)).map((evidence) => ({ type: evidence.type, reference: evidence.reference, occurredAt: evidence.occurredAt })),
   })).sort((left, right) => right.orderDate.localeCompare(left.orderDate) || left.number.localeCompare(right.number));

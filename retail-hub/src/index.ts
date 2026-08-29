@@ -65,7 +65,14 @@ export type {
 } from './bakaloo-coverage-map';
 
 export { createNodeHttpRetailHubServer } from './node-http-adapter';
-export type { NodeHttpRetailHubContext, NodeHttpRetailHubServerOptions } from './node-http-adapter';
+export type { NodeHttpRetailHubContext, NodeHttpRetailHubServerOptions, RetailHubChannelOrderWebhookVerificationInput } from './node-http-adapter';
+
+export {
+  createInMemoryRetailHubWebhookReplayStore,
+  signRetailHubWebhook,
+  verifyRetailHubWebhookSignature,
+} from './webhook-signature';
+export type { RetailHubWebhookReplayStore, RetailHubWebhookVerification, RetailHubWebhookVerificationReason } from './webhook-signature';
 
 export {
   createInMemoryRetailHubChannelOrderTransport,

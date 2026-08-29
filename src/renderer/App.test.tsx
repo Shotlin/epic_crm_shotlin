@@ -859,9 +859,9 @@ afterEach(() => cleanup());
 /** Keeps journey tests explicit about the customer workbench when the retail
  * owner now starts at the simple store home. */
 async function openCrmHome(): Promise<void> {
-  if (screen.queryByRole('heading', { name: 'Look after customers' })) return;
+  if (screen.queryByTestId('retail-customer-360')) return;
   (await screen.findByRole('button', { name: /^Customers$/ })).click();
-  await screen.findByRole('heading', { name: 'Look after customers' });
+  await screen.findByTestId('retail-customer-360');
 }
 
 describe('Epic BOS renderer', () => {
@@ -908,7 +908,7 @@ describe('Epic BOS renderer', () => {
 
     expect(await screen.findByRole('heading', { name: 'Your store, made simple.' })).toBeTruthy();
     expect(screen.getByTestId('bakaloo-retail-command-center')).toBeTruthy();
-    expect(await screen.findByRole('status', { name: 'Workspace status: Legacy cleanup' })).toBeTruthy();
+    expect(screen.getAllByText('Legacy sample isolated').length).toBeGreaterThan(0);
     expect(screen.getByText(/Build 0\.1\.0 \/ Legacy sample cleanup required/)).toBeTruthy();
   });
 
@@ -964,9 +964,9 @@ describe('Epic BOS renderer', () => {
 
     await openCrmHome();
     await user.click(screen.getByRole('button', { name: /^Deliver$/ }));
-    expect(await screen.findByRole('heading', { name: 'Pack and deliver orders' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Promise realistically. Dispatch visibly. Reconcile COD.' })).toBeTruthy();
     expect(screen.getByTestId('retail-delivery-overview')).toBeTruthy();
-    expect(screen.getByTestId('retail-order-queue')).toBeTruthy();
+    expect(screen.getByTestId('retail-delivery-map')).toBeTruthy();
     expect(document.activeElement).toBe(document.getElementById('workspace-canvas'));
   });
 
@@ -996,27 +996,23 @@ describe('Epic BOS renderer', () => {
     expect(screen.queryByRole('heading', { name: 'Return the receipt, inspect the goods, then let a different person decide.' })).toBeNull();
     expect(screen.getByTestId('commercial-foundry').getAttribute('data-commerce-surface')).toBe('pos');
 
-    await user.click(within(navigation).getByRole('button', { name: 'Open Returns & exchanges' }));
+    await user.click(within(navigation).getByRole('button', { name: 'Open Returns and exchange' }));
 
     expect(await screen.findByRole('heading', { name: 'Return the receipt, inspect the goods, then let a different person decide.' })).toBeTruthy();
     expect(screen.queryByRole('heading', { name: 'A disciplined counter, not a pretend payment terminal.' })).toBeNull();
     expect(screen.getByTestId('commercial-foundry').getAttribute('data-commerce-surface')).toBe('returns');
   });
 
-  it('keeps normal Sales channels read-only and outside the provider control plane', async () => {
+  it('keeps provider write controls outside the delivery front door', async () => {
     const user = userEvent.setup();
     render(<App />);
 
     const navigation = await screen.findByTestId('retail-workspace-navigation');
     await user.click(within(navigation).getByRole('button', { name: 'Deliver' }));
-    await user.click(await screen.findByRole('button', { name: /open channel controls/i }));
-
-    expect(await screen.findByRole('heading', { name: 'External commerce status' })).toBeTruthy();
-    expect(screen.getByText(/this screen is read-only: it cannot create data, approve evidence, or claim a provider response/i)).toBeTruthy();
-    expect(screen.getByTestId('commercial-foundry').getAttribute('data-commerce-surface')).toBe('channels');
-
-    expect(screen.queryByRole('heading', { name: 'Certified OCR, push payloads and order lifecycle' })).toBeNull();
-    expect(screen.queryByRole('button', { name: /plan complete capability pack|plan conformance|record result|prepare push|record received provider response|configure credentials|create connector|capture OCR|import order|capture settlement|approve mapping/i })).toBeNull();
+    expect(await screen.findByRole('heading', { name: 'Promise realistically. Dispatch visibly. Reconcile COD.' })).toBeTruthy();
+    expect(screen.getByTestId('retail-delivery-map')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /open channel controls/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /configure credentials|create connector|prepare push|record provider response/i })).toBeNull();
   });
 
   it('opens the real control room from the policy-approved Settings extension', async () => {
@@ -1059,12 +1055,13 @@ describe('Epic BOS renderer', () => {
       ['Open delivery', () => screen.findByRole('heading', { name: 'Sales fulfilment' })],
       ['Close cash', () => screen.findByRole('heading', { name: 'Billing, receivables and cash' })],
       ['Open customers', () => screen.findByTestId('retail-customer-360')],
-      ['Open setup', () => screen.findByRole('heading', { name: 'Business control room' })],
+      ['Set up store', () => screen.findByRole('heading', { name: 'Business control room' })],
     ];
 
     for (const [actionLabel, findWorkbench] of destinations) {
       const commandCenter = screen.getByTestId('bakaloo-retail-command-center');
-      await user.click(within(commandCenter).getByRole('button', { name: actionLabel }));
+      const matchingActions = within(commandCenter).getAllByRole('button', { name: new RegExp(`^${actionLabel}`, 'i') });
+      await user.click(matchingActions[0]!);
       expect(await findWorkbench()).toBeTruthy();
       expect(screen.queryByTestId('bakaloo-retail-command-center')).toBeNull();
 
@@ -1111,28 +1108,12 @@ describe('Epic BOS renderer', () => {
     render(<App />);
     await openCrmHome();
     await user.click(screen.getByRole('button', { name: /^Home$/ }));
-    await screen.findByRole('heading', { name: 'Run your store' });
-    expect(screen.getByRole('heading', { name: 'Run every store from one clear view' })).toBeTruthy();
-    expect(screen.getByText('Online queue')).toBeTruthy();
-    expect(screen.getByTestId('india-executive-pulse')).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'See the business before the business sees you.' })).toBeTruthy();
-    expect(screen.getByTestId('scope-guard-panel')).toBeTruthy();
-    const governedTower = screen.getByTestId('governed-control-tower-panel');
-    expect(governedTower).toBeTruthy();
-    expect(within(governedTower).getByText(/Revenue intelligence workspace/)).toBeTruthy();
-    expect(within(governedTower).getAllByRole('button', { name: 'Open source' }).length).toBeGreaterThan(0);
-    expect(within(governedTower).queryByRole('button', { name: 'Acknowledge' })).toBeNull();
-    expect(within(governedTower).queryByRole('button', { name: 'Resolve' })).toBeNull();
-    expect(screen.getByTestId('outbox-readiness-panel')).toBeTruthy();
-    expect(screen.getByTestId('observability-gate-panel')).toBeTruthy();
-    expect(screen.getByTestId('approval-inbox-panel')).toBeTruthy();
+    expect(await screen.findByText('Run the store')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Your store, made simple.' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Sales by recorded day' })).toBeTruthy();
+    expect(screen.getByText('Make the next decision clear')).toBeTruthy();
     expect(screen.getByTestId('legacy-sample-isolation')).toBeTruthy();
-    expect(screen.queryByTestId('portal-readiness-panel')).toBeNull();
-    expect(screen.queryByTestId('intelligence-command-panel')).toBeNull();
-    expect(screen.queryByTestId('communication-readiness-panel')).toBeNull();
     expect(screen.queryByTestId('demo-audit-trail')).toBeNull();
-    expect(screen.queryByTestId('data-exchange-panel')).toBeNull();
-    expect(screen.queryByTestId('business-workflow-catalog')).toBeNull();
     expect(screen.queryByTestId('demo-scenario-runner')).toBeNull();
   }, 20_000);
 
@@ -1147,16 +1128,14 @@ describe('Epic BOS renderer', () => {
     render(<App />);
     await openCrmHome();
     await user.click(screen.getByRole('button', { name: /^Home$/ }));
-    await screen.findByRole('heading', { name: 'Build your operating foundation' });
+    await screen.findByRole('heading', { name: 'Your store, made simple.' });
 
-    expect(screen.getByTestId('clean-workspace-onboarding')).toBeTruthy();
+    expect(screen.getByTestId('bakaloo-retail-command-center')).toBeTruthy();
     expect(screen.queryByTestId('demo-audit-trail')).toBeNull();
     expect(screen.queryByTestId('data-exchange-panel')).toBeNull();
     expect(screen.queryByTestId('demo-scenario-runner')).toBeNull();
-    const foundationStep = screen.getByText('Set product, HSN/SAC and price policy').closest('section');
-    expect(foundationStep).toBeTruthy();
-    await user.click(within(foundationStep!).getByRole('button', { name: /^(Open catalogue|Review)$/ }));
-    expect(await screen.findByRole('heading', { name: 'Sell and manage orders' })).toBeTruthy();
+    await user.click(screen.getAllByRole('button', { name: 'Open orders' })[0]!);
+    expect(await screen.findByRole('heading', { name: 'One queue for every verified order' })).toBeTruthy();
   });
 
   it('renders the Commerce intelligence view from the current governed snapshots', async () => {
@@ -1165,11 +1144,11 @@ describe('Epic BOS renderer', () => {
     await openCrmHome();
 
     await user.click(screen.getByRole('button', { name: /^Insights$/ }));
-    await screen.findByRole('heading', { name: 'Understand store performance' });
+    await screen.findByRole('heading', { name: 'See the business. Then see the reason behind the numbers.' });
 
     const insights = await screen.findByTestId('retail-insights-overview');
-    expect(insights.textContent).toContain('See what needs your attention');
-    expect(insights.textContent).toContain('Billed demand');
+    expect(insights.textContent).toContain('Decision visuals');
+    expect(insights.textContent).toContain('Evidence coverage');
     /*
     expect(commerce.textContent).toContain('₹48L');
     */
@@ -1204,11 +1183,11 @@ describe('Epic BOS renderer', () => {
   }, 20_000);
 
     */
-    expect(await screen.findByRole('heading', { name: 'Set up Epic BOS with confidence' })).toBeTruthy();
-    expect(screen.getByText('People & access')).toBeTruthy();
-    expect(screen.getByText('Backups & recovery')).toBeTruthy();
-    expect(screen.getByText('Integrations & devices')).toBeTruthy();
-    await user.click(screen.getByRole('button', { name: /Open full setup/i }));
+    expect(await screen.findByRole('heading', { name: 'Configure once. Operate safely every day.' })).toBeTruthy();
+    expect(screen.getByText('Admin & controls')).toBeTruthy();
+    expect(screen.getByText('Data & backup')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Integrations/ })).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: /^Data & backup/ }));
     expect(await screen.findByRole('heading', { name: 'Business control room' })).toBeTruthy();
   });
 
@@ -1236,7 +1215,7 @@ describe('Epic BOS renderer', () => {
   }, 20_000);
 
     */
-    expect(await screen.findByRole('heading', { name: 'Close cash with confidence', level: 2 })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Close the day by exception, not by spreadsheet.' })).toBeTruthy();
     expect(screen.getByTestId('retail-cash-overview')).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Recorded versus bank matched' })).toBeTruthy();
   });
@@ -1246,7 +1225,7 @@ describe('Epic BOS renderer', () => {
     render(<App />);
     await openCrmHome();
     await user.click(screen.getByRole('button', { name: /^Money$/ }));
-    expect(await screen.findByRole('heading', { name: 'Close cash with confidence', level: 2 })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Close the day by exception, not by spreadsheet.' })).toBeTruthy();
     expect(screen.getByRole('button', { name: /Open money controls/i })).toBeTruthy();
   });
 
@@ -1255,13 +1234,15 @@ describe('Epic BOS renderer', () => {
     await openCrmHome();
 
     expect(
-      await screen.findByRole('heading', { name: 'Look after every customer' }),
+      await screen.findByRole('heading', { name: 'Know the customer without losing the retail context.' }),
     ).toBeTruthy();
     const customerOverview = screen.getByTestId('retail-customer-360');
     expect(within(customerOverview).getByText('Customers')).toBeTruthy();
-    expect(within(customerOverview).getByText('Marketable contacts')).toBeTruthy();
-    expect(within(customerOverview).getByText('Complete addresses')).toBeTruthy();
-    expect(within(customerOverview).getByText('Local sales')).toBeTruthy();
+    expect(within(customerOverview).getByText('Active customers')).toBeTruthy();
+    expect(within(customerOverview).getByText('Repeat rate')).toBeTruthy();
+    expect(within(customerOverview).getByText('Average basket')).toBeTruthy();
+    expect(within(customerOverview).getByText('Loyalty points')).toBeTruthy();
+    expect(within(customerOverview).getByText('Needs first sale')).toBeTruthy();
     expect(screen.queryByText('Commercial flow')).toBeNull();
     /* Legacy CRM pipeline assertions remain covered by CRM depth/domain tests.
        The primary retailer route now opens the customer master directly. */
@@ -1289,7 +1270,7 @@ describe('Epic BOS renderer', () => {
     render(<App />);
     await openCrmHome();
 
-    await user.click(screen.getByRole('button', { name: /search anything/i }));
+    await user.click(screen.getByRole('button', { name: /find an action/i }));
 
     expect(
       screen.getByRole('dialog', { name: 'Command palette' }),
@@ -1297,7 +1278,7 @@ describe('Epic BOS renderer', () => {
     expect(screen.getByRole('button', { name: /create a lead/i })).toBeTruthy();
     await waitFor(() => expect(screen.getByRole('textbox', { name: 'Search commands' })).toBe(document.activeElement));
     await user.keyboard('{Escape}');
-    expect(screen.getByRole('button', { name: /search anything/i })).toBe(document.activeElement);
+    expect(screen.getByRole('button', { name: /find an action/i })).toBe(document.activeElement);
   });
 
   it('supports Alt-number keyboard routing for major workspaces', async () => {
@@ -1306,11 +1287,11 @@ describe('Epic BOS renderer', () => {
     await openCrmHome();
     expect(screen.getByRole('button', { name: 'Deliver' }).getAttribute('aria-keyshortcuts')).toBe('Alt+4');
     await user.keyboard('{Alt>}2{/Alt}');
-    expect(await screen.findByRole('heading', { name: 'Sell and manage orders' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Sell simply. Keep every rupee accountable.' })).toBeTruthy();
     await user.keyboard('{Alt>}4{/Alt}');
-    expect(await screen.findByRole('heading', { name: 'Pack and deliver orders' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Promise realistically. Dispatch visibly. Reconcile COD.' })).toBeTruthy();
     await user.keyboard('{Alt>}7{/Alt}');
-    expect(await screen.findByRole('heading', { name: 'Understand store performance' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'See the business. Then see the reason behind the numbers.' })).toBeTruthy();
   });
 
   it('keeps a labelled, available workspace rail at desktop width', async () => {
@@ -1370,7 +1351,7 @@ describe('Epic BOS renderer', () => {
     });
 
     await user.click(screen.getByRole('button', { name: /^Money$/ }));
-    await screen.findByRole('heading', { name: 'Close cash with confidence', level: 2 });
+    await screen.findByRole('heading', { name: 'Close the day by exception, not by spreadsheet.' });
     await waitFor(() => {
       expect(scrollCalls.some(([options]) => JSON.stringify(options) === JSON.stringify({ top: 0, behavior: 'auto' }))).toBe(true);
       expect(document.activeElement).toBe(canvas);
@@ -1426,7 +1407,7 @@ describe('Epic BOS renderer', () => {
     await user.click(await screen.findByRole('button', { name: /Pack orders/i }));
 
     expect(
-      await screen.findByRole('heading', { name: 'Pack and deliver orders' }),
+      await screen.findByRole('heading', { name: 'Promise realistically. Dispatch visibly. Reconcile COD.' }),
     ).toBeTruthy();
     expect(screen.queryByRole('dialog', { name: 'Command palette' })).toBeNull();
   });
@@ -1440,7 +1421,7 @@ describe('Epic BOS renderer', () => {
       ['Home', 'bakaloo-retail-command-center'],
       ['Sell', 'retail-sell-overview'],
       ['Stock', 'retail-stock-overview'],
-      ['Deliver', 'retail-order-queue'],
+      ['Deliver', 'retail-delivery-overview'],
       ['Customers', 'retail-customer-360'],
       ['Money', 'retail-cash-overview'],
       ['Insights', 'retail-insights-overview'],
@@ -1471,7 +1452,7 @@ describe('Epic BOS renderer', () => {
     await openCrmHome();
     await user.click(screen.getByRole('button', { name: /^Money$/ }));
     /*
-    await screen.findByRole('heading', { name: 'Close cash with confidence', level: 2 });
+    await screen.findByRole('heading', { name: 'Close the day by exception, not by spreadsheet.' });
     await user.click(screen.getByRole('button', { name: 'Asset register' }));
 
     expect(
@@ -1537,18 +1518,18 @@ describe('Epic BOS renderer', () => {
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Open workspace navigation' }));
     await user.click(screen.getByRole('button', { name: 'Open workspace navigation' }));
     await user.click(screen.getByRole('button', { name: /^Sell$/ }));
-    await screen.findByRole('heading', { name: 'Sell and manage orders' });
+    await screen.findByRole('heading', { name: 'Sell simply. Keep every rupee accountable.' });
     expect(screen.getByLabelText('Primary navigation').className).not.toContain(
       'sidebar--mobile-open',
     );
 
     await user.click(screen.getByRole('button', { name: /^Deliver$/ }));
-    expect(await screen.findByTestId('retail-order-queue')).toBeTruthy();
-    expect(screen.getByTestId('retail-channel-health-overview')).toBeTruthy();
+    expect(await screen.findByTestId('retail-delivery-overview')).toBeTruthy();
+    expect(screen.getByTestId('retail-delivery-map')).toBeTruthy();
 
     await user.click(screen.getByRole('button', { name: /^Setup$/ }));
     expect(await screen.findByTestId('retail-setup-overview')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Open full setup/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Data & backup/ })).toBeTruthy();
   });
 
   it('exposes a keyboard skip link to the active workspace canvas', async () => {
@@ -1797,7 +1778,7 @@ describe('Epic BOS renderer', () => {
     /*
 
     expect(
-      await screen.findByRole('heading', { name: 'Sell and manage orders' }),
+      await screen.findByRole('heading', { name: 'Sell simply. Keep every rupee accountable.' }),
     ).toBeTruthy();
     expect(screen.getByText(/FY starts April/i)).toBeTruthy();
 
@@ -1841,7 +1822,7 @@ describe('Epic BOS renderer', () => {
     await user.click(screen.getByRole('button', { name: /^Setup$/ }));
     await user.click(screen.getByRole('button', { name: 'Store team' }));
     await user.click(screen.getByRole('button', { name: 'Workforce capacity' }));
-    await screen.findByRole('heading', { name: 'Pack and deliver orders' });
+    await screen.findByRole('heading', { name: 'Promise realistically. Dispatch visibly. Reconcile COD.' });
     await user.click(screen.getByRole('tab', { name: /Projects \+ service$/i }));
     expect(screen.getByRole('heading', { name: 'Make every promise operational.' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Open a governed delivery' })).toBeTruthy();
@@ -1861,7 +1842,7 @@ describe('Epic BOS renderer', () => {
     expect(screen.getByRole('heading', { name: 'Reserve real people against real task capacity' })).toBeTruthy();
 
     await user.click(screen.getByRole('button', { name: /^Deliver$/ }));
-    await screen.findByRole('heading', { name: 'Pack and deliver orders' });
+    await screen.findByRole('heading', { name: 'Promise realistically. Dispatch visibly. Reconcile COD.' });
     expect(screen.getByRole('heading', { name: 'Fulfilment Control Tower' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Registration + place-of-supply gate' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Inventory allocation deck' })).toBeTruthy();
@@ -1870,7 +1851,7 @@ describe('Epic BOS renderer', () => {
     expect(screen.getByRole('heading', { name: 'IRP + e-way acknowledgement exchange' })).toBeTruthy();
 
     await user.click(screen.getByRole('button', { name: /^Money$/ }));
-    await screen.findByRole('heading', { name: 'Close cash with confidence', level: 2 });
+    await screen.findByRole('heading', { name: 'Close the day by exception, not by spreadsheet.' });
     await user.click(screen.getByRole('tab', { name: /GST \+ statutory$/i }));
     expect(screen.getByRole('heading', { name: 'Portal truth, under command' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'GSP + IRP adapter vault' })).toBeTruthy();

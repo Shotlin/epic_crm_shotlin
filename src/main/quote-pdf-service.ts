@@ -16,7 +16,7 @@ function inr(value: number): string {
 function quoteHtml(bundle: ReturnType<RevenueOpsStore['getQuoteBundle']>): string {
   const { quote, profile, account, contact } = bundle;
   const lineRows = quote.lines.map((line, index) => `<tr><td>${index + 1}</td><td><strong>${html(line.description)}</strong><small>${html(line.hsnSac)} · ${html(line.quantity)} × ${inr(line.listUnitPrice ?? line.unitPrice)}</small></td><td>${html(line.gstRate)}%</td><td>${inr(line.discountAmount ?? 0)}</td><td>${inr(line.taxableValue)}</td></tr>`).join('');
-  const taxLabel = quote.taxPreview.treatment === 'intra-state' ? `CGST ${inr(quote.taxPreview.cgst)} + SGST ${inr(quote.taxPreview.sgst)}` : `IGST ${inr(quote.taxPreview.igst)}`;
+  const taxLabel = `${quote.taxPreview.treatment === 'intra-state' ? `CGST ${inr(quote.taxPreview.cgst)} + SGST ${inr(quote.taxPreview.sgst)}` : `IGST ${inr(quote.taxPreview.igst)}`}${quote.taxPreview.cess ? ` + Cess ${inr(quote.taxPreview.cess)}` : ''}`;
   return `<!doctype html><html><head><meta charset="utf-8"><style>
     @page { size: A4; margin: 0; } * { box-sizing: border-box; } body { margin: 0; color: #102b2c; font-family: Arial, sans-serif; font-size: 11px; background: #fff; }
     .page { min-height: 1122px; padding: 42px 46px 36px; position: relative; } .topline { height: 8px; background: linear-gradient(90deg,#d9672b 0 36%,#f0b84b 36% 69%,#1a6d62 69%); position:absolute; inset:0 0 auto; }

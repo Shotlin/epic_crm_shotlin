@@ -15,9 +15,10 @@ afterEach(() => cleanup());
 describe('RetailStockOverviewPanel', () => {
   it('shows real stock evidence and highlights expired inventory', () => {
     render(<RetailStockOverviewPanel variants={[variant]} balances={[balance]} policies={[policy]} proposals={[proposal]} batches={[batch]} tasks={[]} onOpenAdvanced={vi.fn()} />);
-    expect(screen.getByRole('heading', { name: /Know what is available/ })).toBeTruthy();
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    expect(screen.getByRole('heading', { level: 1, name: /Know what you have/ })).toBeTruthy();
     expect(screen.getAllByText('Rice 5 kg').length).toBeGreaterThan(0);
-    expect(screen.getByText(/expired batch/)).toBeTruthy();
+    expect(screen.getAllByText('Expired').length).toBeGreaterThan(0);
     expect(screen.queryByText('$')).toBeNull();
   });
 
@@ -25,10 +26,10 @@ describe('RetailStockOverviewPanel', () => {
     const user = userEvent.setup();
     const onOpenAdvanced = vi.fn();
     render(<RetailStockOverviewPanel variants={[variant]} balances={[balance]} policies={[policy]} proposals={[proposal]} batches={[]} tasks={[]} onOpenAdvanced={onOpenAdvanced} />);
-    await user.click(screen.getByRole('button', { name: 'Expired batches' }));
-    expect(screen.getByText('No stock records in this view')).toBeTruthy();
-    await user.click(screen.getByRole('button', { name: 'All stock' }));
-    await user.click(screen.getByRole('button', { name: /Open governed stock action/ }));
+    await user.click(screen.getByRole('button', { name: 'Expiry' }));
+    expect(screen.getByText('No expiry risk is recorded')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Stock health' }));
+    await user.click(screen.getByRole('button', { name: 'Open stock controls' }));
     expect(onOpenAdvanced).toHaveBeenCalledTimes(1);
   });
 });

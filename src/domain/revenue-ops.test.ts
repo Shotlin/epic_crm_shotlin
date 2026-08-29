@@ -141,4 +141,40 @@ describe('India revenue operations', () => {
     const quoted = createQuote(state, { opportunityId: 'opp-201', placeOfSupplyStateCode: '29', recipientTreatment: 'registered', recipientGstin: '29ABCDE1234F1Z5', validUntil: '2026-08-31' }, context(), 'user-avery', 'quote-2', '2026-07-15T12:00:00.000Z');
     expect(quoted.quotes[0]?.taxPreview).toMatchObject({ treatment: 'inter-state', cgst: 0, sgst: 0, igst: 18000, grandTotal: 118000 });
   });
+
+  it('freezes per-line GST and Cess rounding so the quote never creates a phantom paisa', () => {
+    const initial = createInitialRevenueOpsState();
+    const state = {
+      ...initial,
+      profile: { ...initial.profile, gstRegistered: true, gstin: '27ABCDE1234F1Z5' },
+      taxCodes: initial.taxCodes.map((taxCode) => ({ ...taxCode, cessRate: 1 })),
+      productInterests: ['1', '2', '3'].map((suffix) => ({
+        id: `interest-rounding-${suffix}`,
+        opportunityId: 'opp-201',
+        accountId: 'account-kestrel',
+        name: `Micro service ${suffix}`,
+        kind: 'service' as const,
+        hsnSac: '998314',
+        quantity: 1,
+        unitPrice: 0.01,
+        gstRate: 18,
+        notes: 'Rounding invariant fixture.',
+        catalogProductId: 'product-distributor-platform',
+        version: 1,
+      })),
+    };
+
+    const quoted = createQuote(state, {
+      opportunityId: 'opp-201',
+      placeOfSupplyStateCode: '27',
+      recipientTreatment: 'unregistered',
+      recipientGstin: '',
+      validUntil: '2026-08-31',
+    }, context(), 'user-avery', 'quote-rounding', '2026-07-15T12:00:00.000Z');
+
+    expect(quoted.quotes[0]).toMatchObject({
+      taxPreview: { taxableValue: 0.03, cgst: 0, sgst: 0, cess: 0, totalTax: 0, grandTotal: 0.03 },
+      lines: expect.arrayContaining([expect.objectContaining({ cessRate: 1 })]),
+    });
+  });
 });

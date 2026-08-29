@@ -199,7 +199,7 @@ describe('retail commerce provider execution', () => {
     const sale = {
       id: 'sale-hub-001', number: 'INV-HUB-001', counterId: 'counter-store', cashierShiftId: 'shift-store', cashierId: 'cashier-1', customerAccountId: 'walk-in',
       transactionKey: 'POS-HUB-001', requestChecksum: 'a'.repeat(64), saleAt: '2026-08-02T10:00:00.000Z', invoiceId: 'invoice-hub-001', paymentReceiptIds: ['payment-hub-001'],
-      lines: [{ id: 'line-hub-001', itemVariantId: 'variant-tea', catalogProductId: 'product-tea', binId: 'bin-shelf', serialUnitIds: [], description: 'Tea', hsnSac: '0902', quantity: 1, listUnitPrice: 100, unitPrice: 100, taxableValue: 100, gstRate: 5, taxCodeId: 'gst-5', priceListEntryId: 'price-1', discountAmount: 0, cessRate: 0, cessAmount: 0, lineTotal: 105, costValue: 60 }],
+      lines: [{ id: 'line-hub-001', itemVariantId: 'variant-tea', catalogProductId: 'product-tea', binId: 'bin-shelf', serialUnitIds: [], description: 'Tea', hsnSac: '0902', quantity: 1, listUnitPrice: 100, unitPrice: 100, taxableValue: 100, gstRate: 5, taxCodeId: 'gst-5', priceListEntryId: 'price-1', discountAmount: 0, cessRate: 0, cessAmount: 0, lineTotal: 105, lineCostTotal: 60 }],
       subtotal: 100, discountTotal: 0, taxPreview: { treatment: 'intra-state', taxableValue: 100, cgst: 2.5, sgst: 2.5, igst: 0, totalTax: 5, grandTotal: 105, determination: 'commercial-estimate' },
       tenders: [{ id: 'tender-hub-001', method: 'cash', amount: 105, reference: 'CASH-HUB-001' }], costTotal: 60, status: 'completed', completedAt: '2026-08-02T10:00:02.000Z', scope: structuredClone(base.scope), version: 1,
     } satisfies RetailSale;
@@ -231,7 +231,7 @@ describe('retail commerce provider execution', () => {
     const sale = (id: string, number: string, completedAt: string): RetailSale => ({
       id, number, counterId: 'counter-store', cashierShiftId: 'shift-store', cashierId: 'cashier-1', customerAccountId: 'walk-in',
       transactionKey: `POS-${id}`, requestChecksum: 'a'.repeat(64), saleAt: completedAt, invoiceId: `invoice-${id}`, paymentReceiptIds: [`payment-${id}`],
-      lines: [{ id: `line-${id}`, itemVariantId: 'variant-tea', catalogProductId: 'product-tea', binId: 'bin-shelf', serialUnitIds: [], description: 'Tea', hsnSac: '0902', quantity: 1, listUnitPrice: 100, unitPrice: 100, taxableValue: 100, gstRate: 5, taxCodeId: 'gst-5', priceListEntryId: 'price-1', discountAmount: 0, cessRate: 0, cessAmount: 0, lineTotal: 105, costValue: 60 }],
+      lines: [{ id: `line-${id}`, itemVariantId: 'variant-tea', catalogProductId: 'product-tea', binId: 'bin-shelf', serialUnitIds: [], description: 'Tea', hsnSac: '0902', quantity: 1, listUnitPrice: 100, unitPrice: 100, taxableValue: 100, gstRate: 5, taxCodeId: 'gst-5', priceListEntryId: 'price-1', discountAmount: 0, cessRate: 0, cessAmount: 0, lineTotal: 105, lineCostTotal: 60 }],
       subtotal: 100, discountTotal: 0, taxPreview: { treatment: 'intra-state', taxableValue: 100, cgst: 2.5, sgst: 2.5, igst: 0, totalTax: 5, grandTotal: 105, determination: 'commercial-estimate' },
       tenders: [{ id: `tender-${id}`, method: 'cash', amount: 105, reference: `CASH-${id}` }], costTotal: 60, status: 'completed', completedAt, scope: structuredClone(base.scope), version: 1,
     });

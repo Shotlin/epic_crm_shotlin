@@ -398,19 +398,28 @@ function priceRetailLines(
       unitPrice: money(taxableValue / line.checkedQuantity),
       taxableValue,
       gstRate: line.taxCode.gstRate,
+      gstAmount,
       taxCodeId: line.taxCode.id,
       priceListEntryId: line.priceEntry.id,
       discountAmount,
       cessRate: line.taxCode.cessRate,
       cessAmount,
       lineTotal: money(taxableValue + gstAmount + cessAmount),
-      costValue: 0,
+      lineCostTotal: 0,
       isGift: Boolean(line.giftPolicyId),
       promotionPolicyId: line.giftPolicyId,
     };
   });
   const taxableValue = money(lines.reduce((total, line) => total + line.taxableValue, 0));
-  const gstTotal = money(lines.reduce((total, line) => total + line.taxableValue * line.gstRate / 100, 0));
+  // A receipt is legally and operationally composed of the frozen line
+  // amounts. Summing the raw taxable × rate values here would round a second
+  // time at document level and can manufacture/lose a paisa compared with
+  // the invoice lines, return credits and tender total. Keep the preview
+  // exactly reconcilable to those individually rounded line taxes instead.
+  const gstTotal = money(lines.reduce(
+    (total, line) => total + (line.gstAmount ?? money(line.taxableValue * line.gstRate / 100)),
+    0,
+  ));
   const cess = money(lines.reduce((total, line) => total + line.cessAmount, 0));
   const intraState = placeOfSupplyStateCode === warehouse.stateCode;
   const cgst = intraState ? money(gstTotal / 2) : 0;
@@ -427,7 +436,7 @@ function priceRetailLines(
       igst: intraState ? 0 : gstTotal,
       cess,
       totalTax: money(gstTotal + cess),
-      grandTotal: money(taxableValue + gstTotal + cess),
+      grandTotal: money(lines.reduce((total, line) => total + line.lineTotal, 0)),
       determination: 'commercial-estimate',
     },
     promotionRedemptions,
@@ -705,7 +714,7 @@ export function checkoutRetailSale(state: RevenueOpsState, input: CheckoutRetail
     ...processing,
     receivableId: receivable.id,
     paymentReceiptIds: receiptIds,
-    lines: processing.lines.map((line) => ({ ...line, costValue: costs.get(line.id) ?? 0 })),
+    lines: processing.lines.map((line) => ({ ...line, lineCostTotal: costs.get(line.id) ?? 0 })),
     costTotal,
     voucherRedemption,
     status: 'completed',
