@@ -4,7 +4,7 @@ This map retains every governed Epic capability. A Bakaloo visual route is a pre
 
 | Epic governed capability | Bakaloo-style presentation target | Domain ownership | Parity decision |
 | --- | --- | --- | --- |
-| POS, shifts, tender, receipts | MAIN / Point of Sale; Orders | Epic Store Edge | Add high-priority role-aware POS route |
+| POS, shifts, tender, receipts | MAIN / Point of Sale; Orders | Epic Store Edge | Retail Sell front door is implemented with a governed, price-ready product search/category projection; checkout writes remain in the role-aware POS workbench. |
 | Returns, exchanges, credit notes | Orders / Returns & Exchanges | Epic Store Edge + finance | Add nested Orders route with approval evidence |
 | Order intake, reservation, pick/pack/dispatch | Orders | Retail Hub projection + Epic fulfilment | Reconcile channel events before action |
 | Catalog, variants, barcode, price, GST/HSN | Products + Shop Products | Epic catalog/inventory | Extend master/shop tabs progressively |
