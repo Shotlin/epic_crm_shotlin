@@ -1048,6 +1048,14 @@ describe('Epic BOS renderer', () => {
     expect(screen.queryByTestId('bharat-workbench')).toBeNull();
   });
 
+  it('opens RTO & returns as a compact delivery exception view', async () => {
+    const user = userEvent.setup(); render(<App />); await openCrmHome();
+    await user.click(screen.getByRole('button', { name: 'Deliver' }));
+    await user.click(screen.getByRole('button', { name: 'Open RTO & returns' }));
+    expect(await screen.findByTestId('retail-delivery-exceptions')).toBeTruthy();
+    expect(screen.queryByTestId('bharat-workbench')).toBeNull();
+  });
+
   it('opens Delivery branch transfers on the Stock Transfers tab', async () => {
     const user = userEvent.setup();
     render(<App />);

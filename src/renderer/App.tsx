@@ -91,6 +91,7 @@ import { RetailInsightsOverviewPanel } from './RetailInsightsOverviewPanel';
 import { RetailReturnsOverviewPanel } from './RetailReturnsOverviewPanel';
 import { RetailPricingOverviewPanel } from './RetailPricingOverviewPanel';
 import { RetailGstOverviewPanel } from './RetailGstOverviewPanel';
+import { RetailDeliveryExceptionsPanel } from './RetailDeliveryExceptionsPanel';
 import { RetailSellOverviewFromRevenue } from './RetailSellOverviewPanel';
 import { RetailOrderQueueFromRevenue } from './RetailOrderQueuePanel';
 import { RetailSetupOverviewPanel, type RetailSetupDestination } from './RetailSetupOverviewPanel';
@@ -6450,6 +6451,7 @@ function AppShell({
   const [retailSellReturnsOpen, setRetailSellReturnsOpen] = useState(false);
   const [retailSellPricingOpen, setRetailSellPricingOpen] = useState(false);
   const [retailMoneyGstOpen, setRetailMoneyGstOpen] = useState(false);
+  const [retailDeliveryExceptionsOpen, setRetailDeliveryExceptionsOpen] = useState(false);
   const [retailInsightsStockRiskOpen, setRetailInsightsStockRiskOpen] = useState(false);
   const [retailInsightsOutletsOpen, setRetailInsightsOutletsOpen] = useState(false);
   const [attentionOpen, setAttentionOpen] = useState(false);
@@ -6576,6 +6578,7 @@ function AppShell({
     }
     if (route.id === 'stock') setRetailStockTab('health');
     if (route.id === 'money') setRetailMoneyGstOpen(false);
+    if (route.id === 'deliver') setRetailDeliveryExceptionsOpen(false);
     if (route.id === 'insights') {
       setRetailInsightsStockRiskOpen(false);
       setRetailInsightsOutletsOpen(false);
@@ -6654,6 +6657,12 @@ function AppShell({
       setNavigationMessage(`${submodule.label} is open. Review the day-close checklist before opening controlled posting and approval work.`);
       return;
     }
+    if (key === 'deliver:returns') {
+      navigateRetailWorkspace(route);
+      setRetailDeliveryExceptionsOpen(true);
+      setNavigationMessage(`${submodule.label} is open. ${submodule.description}`);
+      return;
+    }
     if (key === 'stock:products' || key === 'stock:control' || key === 'home:overview' || key === 'home:store-pulse' || key === 'insights:executive' || key === 'insights:sales-margin') {
       navigateRetailWorkspace(route);
       setNavigationMessage(`${submodule.label} is open. ${submodule.description}`);
@@ -6701,9 +6710,8 @@ function AppShell({
       return;
     }
 
-    const destinations: Record<Exclude<RetailWorkspaceSubmoduleKey, 'home:attention' | 'home:overview' | 'home:store-pulse' | 'sell:orders' | 'sell:returns' | 'sell:pricing' | 'stock:products' | 'stock:control' | 'stock:replenishment' | 'stock:purchasing' | 'deliver:queue' | 'deliver:dispatch' | 'deliver:branches' | 'money:cash' | 'money:settlements' | 'money:gst' | 'money:close' | 'insights:executive' | 'insights:sales-margin' | 'insights:stock-risk' | 'insights:outlets'>, WorkspaceDestination> = {
+    const destinations: Record<Exclude<RetailWorkspaceSubmoduleKey, 'home:attention' | 'home:overview' | 'home:store-pulse' | 'sell:orders' | 'sell:returns' | 'sell:pricing' | 'stock:products' | 'stock:control' | 'stock:replenishment' | 'stock:purchasing' | 'deliver:queue' | 'deliver:dispatch' | 'deliver:branches' | 'deliver:returns' | 'money:cash' | 'money:settlements' | 'money:gst' | 'money:close' | 'insights:executive' | 'insights:sales-margin' | 'insights:stock-risk' | 'insights:outlets'>, WorkspaceDestination> = {
       'sell:pos': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'pos' },
-      'deliver:returns': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'returns' },
       'customers:customer-360': { kind: 'crm-surface', surface: 'party' },
       'customers:loyalty': { kind: 'crm-surface', surface: 'party' },
       'customers:campaigns': { kind: 'crm', tab: 'audience' },
@@ -7194,7 +7202,7 @@ function AppShell({
             onTabChange={setActiveCrmTab}
           /> : null}
 
-          {retailOverviewOpen && activeRetailRoute === 'deliver' ?
+          {retailOverviewOpen && activeRetailRoute === 'deliver' && retailDeliveryExceptionsOpen ? <RetailDeliveryExceptionsPanel revenue={revenueOpsSnapshot} onOpenAdvanced={() => openAdvancedRetailWorkbench({ kind: 'bharat', tab: 'fulfilment', workspace: 'operations', handoff: 'Delivery exceptions are open. Return and carrier outcomes require recorded evidence.' })} /> : retailOverviewOpen && activeRetailRoute === 'deliver' ?
             <RetailDeliveryOverviewPanel
               revenue={revenueOpsSnapshot}
               coverageMap={retailCoverageMap}
