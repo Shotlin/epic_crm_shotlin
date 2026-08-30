@@ -3,7 +3,7 @@
 ## Scope certified locally
 
 The retail-first Electron renderer has a labelled, keyboard-addressable left
-rail with eight primary workspaces and 32 stacked retail tasks. The governed
+rail with eight primary workspaces and 31 stacked retail tasks. The governed
 UI acceptance catalog now contains 51 role-based journeys, including exact
 Setup → Devices, Integrations, and Recovery & release readiness routes. The following
 focused test runs passed against the current transformation branch:
