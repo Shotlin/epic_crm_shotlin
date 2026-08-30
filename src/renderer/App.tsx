@@ -89,6 +89,7 @@ import { RetailStockOverviewFromRevenue, type RetailStockDestination, type Stock
 import { RetailCashOverviewFromRevenue } from './RetailCashOverviewPanel';
 import { RetailInsightsOverviewPanel } from './RetailInsightsOverviewPanel';
 import { RetailReturnsOverviewPanel } from './RetailReturnsOverviewPanel';
+import { RetailPricingOverviewPanel } from './RetailPricingOverviewPanel';
 import { RetailSellOverviewFromRevenue } from './RetailSellOverviewPanel';
 import { RetailOrderQueueFromRevenue } from './RetailOrderQueuePanel';
 import { RetailSetupOverviewPanel, type RetailSetupDestination } from './RetailSetupOverviewPanel';
@@ -6446,6 +6447,7 @@ function AppShell({
   const [retailCustomerTab, setRetailCustomerTab] = useState<RetailCustomerTab>('overview');
   const [retailStockTab, setRetailStockTab] = useState<StockWorkspaceTab>('health');
   const [retailSellReturnsOpen, setRetailSellReturnsOpen] = useState(false);
+  const [retailSellPricingOpen, setRetailSellPricingOpen] = useState(false);
   const [retailInsightsStockRiskOpen, setRetailInsightsStockRiskOpen] = useState(false);
   const [retailInsightsOutletsOpen, setRetailInsightsOutletsOpen] = useState(false);
   const [attentionOpen, setAttentionOpen] = useState(false);
@@ -6568,6 +6570,7 @@ function AppShell({
     if (route.id === 'sell') {
       setActiveCommerceSurface('overview');
       setRetailSellReturnsOpen(false);
+      setRetailSellPricingOpen(false);
     }
     if (route.id === 'stock') setRetailStockTab('health');
     if (route.id === 'insights') {
@@ -6631,6 +6634,12 @@ function AppShell({
       setNavigationMessage(`${submodule.label} is open. ${submodule.description}`);
       return;
     }
+    if (key === 'sell:pricing') {
+      navigateRetailWorkspace(route);
+      setRetailSellPricingOpen(true);
+      setNavigationMessage(`${submodule.label} is open. ${submodule.description}`);
+      return;
+    }
     if (key === 'stock:products' || key === 'stock:control' || key === 'home:overview' || key === 'home:store-pulse' || key === 'insights:executive' || key === 'insights:sales-margin') {
       navigateRetailWorkspace(route);
       setNavigationMessage(`${submodule.label} is open. ${submodule.description}`);
@@ -6678,9 +6687,8 @@ function AppShell({
       return;
     }
 
-    const destinations: Record<Exclude<RetailWorkspaceSubmoduleKey, 'home:attention' | 'home:overview' | 'home:store-pulse' | 'sell:orders' | 'sell:returns' | 'stock:products' | 'stock:control' | 'stock:replenishment' | 'stock:purchasing' | 'deliver:queue' | 'deliver:dispatch' | 'deliver:branches' | 'money:cash' | 'money:settlements' | 'insights:executive' | 'insights:sales-margin' | 'insights:stock-risk' | 'insights:outlets'>, WorkspaceDestination> = {
+    const destinations: Record<Exclude<RetailWorkspaceSubmoduleKey, 'home:attention' | 'home:overview' | 'home:store-pulse' | 'sell:orders' | 'sell:returns' | 'sell:pricing' | 'stock:products' | 'stock:control' | 'stock:replenishment' | 'stock:purchasing' | 'deliver:queue' | 'deliver:dispatch' | 'deliver:branches' | 'money:cash' | 'money:settlements' | 'insights:executive' | 'insights:sales-margin' | 'insights:stock-risk' | 'insights:outlets'>, WorkspaceDestination> = {
       'sell:pos': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'pos' },
-      'sell:pricing': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'pricing' },
       'deliver:returns': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'returns' },
       'customers:customer-360': { kind: 'crm-surface', surface: 'party' },
       'customers:loyalty': { kind: 'crm-surface', surface: 'party' },
@@ -7183,7 +7191,10 @@ function AppShell({
               onFetchCoverageMap={onFetchRetailHubCoverageMap}
               onOpenAdvanced={() => openAdvancedRetailWorkbench({ kind: 'bharat', tab: 'fulfilment', workspace: 'operations', handoff: 'Fulfilment controls are open. Review delivery evidence before writing.' })}
             />
-          : retailOverviewOpen && activeRetailRoute === 'sell' && retailSellReturnsOpen ? <RetailReturnsOverviewPanel
+          : retailOverviewOpen && activeRetailRoute === 'sell' && retailSellPricingOpen ? <RetailPricingOverviewPanel
+            revenue={revenueOpsSnapshot}
+            onOpenAdvanced={() => openAdvancedRetailWorkbench({ kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'pricing', handoff: 'Pricing controls are open. Changes are approval-gated and effective-dated.' })}
+          /> : retailOverviewOpen && activeRetailRoute === 'sell' && retailSellReturnsOpen ? <RetailReturnsOverviewPanel
             revenue={revenueOpsSnapshot}
             onOpenAdvanced={() => openAdvancedRetailWorkbench({ kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'returns', handoff: 'Returns controls are open. Match the original sale, inspect goods and retain independent evidence.' })}
           /> : retailOverviewOpen && activeRetailRoute === 'sell' && activeCommerceSurface === 'orders' ? <RetailOrderQueueFromRevenue

@@ -19,7 +19,7 @@ Status legend: **Captured** = live read-only behaviour inspected; **Source** = p
 | Settings / Delivery Calendar | Yes | Yes | Deliver / slots | Planned parity |
 | Settings / App Version | Yes | Yes | Setup / release | Partial domain, planned parity |
 | Settings / Legal Pages | Yes | Yes | Setup / legal content | Planned parity |
-| Products | Yes | Yes | Products / catalog | In progress — the Stock rail opens the compact, evidence-only stock workspace for product/variant availability, SKU, batch, expiry, replenishment and channel-demand review; its Stock control entry stays on that same simple surface, while Replenishment and Purchasing open their exact review tabs. Catalog and procurement writes remain in accountable workbenches; visual capture, role/error certification and live Hub import remain. |
+| Products | Yes | Yes | Products / catalog | In progress — the Stock rail opens the compact, evidence-only stock workspace for product/variant availability, SKU, batch, expiry, replenishment and channel-demand review; its Stock control entry stays on that same simple surface, while Replenishment and Purchasing open their exact review tabs. The Sell rail now exposes a compact price/GST/offer readiness desk; commercial writes remain in accountable workbenches. Visual capture, role/error certification and live Hub import remain. |
 | Abandoned Carts | Yes | Yes | Customers / recovery | Planned integration |
 | Categories | Yes | Yes | Products / catalog taxonomy | Partial domain, planned parity |
 | Customers | Yes | Yes | Customers / Customer 360 | Partial domain, planned parity |

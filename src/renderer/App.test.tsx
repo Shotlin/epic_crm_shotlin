@@ -968,6 +968,16 @@ describe('Epic BOS renderer', () => {
     expect(screen.queryByTestId('bharat-workbench')).toBeNull();
   });
 
+  it('opens Products & pricing as a simple readiness desk before the governed editor', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openCrmHome();
+    await user.click(screen.getByRole('button', { name: 'Sell' }));
+    await user.click(screen.getByRole('button', { name: 'Open Products & pricing' }));
+    expect(await screen.findByTestId('retail-pricing-overview')).toBeTruthy();
+    expect(screen.queryByTestId('bharat-workbench')).toBeNull();
+  });
+
   it('keeps Products & variants in the simple Stock workspace instead of the legacy commerce workbench', async () => {
     const user = userEvent.setup();
     render(<App />);
