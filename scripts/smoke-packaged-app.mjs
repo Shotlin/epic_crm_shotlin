@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -17,6 +17,7 @@ const executableByPlatform = {
 const executable = executableByPlatform[platform];
 if (!executable) throw new Error(`Unsupported packaged smoke platform: ${platform}`);
 if (!existsSync(executable)) throw new Error(`Packaged executable is missing: ${executable}`);
+const buildRevision = resolveBuildRevision();
 
 const userData = await mkdtemp(path.join(os.tmpdir(), 'epic-bos-smoke-'));
 const child = spawn(executable, [], {
@@ -53,7 +54,7 @@ if (evidencePath) {
       schema: 'epic-bos.packaged-smoke-evidence.v1',
       platform,
       version,
-      buildRevision: process.env.EPIC_BOS_BUILD_REVISION || null,
+      buildRevision,
       executable: path.relative(root, executable),
       status: 'passed',
       marker: 'EPIC_BOS_SMOKE_OK',
@@ -65,3 +66,13 @@ if (evidencePath) {
   );
 }
 console.log(`Packaged ${platform} smoke passed.`);
+
+function resolveBuildRevision() {
+  const declared = process.env.EPIC_BOS_BUILD_REVISION?.trim();
+  if (declared) return declared;
+  try {
+    return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim() || null;
+  } catch {
+    return null;
+  }
+}
