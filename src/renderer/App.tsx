@@ -84,6 +84,7 @@ import { BakalooRetailDemoResetPanel } from './BakalooRetailDemoResetPanel';
 import { RetailWorkspaceNavigation, type AdvancedWorkspaceId, type RetailWorkspaceSubmoduleKey, type RetailWorkspaceSubmoduleNavigation } from './RetailWorkspaceNavigation';
 import { RetailShadowImportReviewPanel } from './RetailShadowImportReviewPanel';
 import { RetailCustomer360Panel, type RetailCustomerTab } from './RetailCustomer360Panel';
+import { RetailCustomerEngagementOverviewPanel, type RetailCustomerEngagementMode } from './RetailCustomerEngagementOverviewPanel';
 import { RetailDeliveryOverviewPanel } from './RetailDeliveryOverviewPanel';
 import { RetailStockOverviewFromRevenue, type RetailStockDestination, type StockWorkspaceTab } from './RetailStockOverviewPanel';
 import { RetailCashOverviewFromRevenue } from './RetailCashOverviewPanel';
@@ -6447,6 +6448,7 @@ function AppShell({
   // outside the panel allows a rail task such as "Loyalty" to open the exact
   // tab rather than resetting back to a generic CRM screen.
   const [retailCustomerTab, setRetailCustomerTab] = useState<RetailCustomerTab>('overview');
+  const [retailCustomerEngagementMode, setRetailCustomerEngagementMode] = useState<RetailCustomerEngagementMode | null>(null);
   const [retailStockTab, setRetailStockTab] = useState<StockWorkspaceTab>('health');
   const [retailSellReturnsOpen, setRetailSellReturnsOpen] = useState(false);
   const [retailSellPricingOpen, setRetailSellPricingOpen] = useState(false);
@@ -6583,7 +6585,10 @@ function AppShell({
       setRetailInsightsStockRiskOpen(false);
       setRetailInsightsOutletsOpen(false);
     }
-    if (route.id === 'customers') setRetailCustomerTab('overview');
+    if (route.id === 'customers') {
+      setRetailCustomerTab('overview');
+      setRetailCustomerEngagementMode(null);
+    }
     const { target } = route.adapter;
     const handoff = `${route.label} is ready. ${route.description}`;
     if (target.kind === 'command') {
@@ -6624,6 +6629,14 @@ function AppShell({
     if (key === 'customers:customer-360' || key === 'customers:loyalty') {
       setRetailOverviewOpen(true);
       setRetailCustomerTab(key === 'customers:loyalty' ? 'loyalty' : 'overview');
+      setRetailCustomerEngagementMode(null);
+      navigateTo({ kind: 'crm-surface', surface: 'party' });
+      setNavigationMessage(`${submodule.label} is open. ${submodule.description}`);
+      return;
+    }
+    if (key === 'customers:campaigns' || key === 'customers:data-quality') {
+      setRetailOverviewOpen(true);
+      setRetailCustomerEngagementMode(key === 'customers:campaigns' ? 'campaigns' : 'data-quality');
       navigateTo({ kind: 'crm-surface', surface: 'party' });
       setNavigationMessage(`${submodule.label} is open. ${submodule.description}`);
       return;
@@ -6715,12 +6728,10 @@ function AppShell({
       return;
     }
 
-    const destinations: Record<Exclude<RetailWorkspaceSubmoduleKey, 'home:attention' | 'home:overview' | 'home:store-pulse' | 'sell:orders' | 'sell:returns' | 'sell:pricing' | 'stock:products' | 'stock:control' | 'stock:replenishment' | 'stock:purchasing' | 'deliver:queue' | 'deliver:dispatch' | 'deliver:branches' | 'deliver:returns' | 'money:cash' | 'money:settlements' | 'money:gst' | 'money:close' | 'insights:executive' | 'insights:sales-margin' | 'insights:stock-risk' | 'insights:outlets' | 'setup:stores'>, WorkspaceDestination> = {
+    const destinations: Record<Exclude<RetailWorkspaceSubmoduleKey, 'home:attention' | 'home:overview' | 'home:store-pulse' | 'sell:orders' | 'sell:returns' | 'sell:pricing' | 'stock:products' | 'stock:control' | 'stock:replenishment' | 'stock:purchasing' | 'deliver:queue' | 'deliver:dispatch' | 'deliver:branches' | 'deliver:returns' | 'customers:campaigns' | 'customers:data-quality' | 'money:cash' | 'money:settlements' | 'money:gst' | 'money:close' | 'insights:executive' | 'insights:sales-margin' | 'insights:stock-risk' | 'insights:outlets' | 'setup:stores'>, WorkspaceDestination> = {
       'sell:pos': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'pos' },
       'customers:customer-360': { kind: 'crm-surface', surface: 'party' },
       'customers:loyalty': { kind: 'crm-surface', surface: 'party' },
-      'customers:campaigns': { kind: 'crm', tab: 'audience' },
-      'customers:data-quality': { kind: 'crm', tab: 'data' },
       'setup:devices': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'devices' },
       'setup:integrations': { kind: 'command', surface: 'control', controlTab: 'integration' },
       'setup:recovery': { kind: 'command', surface: 'control', controlTab: 'storage' },
@@ -7180,7 +7191,11 @@ function AppShell({
           </details>
           </> : null}
 
-          {workspace === 'crm' && crmSurface === 'party' ? <RetailCustomer360Panel party={partySnapshot} sales={revenueOpsSnapshot.retailSales} loyaltyAccounts={revenueOpsSnapshot.retailLoyaltyAccounts} visits={revenueOpsSnapshot.retailCustomerVisits} initialTab={retailCustomerTab} onOpenCustomerData={() => navigateTo({ kind: 'crm', tab: 'data' })} /> : null}
+          {workspace === 'crm' && crmSurface === 'party' && retailCustomerEngagementMode ? <RetailCustomerEngagementOverviewPanel
+            mode={retailCustomerEngagementMode}
+            depth={crmDepthSnapshot}
+            onOpenAdvanced={() => openAdvancedRetailWorkbench({ kind: 'crm', tab: retailCustomerEngagementMode === 'campaigns' ? 'audience' : 'data' })}
+          /> : workspace === 'crm' && crmSurface === 'party' ? <RetailCustomer360Panel party={partySnapshot} sales={revenueOpsSnapshot.retailSales} loyaltyAccounts={revenueOpsSnapshot.retailLoyaltyAccounts} visits={revenueOpsSnapshot.retailCustomerVisits} initialTab={retailCustomerTab} onOpenCustomerData={() => navigateTo({ kind: 'crm', tab: 'data' })} /> : null}
 
           {workspace === 'crm' && crmSurface === 'control' ? <CrmControlDeck
             crm={snapshot}

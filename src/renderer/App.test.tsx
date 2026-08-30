@@ -1497,6 +1497,22 @@ describe('Epic BOS renderer', () => {
     */
   });
 
+  it('opens compact customer campaign and data-quality desks before the governed CRM controls', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const navigation = await screen.findByTestId('retail-workspace-navigation');
+    await user.click(within(navigation).getByRole('button', { name: 'Customers' }));
+    await user.click(within(navigation).getByRole('button', { name: 'Open Campaigns' }));
+    expect(await screen.findByTestId('retail-customer-campaigns-overview')).toBeTruthy();
+    expect(screen.queryByTestId('crm-control-deck')).toBeNull();
+
+    await user.click(within(navigation).getByRole('button', { name: 'Customers' }));
+    await user.click(within(navigation).getByRole('button', { name: 'Open Data quality' }));
+    expect(await screen.findByTestId('retail-customer-data-quality-overview')).toBeTruthy();
+    expect(screen.queryByTestId('crm-control-deck')).toBeNull();
+  });
+
   it('opens the keyboard command palette', async () => {
     const user = userEvent.setup();
     render(<App />);
