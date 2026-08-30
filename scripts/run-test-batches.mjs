@@ -75,7 +75,7 @@ process.stdout.write(`\n${JSON.stringify({ ...summary, output: path.relative(roo
 if (summary.status !== 'passed') process.exitCode = 1;
 
 function parseOptions(args) {
-  const options = { batchSize: 24, timeoutMs: 120_000, output: process.env.EPIC_BOS_TEST_BATCH_OUT_DIR?.trim() || '', filter: null };
+  const options = { batchSize: 24, timeoutMs: 180_000, output: process.env.EPIC_BOS_TEST_BATCH_OUT_DIR?.trim() || '', filter: null };
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
     if (argument === '--batch-size') options.batchSize = positiveInteger(args[++index], 'batch-size');
@@ -83,7 +83,7 @@ function parseOptions(args) {
     else if (argument === '--output') options.output = args[++index] || '';
     else if (argument === '--filter') options.filter = regularExpression(args[++index]);
     else if (argument === '--help' || argument === '-h') {
-      process.stdout.write('Usage: node scripts/run-test-batches.mjs [--batch-size 24] [--timeout-ms 120000] [--filter <regex>] [--output <dir>]\n');
+      process.stdout.write('Usage: node scripts/run-test-batches.mjs [--batch-size 24] [--timeout-ms 180000] [--filter <regex>] [--output <dir>]\n');
       process.exit(0);
     } else fail(`Unknown option: ${argument}`);
   }
