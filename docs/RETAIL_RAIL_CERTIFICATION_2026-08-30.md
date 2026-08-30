@@ -75,3 +75,8 @@ This is not yet a complete release certification. It does **not** prove:
   at every target viewport.
 
 Those remain explicit release gates rather than inferred green status.
+
+The current `out/make` release matrix was checked against version `0.1.82`.
+Windows x64 has three checksum-verified native artifacts; macOS and Linux have
+no artifacts for this release line. The verifier correctly returns a **hold**
+until native darwin and linux builds are produced and independently signed.
