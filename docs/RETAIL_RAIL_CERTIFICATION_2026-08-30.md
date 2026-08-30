@@ -53,6 +53,14 @@ and Setup → Devices has a read-first readiness desk. These desks expose only
 recorded local evidence; campaign sends, customer imports/merges, hardware
 transport and driver activation remain deliberate governed handoffs.
 
+Setup → Integrations and Setup → Recovery & release now also open compact,
+read-first readiness desks. Integrations reports the current workspace mode,
+Retail Hub status, and provider-evidence state without accepting secrets or
+initiating external writes. Recovery reports database, audit, migration,
+backup, restore-drill, and release evidence and hands off to the protected
+control room for any mutation. This keeps the simple retail rail useful while
+preserving the existing approval and recovery boundary.
+
 ## Important limits
 
 This is not yet a complete release certification. It does **not** prove:
