@@ -6445,6 +6445,7 @@ function AppShell({
   const [retailCustomerTab, setRetailCustomerTab] = useState<RetailCustomerTab>('overview');
   const [retailStockTab, setRetailStockTab] = useState<StockWorkspaceTab>('health');
   const [retailInsightsStockRiskOpen, setRetailInsightsStockRiskOpen] = useState(false);
+  const [retailInsightsOutletsOpen, setRetailInsightsOutletsOpen] = useState(false);
   const [attentionOpen, setAttentionOpen] = useState(false);
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -6564,7 +6565,10 @@ function AppShell({
     setRetailOverviewOpen(true);
     if (route.id === 'sell') setActiveCommerceSurface('overview');
     if (route.id === 'stock') setRetailStockTab('health');
-    if (route.id === 'insights') setRetailInsightsStockRiskOpen(false);
+    if (route.id === 'insights') {
+      setRetailInsightsStockRiskOpen(false);
+      setRetailInsightsOutletsOpen(false);
+    }
     if (route.id === 'customers') setRetailCustomerTab('overview');
     const { target } = route.adapter;
     const handoff = `${route.label} is ready. ${route.description}`;
@@ -6639,6 +6643,12 @@ function AppShell({
       setNavigationMessage(`${submodule.label} is open. ${submodule.description}`);
       return;
     }
+    if (key === 'insights:outlets') {
+      navigateRetailWorkspace(route);
+      setRetailInsightsOutletsOpen(true);
+      setNavigationMessage(`${submodule.label} is open. ${submodule.description}`);
+      return;
+    }
     if (key === 'deliver:queue' || key === 'deliver:dispatch') {
       navigateRetailWorkspace(route);
       setNavigationMessage(`${submodule.label} is open. ${submodule.description}`);
@@ -6657,7 +6667,7 @@ function AppShell({
       return;
     }
 
-    const destinations: Record<Exclude<RetailWorkspaceSubmoduleKey, 'home:attention' | 'home:overview' | 'home:store-pulse' | 'sell:orders' | 'stock:products' | 'stock:control' | 'stock:replenishment' | 'stock:purchasing' | 'deliver:queue' | 'deliver:dispatch' | 'deliver:branches' | 'money:cash' | 'money:settlements' | 'insights:executive' | 'insights:sales-margin' | 'insights:stock-risk'>, WorkspaceDestination> = {
+    const destinations: Record<Exclude<RetailWorkspaceSubmoduleKey, 'home:attention' | 'home:overview' | 'home:store-pulse' | 'sell:orders' | 'stock:products' | 'stock:control' | 'stock:replenishment' | 'stock:purchasing' | 'deliver:queue' | 'deliver:dispatch' | 'deliver:branches' | 'money:cash' | 'money:settlements' | 'insights:executive' | 'insights:sales-margin' | 'insights:stock-risk' | 'insights:outlets'>, WorkspaceDestination> = {
       'sell:pos': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'pos' },
       'sell:returns': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'returns' },
       'sell:pricing': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'pricing' },
@@ -6668,7 +6678,6 @@ function AppShell({
       'customers:data-quality': { kind: 'crm', tab: 'data' },
       'money:gst': { kind: 'bharat', tab: 'statutory', workspace: 'finance' },
       'money:close': { kind: 'bharat', tab: 'close', workspace: 'finance' },
-      'insights:outlets': { kind: 'bharat', tab: 'intelligence', workspace: 'intelligence' },
       'setup:stores': { kind: 'command', surface: 'control', controlTab: 'organization' },
       'setup:devices': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'devices' },
       'setup:integrations': { kind: 'command', surface: 'control', controlTab: 'integration' },
@@ -7208,7 +7217,7 @@ function AppShell({
             dashboard={snapshot}
             revenue={revenueOpsSnapshot}
             party={partySnapshot}
-            view={retailInsightsStockRiskOpen ? 'stock-risk' : 'overview'}
+            view={retailInsightsStockRiskOpen ? 'stock-risk' : retailInsightsOutletsOpen ? 'outlet-comparison' : 'overview'}
             onOpenAdvanced={() => openAdvancedRetailWorkbench({ kind: 'bharat', tab: 'intelligence', workspace: 'intelligence', handoff: 'Detailed intelligence is open. Every chart and queue is source-linked.' })}
           /> : retailOverviewOpen && activeRetailRoute === 'setup' ? <RetailSetupOverviewPanel
             workspaceStatus={retailWorkspaceStatus}

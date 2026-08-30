@@ -1078,6 +1078,17 @@ describe('Epic BOS renderer', () => {
     expect(screen.queryByTestId('bharat-workbench')).toBeNull();
   });
 
+  it('keeps outlet comparison honest when only the current store projection is available', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openCrmHome();
+    await user.click(screen.getByRole('button', { name: 'Insights' }));
+    await user.click(screen.getByRole('button', { name: 'Open Outlets & team' }));
+    expect(await screen.findByRole('heading', { name: 'Outlets & team' })).toBeTruthy();
+    expect(screen.getByText(/does not receive replicated multi-store records/i)).toBeTruthy();
+    expect(screen.queryByTestId('bharat-workbench')).toBeNull();
+  });
+
   it('collapses and restores the Bakaloo sidebar without removing keyboard navigation', async () => {
     const user = userEvent.setup();
     render(<App />);
