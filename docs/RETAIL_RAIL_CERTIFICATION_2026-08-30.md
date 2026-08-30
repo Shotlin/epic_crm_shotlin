@@ -111,3 +111,8 @@ isolated profile. `EPIC_BOS_SMOKE_OK` passed again; current evidence is stored
 in `out/retail-smoke-0.1.82-current.json`. This confirms the repaired source is
 present in the packaged executable. Native macOS/Linux artifacts and signing
 remain separate release gates.
+
+The release-matrix verifier was rerun after the latest make. Windows is
+verified with three native, checksum-valid artifacts at the current revision;
+darwin and linux are explicitly `missing`, so the overall release decision is
+correctly `hold` until native artifacts are produced on those platforms.
