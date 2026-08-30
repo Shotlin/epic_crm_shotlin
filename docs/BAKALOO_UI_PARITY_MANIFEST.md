@@ -30,7 +30,7 @@ Status legend: **Captured** = live read-only behaviour inspected; **Source** = p
 | Shop Products | Yes | Yes | Products / branch assortment | Partial domain, planned parity |
 | Shop Financials | Yes | Yes | Money / branch finance | Partial domain, planned parity |
 | Shop Transactions | Yes | Yes | Money / transaction evidence | Partial domain, planned parity |
-| GSTR-1 | Yes | Yes | Money / GST workpapers | Partial domain, planned parity |
+| GSTR-1 | Yes | Yes | Money / GST workpapers | In progress — a compact GST/invoice evidence view shows local registration and review state without claiming portal submission or acknowledgement. |
 | Coupons | Yes | Yes | Customers / vouchers | Partial domain, planned parity |
 | Purchase Limits | Yes | Yes | Commerce / purchase controls | Planned integration |
 | Customer Segments | Yes | Yes | Customers / segmentation | Partial domain, planned parity |

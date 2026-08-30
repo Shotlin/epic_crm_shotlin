@@ -90,6 +90,7 @@ import { RetailCashOverviewFromRevenue } from './RetailCashOverviewPanel';
 import { RetailInsightsOverviewPanel } from './RetailInsightsOverviewPanel';
 import { RetailReturnsOverviewPanel } from './RetailReturnsOverviewPanel';
 import { RetailPricingOverviewPanel } from './RetailPricingOverviewPanel';
+import { RetailGstOverviewPanel } from './RetailGstOverviewPanel';
 import { RetailSellOverviewFromRevenue } from './RetailSellOverviewPanel';
 import { RetailOrderQueueFromRevenue } from './RetailOrderQueuePanel';
 import { RetailSetupOverviewPanel, type RetailSetupDestination } from './RetailSetupOverviewPanel';
@@ -6448,6 +6449,7 @@ function AppShell({
   const [retailStockTab, setRetailStockTab] = useState<StockWorkspaceTab>('health');
   const [retailSellReturnsOpen, setRetailSellReturnsOpen] = useState(false);
   const [retailSellPricingOpen, setRetailSellPricingOpen] = useState(false);
+  const [retailMoneyGstOpen, setRetailMoneyGstOpen] = useState(false);
   const [retailInsightsStockRiskOpen, setRetailInsightsStockRiskOpen] = useState(false);
   const [retailInsightsOutletsOpen, setRetailInsightsOutletsOpen] = useState(false);
   const [attentionOpen, setAttentionOpen] = useState(false);
@@ -6573,6 +6575,7 @@ function AppShell({
       setRetailSellPricingOpen(false);
     }
     if (route.id === 'stock') setRetailStockTab('health');
+    if (route.id === 'money') setRetailMoneyGstOpen(false);
     if (route.id === 'insights') {
       setRetailInsightsStockRiskOpen(false);
       setRetailInsightsOutletsOpen(false);
@@ -6640,6 +6643,12 @@ function AppShell({
       setNavigationMessage(`${submodule.label} is open. ${submodule.description}`);
       return;
     }
+    if (key === 'money:gst') {
+      navigateRetailWorkspace(route);
+      setRetailMoneyGstOpen(true);
+      setNavigationMessage(`${submodule.label} is open. ${submodule.description}`);
+      return;
+    }
     if (key === 'stock:products' || key === 'stock:control' || key === 'home:overview' || key === 'home:store-pulse' || key === 'insights:executive' || key === 'insights:sales-margin') {
       navigateRetailWorkspace(route);
       setNavigationMessage(`${submodule.label} is open. ${submodule.description}`);
@@ -6687,14 +6696,13 @@ function AppShell({
       return;
     }
 
-    const destinations: Record<Exclude<RetailWorkspaceSubmoduleKey, 'home:attention' | 'home:overview' | 'home:store-pulse' | 'sell:orders' | 'sell:returns' | 'sell:pricing' | 'stock:products' | 'stock:control' | 'stock:replenishment' | 'stock:purchasing' | 'deliver:queue' | 'deliver:dispatch' | 'deliver:branches' | 'money:cash' | 'money:settlements' | 'insights:executive' | 'insights:sales-margin' | 'insights:stock-risk' | 'insights:outlets'>, WorkspaceDestination> = {
+    const destinations: Record<Exclude<RetailWorkspaceSubmoduleKey, 'home:attention' | 'home:overview' | 'home:store-pulse' | 'sell:orders' | 'sell:returns' | 'sell:pricing' | 'stock:products' | 'stock:control' | 'stock:replenishment' | 'stock:purchasing' | 'deliver:queue' | 'deliver:dispatch' | 'deliver:branches' | 'money:cash' | 'money:settlements' | 'money:gst' | 'insights:executive' | 'insights:sales-margin' | 'insights:stock-risk' | 'insights:outlets'>, WorkspaceDestination> = {
       'sell:pos': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'pos' },
       'deliver:returns': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'returns' },
       'customers:customer-360': { kind: 'crm-surface', surface: 'party' },
       'customers:loyalty': { kind: 'crm-surface', surface: 'party' },
       'customers:campaigns': { kind: 'crm', tab: 'audience' },
       'customers:data-quality': { kind: 'crm', tab: 'data' },
-      'money:gst': { kind: 'bharat', tab: 'statutory', workspace: 'finance' },
       'money:close': { kind: 'bharat', tab: 'close', workspace: 'finance' },
       'setup:stores': { kind: 'command', surface: 'control', controlTab: 'organization' },
       'setup:devices': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'devices' },
@@ -7224,6 +7232,9 @@ function AppShell({
               }
               openAdvancedRetailWorkbench({ kind: 'bharat', tab: 'warehouse', workspace: 'operations', handoff: destination === 'expiry' ? 'Expiry controls are open. Review batch evidence before recording a disposition.' : 'Warehouse controls are open. Review quantities, bins and replenishment before writing evidence.' });
             }}
+          /> : retailOverviewOpen && activeRetailRoute === 'money' && retailMoneyGstOpen ? <RetailGstOverviewPanel
+            revenue={revenueOpsSnapshot}
+            onOpenAdvanced={() => openAdvancedRetailWorkbench({ kind: 'bharat', tab: 'statutory', workspace: 'finance', handoff: 'GST controls are open. Government portal responses remain authoritative.' })}
           /> : retailOverviewOpen && activeRetailRoute === 'money' ? <RetailCashOverviewFromRevenue
             revenue={revenueOpsSnapshot}
             onOpenDestination={(destination) => {

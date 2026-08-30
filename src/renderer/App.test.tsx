@@ -1078,6 +1078,16 @@ describe('Epic BOS renderer', () => {
     expect(screen.queryByTestId('bharat-workbench')).toBeNull();
   });
 
+  it('opens GST & invoices as a simple evidence view before statutory controls', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openCrmHome();
+    await user.click(screen.getByRole('button', { name: 'Money' }));
+    await user.click(screen.getByRole('button', { name: 'Open GST & invoices' }));
+    expect(await screen.findByTestId('retail-gst-overview')).toBeTruthy();
+    expect(screen.queryByTestId('bharat-workbench')).toBeNull();
+  });
+
   it('keeps Sales & margin in the compact Insights workspace', async () => {
     const user = userEvent.setup();
     render(<App />);
