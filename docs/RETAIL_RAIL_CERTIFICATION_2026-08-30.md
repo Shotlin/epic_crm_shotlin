@@ -88,3 +88,19 @@ actual Git source revision rather than leaving the build identity unknown.
 This proves the executable starts and mounts its renderer; it does not
 substitute for cross-platform signing, provider, hardware, or human UAT
 certification.
+
+The renderer-heavy boundary was then rerun in ten smaller bounded groups to
+avoid a false timeout caused by one oversized jsdom worker:
+
+```powershell
+node scripts/run-test-batches.mjs --batch-size 8 --timeout-ms 180000 \
+  --filter "src/renderer|src/main/(retail|revenue|runtime|statutory|support|ui|webhook|workspace)" \
+  --output out/test-batches-2026-08-30-renderer-split
+# 77 files, 10/10 batches passed
+```
+
+This is execution evidence for the same source revision and covers all
+renderer suites plus the retail/main integration boundary. The earlier
+32-file batch timed out only because it exceeded the single-worker budget;
+the split run completed every one of those files without an assertion or
+process failure.
