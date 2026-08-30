@@ -104,3 +104,10 @@ renderer suites plus the retail/main integration boundary. The earlier
 32-file batch timed out only because it exceeded the single-worker budget;
 the split run completed every one of those files without an assertion or
 process failure.
+
+After the route-contract repair, the Windows package was rebuilt from Git
+revision `076191836fd7906a803553b8963663566a960f95` and launched with an
+isolated profile. `EPIC_BOS_SMOKE_OK` passed again; current evidence is stored
+in `out/retail-smoke-0.1.82-current.json`. This confirms the repaired source is
+present in the packaged executable. Native macOS/Linux artifacts and signing
+remain separate release gates.
