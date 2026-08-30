@@ -1088,6 +1088,17 @@ describe('Epic BOS renderer', () => {
     expect(screen.queryByTestId('bharat-workbench')).toBeNull();
   });
 
+  it('keeps Finance close in the compact day-close checklist before controlled posting', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openCrmHome();
+    await user.click(screen.getByRole('button', { name: 'Money' }));
+    await user.click(screen.getByRole('button', { name: 'Open Finance close' }));
+    expect(await screen.findByTestId('retail-cash-overview')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Review what needs a decision' })).toBeTruthy();
+    expect(screen.queryByTestId('bharat-workbench')).toBeNull();
+  });
+
   it('keeps Sales & margin in the compact Insights workspace', async () => {
     const user = userEvent.setup();
     render(<App />);
