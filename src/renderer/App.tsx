@@ -6752,8 +6752,6 @@ function AppShell({
       'sell:pos': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'pos' },
       'customers:customer-360': { kind: 'crm-surface', surface: 'party' },
       'customers:loyalty': { kind: 'crm-surface', surface: 'party' },
-      'setup:integrations': { kind: 'command', surface: 'control', controlTab: 'integration' },
-      'setup:recovery': { kind: 'command', surface: 'control', controlTab: 'storage' },
     };
     const destination = destinations[key];
     if (!destination) {
