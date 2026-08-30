@@ -6663,6 +6663,11 @@ function AppShell({
       setNavigationMessage(`${submodule.label} is open. ${submodule.description}`);
       return;
     }
+    if (key === 'setup:stores') {
+      navigateRetailWorkspace(route);
+      setNavigationMessage(`${submodule.label} is open. Complete the guided setup checks before opening branch, user and access controls.`);
+      return;
+    }
     if (key === 'stock:products' || key === 'stock:control' || key === 'home:overview' || key === 'home:store-pulse' || key === 'insights:executive' || key === 'insights:sales-margin') {
       navigateRetailWorkspace(route);
       setNavigationMessage(`${submodule.label} is open. ${submodule.description}`);
@@ -6710,13 +6715,12 @@ function AppShell({
       return;
     }
 
-    const destinations: Record<Exclude<RetailWorkspaceSubmoduleKey, 'home:attention' | 'home:overview' | 'home:store-pulse' | 'sell:orders' | 'sell:returns' | 'sell:pricing' | 'stock:products' | 'stock:control' | 'stock:replenishment' | 'stock:purchasing' | 'deliver:queue' | 'deliver:dispatch' | 'deliver:branches' | 'deliver:returns' | 'money:cash' | 'money:settlements' | 'money:gst' | 'money:close' | 'insights:executive' | 'insights:sales-margin' | 'insights:stock-risk' | 'insights:outlets'>, WorkspaceDestination> = {
+    const destinations: Record<Exclude<RetailWorkspaceSubmoduleKey, 'home:attention' | 'home:overview' | 'home:store-pulse' | 'sell:orders' | 'sell:returns' | 'sell:pricing' | 'stock:products' | 'stock:control' | 'stock:replenishment' | 'stock:purchasing' | 'deliver:queue' | 'deliver:dispatch' | 'deliver:branches' | 'deliver:returns' | 'money:cash' | 'money:settlements' | 'money:gst' | 'money:close' | 'insights:executive' | 'insights:sales-margin' | 'insights:stock-risk' | 'insights:outlets' | 'setup:stores'>, WorkspaceDestination> = {
       'sell:pos': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'pos' },
       'customers:customer-360': { kind: 'crm-surface', surface: 'party' },
       'customers:loyalty': { kind: 'crm-surface', surface: 'party' },
       'customers:campaigns': { kind: 'crm', tab: 'audience' },
       'customers:data-quality': { kind: 'crm', tab: 'data' },
-      'setup:stores': { kind: 'command', surface: 'control', controlTab: 'organization' },
       'setup:devices': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'devices' },
       'setup:integrations': { kind: 'command', surface: 'control', controlTab: 'integration' },
       'setup:recovery': { kind: 'command', surface: 'control', controlTab: 'storage' },

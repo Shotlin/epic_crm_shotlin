@@ -1107,6 +1107,14 @@ describe('Epic BOS renderer', () => {
     expect(screen.queryByTestId('bharat-workbench')).toBeNull();
   });
 
+  it('keeps Stores & users in the guided setup workspace before access controls', async () => {
+    const user = userEvent.setup(); render(<App />); await openCrmHome();
+    await user.click(screen.getByRole('button', { name: 'Setup' }));
+    await user.click(screen.getByRole('button', { name: 'Open Stores & users' }));
+    expect(await screen.findByTestId('retail-setup-overview')).toBeTruthy();
+    expect(screen.queryByTestId('command-control-center')).toBeNull();
+  });
+
   it('keeps Sales & margin in the compact Insights workspace', async () => {
     const user = userEvent.setup();
     render(<App />);
