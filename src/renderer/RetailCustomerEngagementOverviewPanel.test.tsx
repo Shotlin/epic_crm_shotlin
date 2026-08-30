@@ -10,7 +10,7 @@ const emptyDepth = {
   importJobs: [],
   adapters: [],
   communications: [],
-  metrics: { activeCampaigns: 0, importExceptions: 0, communicationCoverage: 0 },
+  metrics: { gradeALeads: 0, activeCampaigns: 0, importExceptions: 0, communicationCoverage: 0 },
 } as Pick<CrmDepthSnapshot, 'campaigns' | 'importJobs' | 'adapters' | 'communications' | 'metrics'>;
 
 describe('RetailCustomerEngagementOverviewPanel', () => {

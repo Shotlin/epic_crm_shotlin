@@ -6,8 +6,8 @@ import { RetailSetupReadinessOverviewPanel } from './RetailSetupReadinessOvervie
 
 afterEach(() => cleanup());
 
-const status = { label: 'Bakaloo retail', status: 'configured', mode: 'empty', dataStatus: 'empty', externalWritePolicy: 'blocked', nextAction: 'Configure external providers only after review.' } as RetailWorkspaceStatus;
-const systemInfo = { version: '0.1.0', platform: 'win32', dataMode: 'local' } as SystemInfo;
+const status = { label: 'Bakaloo retail', status: 'configured', mode: 'clean', dataStatus: 'empty', description: 'Local retail workspace', sourceSystem: null, evidenceReference: null, externalWritePolicy: 'blocked', requiresReconciliation: false, nextAction: 'Configure external providers only after review.', updatedAt: '2026-08-30T00:00:00.000Z' } satisfies RetailWorkspaceStatus;
+const systemInfo = { productName: 'Epic BOS', version: '0.1.0', platform: 'win32', dataMode: 'local-first' } satisfies SystemInfo;
 const health = { status: 'healthy', databaseIntegrity: true, auditChainValid: true, migrationsValid: true, appliedMigrations: 4, pendingOutboxEvents: 0, failedOutboxEvents: 0, recentAuditEvents: 3, checkedAt: '2026-08-30T00:00:00.000Z' } as OperationalHealthSnapshot;
 
 describe('RetailSetupReadinessOverviewPanel', () => {

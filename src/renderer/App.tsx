@@ -7322,7 +7322,7 @@ function AppShell({
             workspaceStatus={retailWorkspaceStatus}
             systemInfo={systemInfo}
             health={operationalHealth}
-            onOpenAdvanced={() => openAdvancedRetailWorkbench({ kind: 'command', surface: 'control', controlTab: retailSetupReadinessMode === 'integrations' ? 'integration' : 'storage', handoff: `${retailSetupReadinessMode === 'integrations' ? 'Integration' : 'Recovery'} controls are open. Review the evidence before writing.` })}
+            onOpenAdvanced={() => openAdvancedRetailWorkbench({ kind: 'command', surface: 'control', controlTab: retailSetupReadinessMode === 'integrations' ? 'integration' : 'storage' })}
           /> : retailOverviewOpen && activeRetailRoute === 'setup' && retailSetupDeviceOpen ? <RetailDeviceReadinessOverviewPanel
             revenue={revenueOpsSnapshot}
             onOpenAdvanced={() => openAdvancedRetailWorkbench({ kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'devices', handoff: 'Device controls are open. A profile becomes operational only after governed acknowledgement evidence.' })}
