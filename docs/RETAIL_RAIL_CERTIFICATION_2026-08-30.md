@@ -83,6 +83,8 @@ until native darwin and linux builds are produced and independently signed.
 
 A fresh package from the current source was also launched with an isolated
 profile and passed the packaged smoke marker `EPIC_BOS_SMOKE_OK` for Windows
-version `0.1.82`. This proves the executable starts and mounts its renderer;
-it does not substitute for cross-platform signing, provider, hardware, or
-human UAT certification.
+version `0.1.82`. The generated evidence now binds that smoke result to the
+actual Git source revision rather than leaving the build identity unknown.
+This proves the executable starts and mounts its renderer; it does not
+substitute for cross-platform signing, provider, hardware, or human UAT
+certification.
