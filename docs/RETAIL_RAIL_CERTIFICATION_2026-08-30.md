@@ -48,6 +48,11 @@ off to the governed returns workbench; it never co-mounts or intercepts POS.
 The Home assertions likewise verify the current source-backed Dashboard,
 Revenue trend, and Pending actions language instead of retired sample copy.
 
+The Customer rail now has the same boundary for Campaigns and Data quality,
+and Setup → Devices has a read-first readiness desk. These desks expose only
+recorded local evidence; campaign sends, customer imports/merges, hardware
+transport and driver activation remain deliberate governed handoffs.
+
 ## Important limits
 
 This is not yet a complete release certification. It does **not** prove:
