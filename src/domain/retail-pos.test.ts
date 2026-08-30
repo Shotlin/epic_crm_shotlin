@@ -345,7 +345,7 @@ describe('retail POS checkout', () => {
     const sale = completed.retailSales[0]!;
     const receiptCost = sale.lines.reduce((total, line) => total + line.lineCostTotal, 0);
     const stockIssueCost = completed.inventoryLedger
-      .filter(({ type }) => type === 'retail-sale' && type !== 'return')
+      .filter(({ type }) => type === 'retail-sale')
       .reduce((total, entry) => total + Math.abs(entry.value), 0);
     const cogsJournal = completed.journalDrafts.find(({ sourceType }) => sourceType === 'retail-sale-cost');
 

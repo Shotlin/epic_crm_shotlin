@@ -195,7 +195,7 @@ describe('retail-command-center domain', () => {
       { id: 'batch-expired', itemVariantId: 'var-1', batchNumber: 'OLD', status: 'released', expiresAt: '2026-08-01', version: 1 },
       { id: 'batch-invalid', itemVariantId: 'var-1', batchNumber: 'BAD', status: 'released', expiresAt: '2026-02-31', version: 1 },
       { id: 'batch-future', itemVariantId: 'var-1', batchNumber: 'FAR', status: 'released', expiresAt: '2026-10-01', version: 1 },
-      { id: 'batch-held', itemVariantId: 'var-1', batchNumber: 'HOLD', status: 'quarantined', expiresAt: '2026-08-31', version: 1 },
+      { id: 'batch-held', itemVariantId: 'var-1', batchNumber: 'HOLD', status: 'quarantine', expiresAt: '2026-08-31', version: 1 },
     ];
 
     const cc = computeRetailCommandCenter(state, 'Today', new Date('2026-08-15T10:00:00.000Z'));

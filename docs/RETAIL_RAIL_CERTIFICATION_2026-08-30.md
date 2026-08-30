@@ -24,6 +24,15 @@ The certified routes open compact, source-backed retail workspaces where
 implemented. Their protected workbenches still own monetary, inventory,
 statutory, approval, and provider-facing writes.
 
+The repository-wide TypeScript gate was also run after correcting two stale
+test fixtures (`quarantined` → `quarantine`, and an impossible stock-ledger
+type comparison):
+
+```powershell
+pnpm typecheck
+# TYPECHECK_PASS
+```
+
 ## Important limits
 
 This is not yet a complete release certification. It does **not** prove:
