@@ -1513,6 +1513,18 @@ describe('Epic BOS renderer', () => {
     expect(screen.queryByTestId('crm-control-deck')).toBeNull();
   });
 
+  it('opens device readiness before the governed hardware workbench', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const navigation = await screen.findByTestId('retail-workspace-navigation');
+    await user.click(within(navigation).getByRole('button', { name: 'Setup' }));
+    await user.click(within(navigation).getByRole('button', { name: 'Open Devices' }));
+
+    expect(await screen.findByTestId('retail-device-readiness-overview')).toBeTruthy();
+    expect(screen.queryByTestId('retail-device-setup')).toBeNull();
+  });
+
   it('opens the keyboard command palette', async () => {
     const user = userEvent.setup();
     render(<App />);
