@@ -154,7 +154,7 @@ const scenario = (id: string, module: string, screen: string, persona: UiAccepta
 };
 
 /**
- * The 48 journeys are intentionally specific enough for a tester to execute,
+ * The 51 journeys are intentionally specific enough for a tester to execute,
  * while remaining independent of individual demo record IDs. They are an
  * acceptance catalog, not an assertion that a screen has been tested.
  */
