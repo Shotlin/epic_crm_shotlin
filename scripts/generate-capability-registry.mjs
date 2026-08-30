@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -328,11 +327,10 @@ function programmeCapability(id, module, name, status, reason, risks, nextAction
 }
 
 function readRevision() {
-  try {
-    return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
-  } catch {
-    return 'unavailable';
-  }
+  // A Git HEAD reference makes a generated registry permanently stale after
+  // the registry-only commit that records it. Its truth is defined by the
+  // inputs above, so make that relationship explicit and deterministic.
+  return `inputs:${checksum([contracts, policy, generator].join('\u0000'))}`;
 }
 
 function checksum(value) {

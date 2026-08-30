@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "source_revision": "5c8418bd9c9ba1908556e64b9a6cbb16b92a1ab2",
+  "source_revision": "inputs:9a6dad93ce7d523e01a654c6446ef6121153a76900447af514c16122732c4f19",
   "source_input_sha256": {
     "ipc_channels": "a96abad6b969da1365fc45d18fe9e4fd48611682e03532ff0614e9fb5db3fb0c",
     "ipc_authorization_policy": "5901c7001b9bf4857911dcf28b54438d502497c52036c0b56c01ebad57eba1db",
-    "registry_generator": "cfd61f927abb7e00555c4f67f1df5356ddfef6057fd09d73b5cb21654864af2d"
+    "registry_generator": "aa6825a7caef90b15232046cb815b4a4394851c9ee8d173389d7f9794591933d"
   },
   "purpose": "Phase 0 evidence register. Statuses are deliberately conservative and do not constitute production certification.",
   "status_definitions": {
