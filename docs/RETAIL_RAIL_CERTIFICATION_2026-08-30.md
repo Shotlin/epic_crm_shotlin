@@ -80,3 +80,9 @@ The current `out/make` release matrix was checked against version `0.1.82`.
 Windows x64 has three checksum-verified native artifacts; macOS and Linux have
 no artifacts for this release line. The verifier correctly returns a **hold**
 until native darwin and linux builds are produced and independently signed.
+
+A fresh package from the current source was also launched with an isolated
+profile and passed the packaged smoke marker `EPIC_BOS_SMOKE_OK` for Windows
+version `0.1.82`. This proves the executable starts and mounts its renderer;
+it does not substitute for cross-platform signing, provider, hardware, or
+human UAT certification.
