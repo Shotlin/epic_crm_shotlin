@@ -1,4 +1,4 @@
-import { ArrowRight, CheckCircle2, DatabaseBackup, Megaphone, MessageSquareText, ShieldCheck, TriangleAlert, UsersRound } from 'lucide-react';
+import { ArrowRight, CheckCircle2, DatabaseBackup, Megaphone, MessageSquareText, ShieldCheck, TriangleAlert } from 'lucide-react';
 import { useMemo, type ReactNode } from 'react';
 import type { CrmDepthSnapshot } from '../shared/crm-depth-contracts';
 

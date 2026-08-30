@@ -13,9 +13,9 @@ describe('UI acceptance readiness', () => {
   it('keeps every role and screen journey visibly blocked until independently verified for the active release', () => {
     const result = evaluateUiAcceptanceReadiness({ releaseIdentitySha256: releaseIdentity, evidence: [] });
 
-    expect(UI_ACCEPTANCE_CATALOG).toHaveLength(48);
+    expect(UI_ACCEPTANCE_CATALOG).toHaveLength(51);
     expect(new Set(UI_ACCEPTANCE_CATALOG.map((scenario) => scenario.persona))).toEqual(new Set(['cashier', 'store-manager', 'hq-finance', 'administrator']));
-    expect(result).toMatchObject({ status: 'blocked', requiredCount: 48, verifiedPassedCount: 0 });
+    expect(result).toMatchObject({ status: 'blocked', requiredCount: 51, verifiedPassedCount: 0 });
     expect(result.rows.find((row) => row.id === 'retail-pos-open-shift')).toMatchObject({ status: 'missing', nextAction: expect.stringMatching(/cashier/i) });
   });
 
@@ -26,6 +26,8 @@ describe('UI acceptance readiness', () => {
     expect(UI_ACCEPTANCE_CATALOG.find((scenario) => scenario.id === 'retail-pos-cash-checkout')?.route).toEqual({ kind: 'bharat', workspace: 'sales', tab: 'commerce' });
     expect(UI_ACCEPTANCE_CATALOG.find((scenario) => scenario.id === 'crm-pipeline')?.route).toEqual({ kind: 'crm', tab: 'pipeline' });
     expect(UI_ACCEPTANCE_CATALOG.find((scenario) => scenario.id === 'release-artifact')?.route).toEqual({ kind: 'command', surface: 'control', controlTab: 'release' });
+    expect(UI_ACCEPTANCE_CATALOG.find((scenario) => scenario.id === 'retail-device-readiness')?.route).toEqual({ kind: 'command', surface: 'control', controlTab: 'integration' });
+    expect(UI_ACCEPTANCE_CATALOG.find((scenario) => scenario.id === 'retail-recovery-readiness')?.route).toEqual({ kind: 'command', surface: 'control', controlTab: 'storage' });
     expect(new Set(UI_ACCEPTANCE_CATALOG.map((scenario) => scenario.surfaceId)).size).toBeGreaterThan(0);
     expect(UI_ACCEPTANCE_CATALOG[0]?.steps[0]).toMatchObject({ order: 1 });
   });

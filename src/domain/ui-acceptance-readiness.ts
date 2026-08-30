@@ -119,6 +119,9 @@ const UI_ACCEPTANCE_ROUTE_REGISTRY: Record<string, UiAcceptanceRoute> = {
   'release-artifact': { kind: 'command', surface: 'control', controlTab: 'release' },
   'release-update': { kind: 'command', surface: 'control', controlTab: 'release' },
   'go-live-checklist': { kind: 'command', surface: 'control', controlTab: 'release' },
+  'retail-device-readiness': { kind: 'command', surface: 'control', controlTab: 'integration' },
+  'retail-integration-readiness': { kind: 'command', surface: 'control', controlTab: 'integration' },
+  'retail-recovery-readiness': { kind: 'command', surface: 'control', controlTab: 'storage' },
 };
 
 function routeForScenario(id: string): UiAcceptanceRoute {
@@ -172,6 +175,7 @@ export const UI_ACCEPTANCE_CATALOG: readonly UiAcceptanceScenario[] = [
   scenario('retail-device-request', 'Retail devices', 'Device transport', 'store-manager', 'Prepare a scanner, printer, drawer, or scale command', 'The command remains pending until a real bounded device response is recorded.'),
   scenario('retail-printer-evidence', 'Retail catalog operations', 'Printer adapter', 'store-manager', 'Record actual printer test evidence', 'The screen asks for a real reference and never labels operator evidence as driver certification.'),
   scenario('retail-offline-recovery', 'Retail POS', 'Supervisor recovery', 'store-manager', 'Recover another cashier’s queued sale with incident evidence', 'Recovery requires a reference and still enforces stock, GST, payment, and approval controls.', 'critical'),
+  scenario('retail-device-readiness', 'Retail devices', 'Device readiness desk', 'store-manager', 'Review device readiness before opening a counter', 'The desk distinguishes local transport evidence from native driver certification and never claims an untested device is live.'),
   scenario('retail-interbranch-transfer', 'Inventory', 'Inter-branch transfer', 'store-manager', 'Create, approve, dispatch, and receive an inter-branch transfer', 'Each custody stage stays visible and inventory moves only at the correct stage.', 'critical'),
   scenario('retail-warehouse-control', 'Warehouse', 'Receiving, pick, and count', 'store-manager', 'Receive, put away, pick, or cycle-count controlled stock', 'Bin, batch, serial, and variance rules are shown before stock changes.'),
   scenario('retail-procurement-operations', 'Procurement', 'PO to receipt', 'store-manager', 'Run a purchase order, receipt, and three-way match journey', 'Supplier, quantity, price, and receiving evidence are reconciled.'),
@@ -198,6 +202,8 @@ export const UI_ACCEPTANCE_CATALOG: readonly UiAcceptanceScenario[] = [
   scenario('retail-reports', 'Retail analytics', 'Reports workbench', 'hq-finance', 'Read X/Z, GST, margin, tender, and sell-through reports', 'Filters and totals are understandable and reflect the selected scope.'),
   scenario('intelligence-exceptions', 'Intelligence', 'Command centre and anomalies', 'hq-finance', 'Review a business exception or recommendation', 'The recommendation shows source evidence and does not mutate data without a governed action.'),
   scenario('executive-dashboard', 'Command', 'Executive dashboard', 'hq-finance', 'Use a dashboard drill-down to find an operational exception', 'The dashboard provides an understandable next action rather than a decorative metric.'),
+  scenario('retail-integration-readiness', 'Setup', 'Integration readiness', 'hq-finance', 'Review Retail Hub and provider readiness without exposing secrets', 'Workspace mode, provider evidence, and external-write boundaries are visible without accepting credentials in the renderer.'),
+  scenario('retail-recovery-readiness', 'Setup', 'Recovery and release readiness', 'administrator', 'Review backup, restore-drill, migration, and release evidence', 'Recovery evidence is source-backed, stale or missing gates remain blocked, and mutation stays in the protected control room.'),
 
   // Administrator (10)
   scenario('auth-bootstrap-login', 'Security', 'Onboarding and sign-in', 'administrator', 'Bootstrap an owner, sign in, lock, and sign out', 'Credentials are never exposed and session transitions are clear.', 'critical'),

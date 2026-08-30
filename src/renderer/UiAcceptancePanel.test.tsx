@@ -14,7 +14,7 @@ describe('UiAcceptancePanel', () => {
     const readiness = evaluateUiAcceptanceReadiness({ releaseIdentitySha256: 'a'.repeat(64), evidence: [] });
     render(<UiAcceptancePanel readiness={readiness} evidence={[]} activeActorId="admin-1" busy={false} onRecord={onRecord} onOpenRoute={onOpenRoute} />);
 
-    expect(screen.getByText('0 / 48 verified')).toBeTruthy();
+    expect(screen.getByText('0 / 51 verified')).toBeTruthy();
     expect(screen.getByText(/No screen is called certified/i)).toBeTruthy();
     expect(screen.getByText(/Sign in as a cashier/i)).toBeTruthy();
     expect(screen.getByText(/Step 1/i)).toBeTruthy();
