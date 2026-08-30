@@ -33,6 +33,21 @@ pnpm typecheck
 # TYPECHECK_PASS
 ```
 
+The complete locally achievable retail-core gate was rerun after the renderer
+route contracts were reconciled with the current retail front doors:
+
+```powershell
+pnpm run verify:retail-core
+# capability registry, IPC policy, renderer-copy, both TypeScript gates,
+# main and Retail Hub test suites, and repository lint all passed locally.
+```
+
+The three repaired renderer assertions now prove the actual safety boundary:
+the Returns rail item opens the read-first return queue, then explicitly hands
+off to the governed returns workbench; it never co-mounts or intercepts POS.
+The Home assertions likewise verify the current source-backed Dashboard,
+Revenue trend, and Pending actions language instead of retired sample copy.
+
 ## Important limits
 
 This is not yet a complete release certification. It does **not** prove:
