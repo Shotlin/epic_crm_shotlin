@@ -7,6 +7,7 @@ export type UiAcceptanceRowStatus = 'missing' | 'submitted' | 'verified' | 'fail
 /** A real Electron workbench destination for a guided acceptance mission. */
 export type UiAcceptanceRoute =
   | { kind: 'command'; surface: 'overview' | 'governance' | 'control'; controlTab?: 'organization' | 'access' | 'approvals' | 'storage' | 'release' | 'integration' }
+  | { kind: 'retail-submodule'; key: string }
   | { kind: 'crm-surface'; surface: 'overview' | 'party' }
   | { kind: 'crm'; tab: 'signal' | 'pipeline' | 'audience' | 'data' | 'connections' }
   | { kind: 'bharat'; workspace: 'sales' | 'finance' | 'operations' | 'people' | 'service' | 'intelligence'; tab: string };
@@ -119,9 +120,9 @@ const UI_ACCEPTANCE_ROUTE_REGISTRY: Record<string, UiAcceptanceRoute> = {
   'release-artifact': { kind: 'command', surface: 'control', controlTab: 'release' },
   'release-update': { kind: 'command', surface: 'control', controlTab: 'release' },
   'go-live-checklist': { kind: 'command', surface: 'control', controlTab: 'release' },
-  'retail-device-readiness': { kind: 'command', surface: 'control', controlTab: 'integration' },
-  'retail-integration-readiness': { kind: 'command', surface: 'control', controlTab: 'integration' },
-  'retail-recovery-readiness': { kind: 'command', surface: 'control', controlTab: 'storage' },
+  'retail-device-readiness': { kind: 'retail-submodule', key: 'setup:devices' },
+  'retail-integration-readiness': { kind: 'retail-submodule', key: 'setup:integrations' },
+  'retail-recovery-readiness': { kind: 'retail-submodule', key: 'setup:recovery' },
 };
 
 function routeForScenario(id: string): UiAcceptanceRoute {

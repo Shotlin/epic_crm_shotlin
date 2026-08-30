@@ -100,7 +100,7 @@ import { RetailOrderQueueFromRevenue } from './RetailOrderQueuePanel';
 import { RetailSetupOverviewPanel, type RetailSetupDestination } from './RetailSetupOverviewPanel';
 import { RetailCutoverGuardPanel } from './RetailCutoverGuardPanel';
 import { CreditPolicySimulationPanel } from './CreditPolicySimulationPanel';
-import { RETAIL_WORKSPACE_ROUTES, type RetailWorkspaceRoute, type RetailWorkspaceRouteId } from './RetailWorkspaceRoute';
+import { RETAIL_WORKSPACE_ROUTES, resolveRetailWorkspaceRoute, type RetailWorkspaceRoute, type RetailWorkspaceRouteId } from './RetailWorkspaceRoute';
 import { RetailDeliveryControlCenter } from './RetailDeliveryControlCenter';
 import { ProviderResponseEvidencePanel } from './ProviderResponseEvidencePanel';
 import { UiAcceptancePanel } from './UiAcceptancePanel';
@@ -6767,6 +6767,21 @@ function AppShell({
 
   function openUiAcceptanceRoute(route: UiAcceptanceRoute): void {
     setRetailOverviewOpen(false);
+    if (route.kind === 'retail-submodule') {
+      const key = route.key as RetailWorkspaceSubmoduleKey;
+      if (key === 'setup:devices') {
+        navigateRetailWorkspace(resolveRetailWorkspaceRoute('setup'));
+        setRetailSetupDeviceOpen(true);
+        return;
+      }
+      if (key === 'setup:integrations' || key === 'setup:recovery') {
+        navigateRetailWorkspace(resolveRetailWorkspaceRoute('setup'));
+        setRetailSetupReadinessMode(key === 'setup:integrations' ? 'integrations' : 'recovery');
+        return;
+      }
+      setNavigationMessage('This acceptance route is not registered to a live retail readiness desk.');
+      return;
+    }
     if (route.kind === 'command') {
       navigateTo({ kind: 'command', surface: route.surface, controlTab: route.controlTab });
       return;

@@ -26,8 +26,8 @@ describe('UI acceptance readiness', () => {
     expect(UI_ACCEPTANCE_CATALOG.find((scenario) => scenario.id === 'retail-pos-cash-checkout')?.route).toEqual({ kind: 'bharat', workspace: 'sales', tab: 'commerce' });
     expect(UI_ACCEPTANCE_CATALOG.find((scenario) => scenario.id === 'crm-pipeline')?.route).toEqual({ kind: 'crm', tab: 'pipeline' });
     expect(UI_ACCEPTANCE_CATALOG.find((scenario) => scenario.id === 'release-artifact')?.route).toEqual({ kind: 'command', surface: 'control', controlTab: 'release' });
-    expect(UI_ACCEPTANCE_CATALOG.find((scenario) => scenario.id === 'retail-device-readiness')?.route).toEqual({ kind: 'command', surface: 'control', controlTab: 'integration' });
-    expect(UI_ACCEPTANCE_CATALOG.find((scenario) => scenario.id === 'retail-recovery-readiness')?.route).toEqual({ kind: 'command', surface: 'control', controlTab: 'storage' });
+    expect(UI_ACCEPTANCE_CATALOG.find((scenario) => scenario.id === 'retail-device-readiness')?.route).toEqual({ kind: 'retail-submodule', key: 'setup:devices' });
+    expect(UI_ACCEPTANCE_CATALOG.find((scenario) => scenario.id === 'retail-recovery-readiness')?.route).toEqual({ kind: 'retail-submodule', key: 'setup:recovery' });
     expect(new Set(UI_ACCEPTANCE_CATALOG.map((scenario) => scenario.surfaceId)).size).toBeGreaterThan(0);
     expect(UI_ACCEPTANCE_CATALOG[0]?.steps[0]).toMatchObject({ order: 1 });
   });
