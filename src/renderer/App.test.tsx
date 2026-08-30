@@ -1058,6 +1058,16 @@ describe('Epic BOS renderer', () => {
     expect(screen.queryByTestId('bharat-workbench')).toBeNull();
   });
 
+  it('keeps Sales & margin in the compact Insights workspace', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openCrmHome();
+    await user.click(screen.getByRole('button', { name: 'Insights' }));
+    await user.click(screen.getByRole('button', { name: 'Open Sales & margin' }));
+    expect(await screen.findByTestId('retail-insights-overview')).toBeTruthy();
+    expect(screen.queryByTestId('bharat-workbench')).toBeNull();
+  });
+
   it('collapses and restores the Bakaloo sidebar without removing keyboard navigation', async () => {
     const user = userEvent.setup();
     render(<App />);
