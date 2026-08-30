@@ -958,6 +958,16 @@ describe('Epic BOS renderer', () => {
     expect(screen.queryByTestId('bharat-workbench')).toBeNull();
   });
 
+  it('opens Returns and exchange as a simple evidence queue before the governed workbench', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openCrmHome();
+    await user.click(screen.getByRole('button', { name: 'Sell' }));
+    await user.click(screen.getByRole('button', { name: 'Open Returns and exchange' }));
+    expect(await screen.findByTestId('retail-returns-overview')).toBeTruthy();
+    expect(screen.queryByTestId('bharat-workbench')).toBeNull();
+  });
+
   it('keeps Products & variants in the simple Stock workspace instead of the legacy commerce workbench', async () => {
     const user = userEvent.setup();
     render(<App />);

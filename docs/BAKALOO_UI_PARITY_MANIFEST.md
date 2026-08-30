@@ -36,7 +36,7 @@ Status legend: **Captured** = live read-only behaviour inspected; **Source** = p
 | Customer Segments | Yes | Yes | Customers / segmentation | Partial domain, planned parity |
 | First-Time Offers | Yes | Yes | Customers / offers | Planned integration |
 | Cart Milestones | Yes | Yes | Customers / promotion policy | Planned integration |
-| Wallet & Refunds | Yes | Yes | Money / wallet and returns | Partial domain, planned parity |
+| Wallet & Refunds | Yes | Yes | Money / wallet and returns | In progress — a compact return-exception queue now preserves the receipt → inspection → independent-decision sequence; settlement and refund writes remain governed. |
 | Notifications | Yes | Yes | Customers / communications | Partial domain, planned parity |
 | Reviews | Yes | Yes | Customers / reviews | Planned integration |
 | Analytics | Yes | Yes | Insights / retail analytics | In progress — executive sales/margin and Stock & expiry have compact, source-backed drill-downs. Outlet comparison has an explicit unavailable state until isolated store data is connected and reconciled. |
