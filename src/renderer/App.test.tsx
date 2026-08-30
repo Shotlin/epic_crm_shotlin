@@ -1525,6 +1525,18 @@ describe('Epic BOS renderer', () => {
     expect(screen.queryByTestId('retail-device-setup')).toBeNull();
   });
 
+  it('opens compact integration and recovery readiness before control-room writes', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    const navigation = await screen.findByTestId('retail-workspace-navigation');
+    await user.click(within(navigation).getByRole('button', { name: 'Setup' }));
+    await user.click(within(navigation).getByRole('button', { name: 'Open Integrations' }));
+    expect(await screen.findByTestId('retail-setup-integrations-overview')).toBeTruthy();
+    await user.click(within(navigation).getByRole('button', { name: 'Setup' }));
+    await user.click(within(navigation).getByRole('button', { name: 'Open Recovery & release' }));
+    expect(await screen.findByTestId('retail-setup-recovery-overview')).toBeTruthy();
+  });
+
   it('opens the keyboard command palette', async () => {
     const user = userEvent.setup();
     render(<App />);

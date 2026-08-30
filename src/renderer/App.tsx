@@ -77,6 +77,7 @@ import { RetailCatalogOperationsWorkbench } from './RetailCatalogOperationsWorkb
 import { RetailDeviceTransportPanel } from './RetailDeviceTransportPanel';
 import { RetailDeviceSetupPanel } from './RetailDeviceSetupPanel';
 import { RetailDeviceReadinessOverviewPanel } from './RetailDeviceReadinessOverviewPanel';
+import { RetailSetupReadinessOverviewPanel, type RetailSetupReadinessMode } from './RetailSetupReadinessOverviewPanel';
 import { RetailCommerceWorkbench } from './RetailCommerceWorkbench';
 import { RetailUnifiedOrderInboxPanel } from './RetailUnifiedOrderInboxPanel';
 import { RetailCommandCenterPanel } from './RetailCommandCenterPanel';
@@ -6458,6 +6459,7 @@ function AppShell({
   const [retailInsightsStockRiskOpen, setRetailInsightsStockRiskOpen] = useState(false);
   const [retailInsightsOutletsOpen, setRetailInsightsOutletsOpen] = useState(false);
   const [retailSetupDeviceOpen, setRetailSetupDeviceOpen] = useState(false);
+  const [retailSetupReadinessMode, setRetailSetupReadinessMode] = useState<RetailSetupReadinessMode | null>(null);
   const [attentionOpen, setAttentionOpen] = useState(false);
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -6587,7 +6589,10 @@ function AppShell({
       setRetailInsightsStockRiskOpen(false);
       setRetailInsightsOutletsOpen(false);
     }
-    if (route.id === 'setup') setRetailSetupDeviceOpen(false);
+    if (route.id === 'setup') {
+      setRetailSetupDeviceOpen(false);
+      setRetailSetupReadinessMode(null);
+    }
     if (route.id === 'customers') {
       setRetailCustomerTab('overview');
       setRetailCustomerEngagementMode(null);
@@ -6690,6 +6695,12 @@ function AppShell({
       setNavigationMessage(`${submodule.label} is open. Review recorded device evidence before opening controlled hardware setup.`);
       return;
     }
+    if (key === 'setup:integrations' || key === 'setup:recovery') {
+      navigateRetailWorkspace(route);
+      setRetailSetupReadinessMode(key === 'setup:integrations' ? 'integrations' : 'recovery');
+      setNavigationMessage(`${submodule.label} is open. ${submodule.description}`);
+      return;
+    }
     if (key === 'stock:products' || key === 'stock:control' || key === 'home:overview' || key === 'home:store-pulse' || key === 'insights:executive' || key === 'insights:sales-margin') {
       navigateRetailWorkspace(route);
       setNavigationMessage(`${submodule.label} is open. ${submodule.description}`);
@@ -6737,7 +6748,7 @@ function AppShell({
       return;
     }
 
-    const destinations: Record<Exclude<RetailWorkspaceSubmoduleKey, 'home:attention' | 'home:overview' | 'home:store-pulse' | 'sell:orders' | 'sell:returns' | 'sell:pricing' | 'stock:products' | 'stock:control' | 'stock:replenishment' | 'stock:purchasing' | 'deliver:queue' | 'deliver:dispatch' | 'deliver:branches' | 'deliver:returns' | 'customers:campaigns' | 'customers:data-quality' | 'money:cash' | 'money:settlements' | 'money:gst' | 'money:close' | 'insights:executive' | 'insights:sales-margin' | 'insights:stock-risk' | 'insights:outlets' | 'setup:stores' | 'setup:devices'>, WorkspaceDestination> = {
+    const destinations: Record<Exclude<RetailWorkspaceSubmoduleKey, 'home:attention' | 'home:overview' | 'home:store-pulse' | 'sell:orders' | 'sell:returns' | 'sell:pricing' | 'stock:products' | 'stock:control' | 'stock:replenishment' | 'stock:purchasing' | 'deliver:queue' | 'deliver:dispatch' | 'deliver:branches' | 'deliver:returns' | 'customers:campaigns' | 'customers:data-quality' | 'money:cash' | 'money:settlements' | 'money:gst' | 'money:close' | 'insights:executive' | 'insights:sales-margin' | 'insights:stock-risk' | 'insights:outlets' | 'setup:stores' | 'setup:devices' | 'setup:integrations' | 'setup:recovery'>, WorkspaceDestination> = {
       'sell:pos': { kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'pos' },
       'customers:customer-360': { kind: 'crm-surface', surface: 'party' },
       'customers:loyalty': { kind: 'crm-surface', surface: 'party' },
@@ -7293,6 +7304,12 @@ function AppShell({
             party={partySnapshot}
             view={retailInsightsStockRiskOpen ? 'stock-risk' : retailInsightsOutletsOpen ? 'outlet-comparison' : 'overview'}
             onOpenAdvanced={() => openAdvancedRetailWorkbench({ kind: 'bharat', tab: 'intelligence', workspace: 'intelligence', handoff: 'Detailed intelligence is open. Every chart and queue is source-linked.' })}
+          /> : retailOverviewOpen && activeRetailRoute === 'setup' && retailSetupReadinessMode ? <RetailSetupReadinessOverviewPanel
+            mode={retailSetupReadinessMode}
+            workspaceStatus={retailWorkspaceStatus}
+            systemInfo={systemInfo}
+            health={operationalHealth}
+            onOpenAdvanced={() => openAdvancedRetailWorkbench({ kind: 'command', surface: 'control', controlTab: retailSetupReadinessMode === 'integrations' ? 'integration' : 'storage', handoff: `${retailSetupReadinessMode === 'integrations' ? 'Integration' : 'Recovery'} controls are open. Review the evidence before writing.` })}
           /> : retailOverviewOpen && activeRetailRoute === 'setup' && retailSetupDeviceOpen ? <RetailDeviceReadinessOverviewPanel
             revenue={revenueOpsSnapshot}
             onOpenAdvanced={() => openAdvancedRetailWorkbench({ kind: 'bharat', tab: 'commerce', workspace: 'sales', commerceSurface: 'devices', handoff: 'Device controls are open. A profile becomes operational only after governed acknowledgement evidence.' })}
