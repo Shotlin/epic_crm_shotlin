@@ -167,7 +167,7 @@ export const UI_ACCEPTANCE_CATALOG: readonly UiAcceptanceScenario[] = [
   scenario('retail-pos-offline-queue', 'Retail POS', 'Offline store recovery', 'cashier', 'Save a sale for offline synchronization and resume it', 'The sale stays queued until a checksum-validated governed sync succeeds.', 'critical'),
   scenario('retail-returns-request', 'Retail returns', 'Returns and exchanges', 'cashier', 'Request a return or exchange from an eligible receipt', 'The request is created without directly issuing a refund or changing stock.', 'critical'),
 
-  // Store manager (12)
+  // Store manager (13)
   scenario('retail-pos-close-approval', 'Retail POS', 'Shift close', 'store-manager', 'Approve or reject another cashier’s shift close', 'The manager sees an independent decision and cannot approve their own request.', 'critical'),
   scenario('retail-pos-variance', 'Retail POS', 'Shift variance', 'store-manager', 'Resolve a documented drawer variance', 'The exception keeps the tender evidence and maker-checker history.'),
   scenario('retail-returns-decision', 'Retail returns', 'Returns and exchanges', 'store-manager', 'Approve or reject another cashier’s return or exchange', 'Refund, credit note, and stock effects occur only after the governed decision.', 'critical'),
@@ -182,7 +182,7 @@ export const UI_ACCEPTANCE_CATALOG: readonly UiAcceptanceScenario[] = [
   scenario('retail-procurement-operations', 'Procurement', 'PO to receipt', 'store-manager', 'Run a purchase order, receipt, and three-way match journey', 'Supplier, quantity, price, and receiving evidence are reconciled.'),
   scenario('retail-fulfilment-cod', 'Fulfilment', 'Serviceability and COD', 'store-manager', 'Run a pincode, fulfilment, or COD custody journey', 'Serviceability and custody exceptions are explicit and never silently settled.'),
 
-  // HQ / finance (20)
+  // HQ / finance (22)
   scenario('crm-lead-party', 'CRM', 'Lead to party', 'hq-finance', 'Convert a qualified lead into a governed party record', 'Account, contact, consent, and deduplication outcomes are visible.'),
   scenario('crm-pipeline', 'CRM', 'Pipeline policy', 'hq-finance', 'Move an opportunity through a configured pipeline', 'Stage policy, score, forecast, and next action update together.'),
   scenario('crm-campaign', 'CRM', 'Campaigns', 'hq-finance', 'Create a consent-safe campaign and communication record', 'Only eligible consented audiences can receive a governed communication.'),
