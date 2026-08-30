@@ -22,7 +22,7 @@ Status legend: **Captured** = live read-only behaviour inspected; **Source** = p
 | Products | Yes | Yes | Products / catalog | In progress — the Stock rail opens the compact, evidence-only stock workspace for product/variant availability, SKU, batch, expiry, replenishment and channel-demand review; its Stock control entry stays on that same simple surface, while Replenishment and Purchasing open their exact review tabs. The Sell rail now exposes a compact price/GST/offer readiness desk; commercial writes remain in accountable workbenches. Visual capture, role/error certification and live Hub import remain. |
 | Abandoned Carts | Yes | Yes | Customers / recovery | Planned integration |
 | Categories | Yes | Yes | Products / catalog taxonomy | Partial domain, planned parity |
-| Customers | Yes | Yes | Customers / Customer 360 | Partial domain, planned parity |
+| Customers | Yes | Yes | Customers / Customer 360 | In progress — Customer 360, loyalty, consent, visits, compact campaign evidence and compact import/data-quality review are available from the retail rail. The simple surfaces are read-first; campaign send, imports and merge writes remain in their governed CRM controls. Visual capture, role/error certification and live source import remain. |
 | Riders | Yes | Yes | Deliver / dispatch | Partial domain, planned parity |
 | Area Segments | Yes | Yes | Deliver / service areas | Planned integration |
 | Shops | Yes | Yes | Shops / branches | Partial domain, planned parity |
@@ -37,7 +37,7 @@ Status legend: **Captured** = live read-only behaviour inspected; **Source** = p
 | First-Time Offers | Yes | Yes | Customers / offers | Planned integration |
 | Cart Milestones | Yes | Yes | Customers / promotion policy | Planned integration |
 | Wallet & Refunds | Yes | Yes | Money / wallet and returns | In progress — a compact return-exception queue now preserves the receipt → inspection → independent-decision sequence; settlement and refund writes remain governed. |
-| Notifications | Yes | Yes | Customers / communications | Partial domain, planned parity |
+| Notifications | Yes | Yes | Customers / communications | In progress — Campaign readiness exposes only consent-led local campaign and adapter evidence; delivery/provider truth remains governed and external until a certified connector is configured. |
 | Reviews | Yes | Yes | Customers / reviews | Planned integration |
 | Analytics | Yes | Yes | Insights / retail analytics | In progress — executive sales/margin and Stock & expiry have compact, source-backed drill-downs. Outlet comparison has an explicit unavailable state until isolated store data is connected and reconciled. |
 | Banners | Yes | Yes | Setup / storefront content | Planned integration |
