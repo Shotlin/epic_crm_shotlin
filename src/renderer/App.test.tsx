@@ -1068,6 +1068,16 @@ describe('Epic BOS renderer', () => {
     expect(screen.queryByTestId('bharat-workbench')).toBeNull();
   });
 
+  it('opens Stock & expiry on the compact, source-backed Insights drill-down', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openCrmHome();
+    await user.click(screen.getByRole('button', { name: 'Insights' }));
+    await user.click(screen.getByRole('button', { name: 'Open Stock & expiry' }));
+    expect(await screen.findByRole('heading', { name: 'Stock & expiry' })).toBeTruthy();
+    expect(screen.queryByTestId('bharat-workbench')).toBeNull();
+  });
+
   it('collapses and restores the Bakaloo sidebar without removing keyboard navigation', async () => {
     const user = userEvent.setup();
     render(<App />);

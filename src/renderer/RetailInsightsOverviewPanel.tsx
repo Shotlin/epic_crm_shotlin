@@ -10,6 +10,7 @@ export interface RetailInsightsOverviewPanelProps {
   dashboard: DashboardSnapshot;
   revenue: RevenueOpsSnapshot;
   party: Pick<PartySnapshot, 'accounts'>;
+  view?: 'overview' | 'stock-risk';
   onOpenAdvanced: () => void;
 }
 
@@ -21,7 +22,7 @@ function saleDate(sale: RevenueOpsSnapshot['retailSales'][number]): string | und
  * Executive retail intelligence that exposes source-backed decisions. It does
  * not manufacture trends, trust scores, forecasts, or outlet comparisons.
  */
-export function RetailInsightsOverviewPanel({ dashboard, revenue, party, onOpenAdvanced }: RetailInsightsOverviewPanelProps): ReactNode {
+export function RetailInsightsOverviewPanel({ dashboard, revenue, party, view = 'overview', onOpenAdvanced }: RetailInsightsOverviewPanelProps): ReactNode {
   const report = useMemo(() => buildIndiaCommerceInsights({ dashboard, revenue, party }), [dashboard, party, revenue]);
   const completedSales = useMemo(() => revenue.retailSales.filter((sale) => sale.status === 'completed'), [revenue.retailSales]);
   const netSales = completedSales.reduce((sum, sale) => sum + sale.taxPreview.grandTotal, 0);
@@ -82,6 +83,8 @@ export function RetailInsightsOverviewPanel({ dashboard, revenue, party, onOpenA
     { label: 'Open receivables', value: inr.format(openReceivables), detail: `${collectionRows.length} collection item${collectionRows.length === 1 ? '' : 's'}`, Icon: HandCoins, alert: collectionRows.length > 0 },
     { label: 'Needs review', value: attentionCount.toLocaleString('en-IN'), detail: attentionCount ? 'Source-backed exceptions' : 'No current exception', Icon: ShieldCheck, alert: attentionCount > 0 },
   ] as const;
+
+  if (view === 'stock-risk') return <section className="retail-insights-overview" data-testid="retail-insights-stock-risk" aria-labelledby="retail-insights-stock-risk-title"><header className="retail-insights-overview__header"><div><span className="eyebrow"><Boxes size={14} aria-hidden="true" /> Inventory intelligence</span><h1 id="retail-insights-stock-risk-title" className="retail-front-door__title">Stock & expiry</h1><p>Review source-backed inventory exceptions before opening warehouse controls.</p></div><button type="button" className="button button--quiet" onClick={onOpenAdvanced}>Open stock controls <ArrowRight size={14} aria-hidden="true" /></button></header><article className="retail-insights-overview__attention"><header><div><span className="eyebrow">Stock exceptions</span><h3>What needs review now</h3></div><AlertTriangle size={18} aria-hidden="true" /></header>{stockExceptions.length ? <div className="retail-insights-overview__queue">{stockExceptions.map((row) => <div key={row.id} data-severity={row.severity === 'critical' ? 'critical' : 'attention'}><span>Stock</span><strong>{row.title}</strong><small>{row.detail}</small></div>)}</div> : <div className="retail-insights-overview__empty"><CheckCircle2 size={20} aria-hidden="true" /><strong>No stock exception is recorded</strong><span>Risk appears here only after governed inventory evidence identifies it.</span></div>}</article><footer className="retail-insights-overview__footer"><CheckCircle2 size={14} aria-hidden="true" /> This view cannot change stock, approve a transfer or dispose a batch.</footer></section>;
 
   return <section className="retail-insights-overview" data-testid="retail-insights-overview" aria-labelledby="retail-insights-overview-title">
     <header className="retail-insights-overview__header"><div><span className="eyebrow"><Sparkles size={14} aria-hidden="true" /> Retail performance</span><h1 id="retail-insights-overview-title" className="retail-front-door__title">See the business. Then see the reason behind the numbers.</h1><p>Sales, margin, stock, customer and operating evidence with a clear source before every drill-down.</p></div><button type="button" className="button button--quiet" onClick={onOpenAdvanced}>Open detailed insights <ArrowRight size={14} aria-hidden="true" /></button></header>

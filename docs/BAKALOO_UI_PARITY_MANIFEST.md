@@ -39,7 +39,7 @@ Status legend: **Captured** = live read-only behaviour inspected; **Source** = p
 | Wallet & Refunds | Yes | Yes | Money / wallet and returns | Partial domain, planned parity |
 | Notifications | Yes | Yes | Customers / communications | Partial domain, planned parity |
 | Reviews | Yes | Yes | Customers / reviews | Planned integration |
-| Analytics | Yes | Yes | Insights / retail analytics | Partial domain, planned parity |
+| Analytics | Yes | Yes | Insights / retail analytics | In progress — executive sales/margin and Stock & expiry now have compact, source-backed drill-downs. Outlet comparison remains deferred until isolated store data is connected and reconciled. |
 | Banners | Yes | Yes | Setup / storefront content | Planned integration |
 | Tutorials | Yes | Yes | Setup / operator guidance | Planned integration |
 | Activity Log | Yes | Yes | Setup / audit evidence | Partial domain, planned parity |
