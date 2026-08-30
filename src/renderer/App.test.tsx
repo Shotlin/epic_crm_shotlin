@@ -1225,6 +1225,11 @@ describe('Epic BOS renderer', () => {
 
     await user.click(within(navigation).getByRole('button', { name: 'Open Returns and exchange' }));
 
+    expect(await screen.findByRole('heading', { name: 'Resolve a return without losing the original sale.' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'A disciplined counter, not a pretend payment terminal.' })).toBeNull();
+    expect(screen.queryByTestId('commercial-foundry')).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Open returns controls' }));
     expect(await screen.findByRole('heading', { name: 'Return the receipt, inspect the goods, then let a different person decide.' })).toBeTruthy();
     expect(screen.queryByRole('heading', { name: 'A disciplined counter, not a pretend payment terminal.' })).toBeNull();
     expect(screen.getByTestId('commercial-foundry').getAttribute('data-commerce-surface')).toBe('returns');
@@ -1336,9 +1341,9 @@ describe('Epic BOS renderer', () => {
     await openCrmHome();
     await user.click(screen.getByRole('button', { name: /^Home$/ }));
     expect(await screen.findByText('Run the store')).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'Your store, made simple.' })).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'Sales by recorded day' })).toBeTruthy();
-    expect(screen.getByText('Make the next decision clear')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Revenue trend' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Pending actions' })).toBeTruthy();
     expect(screen.getByTestId('legacy-sample-isolation')).toBeTruthy();
     expect(screen.queryByTestId('demo-audit-trail')).toBeNull();
     expect(screen.queryByTestId('demo-scenario-runner')).toBeNull();
@@ -1355,7 +1360,7 @@ describe('Epic BOS renderer', () => {
     render(<App />);
     await openCrmHome();
     await user.click(screen.getByRole('button', { name: /^Home$/ }));
-    await screen.findByRole('heading', { name: 'Your store, made simple.' });
+    await screen.findByRole('heading', { name: 'Dashboard' });
 
     expect(screen.getByTestId('bakaloo-retail-command-center')).toBeTruthy();
     expect(screen.queryByTestId('demo-audit-trail')).toBeNull();
