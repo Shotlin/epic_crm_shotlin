@@ -45,6 +45,9 @@ Status legend: **Captured** = live read-only behaviour inspected; **Source** = p
 | Activity Log | Yes | Yes | Setup / audit evidence | Partial domain, planned parity |
 | Customer Activity | Yes | Yes | Customers / timeline | Partial domain, planned parity |
 | Team & Roles | Yes | Yes | Setup / access control | Partial domain, planned parity |
+| Devices | Yes | Yes | Setup / device readiness | In progress — the Setup rail opens a compact evidence-only device readiness desk for printer, scanner, cash drawer and scale profiles; native USB/Bluetooth drivers and physical-device certification remain external gates. |
+| Integrations | Yes | Yes | Setup / Retail Hub and providers | In progress — the Setup rail exposes workspace mode, Hub status and provider-evidence readiness without accepting secrets or initiating external writes. |
+| Recovery & release | Yes | Yes | Setup / backup, restore and release evidence | In progress — the Setup rail exposes database, audit, migration, restore-drill and release evidence; mutation remains in the protected control room. |
 | Themes | Yes | Yes | Setup / storefront theme | Planned integration |
 | Theme Tabs | Yes | Yes | Setup / storefront navigation | Planned integration |
 
