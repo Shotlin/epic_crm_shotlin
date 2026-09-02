@@ -8,9 +8,9 @@
 export const BAKALOO_DESIGN_TOKENS = {
   background: 'hsl(210 20% 98%)',
   foreground: 'hsl(220 14% 10%)',
-  primary: 'hsl(148 66% 29%)',
-  brand500: '#1A7A3C',
-  brand600: '#158034',
+  primary: 'hsl(217 91% 60%)',
+  brand500: '#2563EB',
+  brand600: '#1D4ED8',
   surface: '#F0F4F8',
   border: 'hsl(218 13% 90%)',
   radius: 8,

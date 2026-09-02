@@ -273,7 +273,7 @@ export function BakalooRetailCommandCenter({
       categoryRevenue: categoryRows.slice(0, 6).map((row) => ({ label: row.categoryName, value: row.revenue, color: '#1A7A3C' })),
       revenueVsOrders: dates.slice(-7).map((date) => ({ label: date.slice(5), ...daily.get(date)! })),
       ordersByHour: [...hourly.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([label, value]) => ({ label, value, color: '#3B82F6' })),
-      topProducts: [...products.entries()].map(([label, value]) => ({ label, value, color: '#158034' })).sort((left, right) => right.value - left.value).slice(0, 6),
+      topProducts: [...products.entries()].map(([label, value]) => ({ label, value, color: '#2563EB' })).sort((left, right) => right.value - left.value).slice(0, 6),
       stockAlerts: command.attentionQueue.filter((item) => item.kind === 'stockout' || item.kind === 'expiry'),
     };
   }, [command.attentionQueue, periodSales, revenue.itemVariants, revenue.retailCatalogCategories, revenue.retailMerchandisingProfiles]);
