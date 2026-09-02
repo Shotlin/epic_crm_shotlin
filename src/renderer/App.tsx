@@ -6926,11 +6926,14 @@ function AppShell({
   }
 
   // The eight retailer-facing routes own their own compact, task-specific
-  // headings. Showing the legacy ERP heading and a second horizontal task
-  // rail above them made each page feel like two applications stacked
-  // together. Advanced workbenches retain that context map; daily store work
-  // starts directly with its one clear workspace.
-  const isRetailFrontDoor = retailOverviewOpen;
+  // headings.  Home is *always* the retail front door when its route is
+  // selected.  Previously an earlier advanced navigation could leave the
+  // `retailOverviewOpen` flag false after returning to Home, which put the
+  // retired workspace rail above the retail dashboard.  That produced two
+  // competing applications on one screen and broke the approved layout.
+  // Advanced workbenches still retain their technical context; day-to-day
+  // store work never does.
+  const isRetailFrontDoor = retailOverviewOpen || (workspace === 'command' && commandSurface === 'overview');
 
   return (
     <div
@@ -6977,7 +6980,11 @@ function AppShell({
           onNavigateSubmodule={navigateRetailSubmodule}
           onAdvancedNavigate={(nextWorkspace: AdvancedWorkspaceId) => nextWorkspace === 'settings'
             ? openAdvancedRetailWorkbench({ kind: 'command', surface: 'control' })
-            : activateWorkspace(nextWorkspace)}
+            : nextWorkspace === 'command'
+              ? openAdvancedRetailWorkbench({ kind: 'command', surface: 'governance' })
+              : nextWorkspace === 'crm'
+                ? openAdvancedRetailWorkbench({ kind: 'crm', tab: 'pipeline' })
+              : activateWorkspace(nextWorkspace)}
           advancedWorkspaceIds={advancedRetailWorkspaceIds}
         />
         {/*
@@ -7092,7 +7099,7 @@ function AppShell({
               </button>
             </div>
           </section> : null}
-          <section className="workspace-rail" aria-label={activeWorkspace.label + ' submodules'}>
+          {!isRetailFrontDoor ? <section className="workspace-rail" aria-label={activeWorkspace.label + ' submodules'}>
             <div className="workspace-rail__intro">
               <span>WORK AREA</span>
               <strong>{activeWorkspace.shortcuts.length} useful tools</strong>
@@ -7107,7 +7114,7 @@ function AppShell({
                 </button>;
               })}
             </div>
-          </section>
+          </section> : null}
 
           {navigationMessage ? <p className="workspace-handoff" role="status"><Route size={15} aria-hidden="true" />{navigationMessage}</p> : null}
 

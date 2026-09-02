@@ -906,7 +906,7 @@ describe('Epic BOS renderer', () => {
   it('starts the retail workspace owner at the simple Bakaloo command centre', async () => {
     render(<App />);
 
-    expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Good morning. Here is what needs attention.' })).toBeTruthy();
     expect(screen.getByTestId('bakaloo-retail-command-center')).toBeTruthy();
     expect(screen.getAllByText('Legacy sample isolated').length).toBeGreaterThan(0);
     expect(screen.getByText(/Build 0\.1\.0 \/ Legacy sample cleanup required/)).toBeTruthy();
@@ -1264,7 +1264,7 @@ describe('Epic BOS renderer', () => {
     render(<App />);
 
     await screen.findByTestId('bakaloo-retail-command-center');
-    await user.click(screen.getByRole('button', { name: 'Store setup' }));
+    await user.click(screen.getByRole('button', { name: 'Set up store' }));
     expect(await screen.findByRole('heading', { name: 'Business control room' })).toBeTruthy();
     expect(screen.queryByTestId('retail-setup-overview')).toBeNull();
 
@@ -1281,12 +1281,12 @@ describe('Epic BOS renderer', () => {
 
     await screen.findByTestId('bakaloo-retail-command-center');
     const destinations: Array<[string, () => Promise<HTMLElement>]> = [
-      ['Open POS', () => screen.findByRole('heading', { name: 'A disciplined counter, not a pretend payment terminal.' })],
-      ['Open orders', () => screen.findByRole('heading', { name: 'One queue for every verified order' })],
-      ['Review stock', () => screen.findByRole('heading', { name: 'Inventory and warehouse' })],
+      ['Start sale', () => screen.findByRole('heading', { name: 'A disciplined counter, not a pretend payment terminal.' })],
+      ['Pack orders', () => screen.findByRole('heading', { name: 'One queue for every verified order' })],
+      ['Check stock', () => screen.findByRole('heading', { name: 'Inventory and warehouse' })],
       ['Open delivery', () => screen.findByRole('heading', { name: 'Sales fulfilment' })],
       ['Close cash', () => screen.findByRole('heading', { name: 'Billing, receivables and cash' })],
-      ['Open customers', () => screen.findByTestId('retail-customer-360')],
+      ['Find customer', () => screen.findByTestId('retail-customer-360')],
       ['Set up store', () => screen.findByRole('heading', { name: 'Business control room' })],
     ];
 
@@ -1341,7 +1341,7 @@ describe('Epic BOS renderer', () => {
     await openCrmHome();
     await user.click(screen.getByRole('button', { name: /^Home$/ }));
     expect(await screen.findByText('Run the store')).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Good morning. Here is what needs attention.' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Revenue trend' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Pending actions' })).toBeTruthy();
     expect(screen.getByTestId('legacy-sample-isolation')).toBeTruthy();
@@ -1360,7 +1360,7 @@ describe('Epic BOS renderer', () => {
     render(<App />);
     await openCrmHome();
     await user.click(screen.getByRole('button', { name: /^Home$/ }));
-    await screen.findByRole('heading', { name: 'Dashboard' });
+    await screen.findByRole('heading', { name: 'Good morning. Here is what needs attention.' });
 
     expect(screen.getByTestId('bakaloo-retail-command-center')).toBeTruthy();
     expect(screen.queryByTestId('demo-audit-trail')).toBeNull();
@@ -1836,8 +1836,8 @@ describe('Epic BOS renderer', () => {
     render(<App />);
 
     await openCrmHome();
-    await user.click(screen.getByRole('button', { name: /^Home$/ }));
-    await user.click(screen.getByRole('button', { name: 'Approvals and evidence' }));
+    await user.click(screen.getByRole('button', { name: /Retail extensions/i }));
+    await user.click(screen.getByRole('button', { name: 'Command' }));
 
     expect(
       await screen.findByRole('heading', { name: 'Governance is operational' }),
@@ -1858,10 +1858,10 @@ describe('Epic BOS renderer', () => {
     render(<App />);
 
     await openCrmHome();
-    await user.click(screen.getByRole('button', { name: /^Home$/ }));
-    await user.click(screen.getByRole('button', { name: 'Approvals and evidence' }));
+    await user.click(screen.getByRole('button', { name: /Retail extensions/i }));
+    await user.click(screen.getByRole('button', { name: 'Command' }));
     await screen.findByRole('heading', { name: 'Governance is operational' });
-    await user.click(screen.getByRole('button', { name: 'Store setup' }));
+    await user.click(screen.getByRole('button', { name: 'Advanced setup' }));
     await screen.findByRole('heading', { name: 'Business control room' });
     await user.click(screen.getByRole('tab', { name: 'access' }));
 
@@ -1873,10 +1873,10 @@ describe('Epic BOS renderer', () => {
     render(<App />);
 
     await openCrmHome();
-    await user.click(screen.getByRole('button', { name: /^Home$/ }));
-    await user.click(screen.getByRole('button', { name: 'Approvals and evidence' }));
+    await user.click(screen.getByRole('button', { name: /Retail extensions/i }));
+    await user.click(screen.getByRole('button', { name: 'Command' }));
     await screen.findByRole('heading', { name: 'Governance is operational' });
-    await user.click(screen.getByRole('button', { name: 'Store setup' }));
+    await user.click(screen.getByRole('button', { name: 'Advanced setup' }));
     await screen.findByRole('heading', { name: 'Make the workspace yours' });
 
     await user.clear(screen.getByLabelText('Workspace name'));
@@ -1897,10 +1897,10 @@ describe('Epic BOS renderer', () => {
     const user = userEvent.setup();
     render(<App />);
     await openCrmHome();
-    await user.click(screen.getByRole('button', { name: /^Home$/ }));
-    await user.click(screen.getByRole('button', { name: 'Approvals and evidence' }));
+    await user.click(screen.getByRole('button', { name: /Retail extensions/i }));
+    await user.click(screen.getByRole('button', { name: 'Command' }));
     await screen.findByRole('heading', { name: 'Governance is operational' });
-    await user.click(screen.getByRole('button', { name: 'Store setup' }));
+    await user.click(screen.getByRole('button', { name: 'Advanced setup' }));
     await screen.findByRole('heading', { name: 'Business control room' });
     await user.click(screen.getByRole('tab', { name: 'release' }));
     expect(screen.getByRole('heading', { name: 'Release evidence ledger' })).toBeTruthy();
@@ -1922,10 +1922,10 @@ describe('Epic BOS renderer', () => {
     window.epicBos.integration.verifyProviderCertificationPackage = async () => ({ filePath: 'provider.json', verifiedAt: '2026-07-17T00:00:00.000Z', valid: true, declaredChecksum: 'b'.repeat(64), computedChecksum: 'b'.repeat(64), readyForSandbox: true, readyForProduction: false, missing: ['production approval reference'], errors: [] });
     render(<App />);
     await openCrmHome();
-    await user.click(screen.getByRole('button', { name: /^Home$/ }));
-    await user.click(screen.getByRole('button', { name: 'Approvals and evidence' }));
+    await user.click(screen.getByRole('button', { name: /Retail extensions/i }));
+    await user.click(screen.getByRole('button', { name: 'Command' }));
     await screen.findByRole('heading', { name: 'Governance is operational' });
-    await user.click(screen.getByRole('button', { name: 'Store setup' }));
+    await user.click(screen.getByRole('button', { name: 'Advanced setup' }));
     await screen.findByRole('heading', { name: 'Business control room' });
     await user.click(screen.getByRole('tab', { name: 'release' }));
     await user.click(screen.getByRole('button', { name: 'Export provider template' }));
@@ -1951,10 +1951,10 @@ describe('Epic BOS renderer', () => {
     window.epicBos.release.recordGate = async (input) => { testGates = [input]; return input; };
     render(<App />);
     await openCrmHome();
-    await user.click(screen.getByRole('button', { name: /^Home$/ }));
-    await user.click(screen.getByRole('button', { name: 'Approvals and evidence' }));
+    await user.click(screen.getByRole('button', { name: /Retail extensions/i }));
+    await user.click(screen.getByRole('button', { name: 'Command' }));
     await screen.findByRole('heading', { name: 'Governance is operational' });
-    await user.click(screen.getByRole('button', { name: 'Store setup' }));
+    await user.click(screen.getByRole('button', { name: 'Advanced setup' }));
     await screen.findByRole('heading', { name: 'Business control room' });
     await user.click(screen.getByRole('tab', { name: 'release' }));
     await user.selectOptions(screen.getByLabelText('Gate'), 'tests');
@@ -1976,10 +1976,10 @@ describe('Epic BOS renderer', () => {
     const user = userEvent.setup();
     render(<App />);
     await openCrmHome();
-    await user.click(screen.getByRole('button', { name: /^Home$/ }));
-    await user.click(screen.getByRole('button', { name: 'Approvals and evidence' }));
+    await user.click(screen.getByRole('button', { name: /Retail extensions/i }));
+    await user.click(screen.getByRole('button', { name: 'Command' }));
     await screen.findByRole('heading', { name: 'Governance is operational' });
-    await user.click(screen.getByRole('button', { name: 'Store setup' }));
+    await user.click(screen.getByRole('button', { name: 'Advanced setup' }));
     await screen.findByRole('heading', { name: 'Business control room' });
     await user.click(screen.getByRole('tab', { name: 'integration' }));
     expect(screen.getByRole('heading', { name: 'Public API key administration' })).toBeTruthy();
@@ -1992,7 +1992,8 @@ describe('Epic BOS renderer', () => {
     render(<App />);
 
     await openCrmHome();
-    await user.click(screen.getByRole('button', { name: 'Advanced pipeline' }));
+    await user.click(screen.getByRole('button', { name: /Retail extensions/i }));
+    await user.click(screen.getByRole('button', { name: 'CRM' }));
 
     expect(
       await screen.findByRole('heading', { name: 'CRM operating model' }),
@@ -2019,7 +2020,8 @@ describe('Epic BOS renderer', () => {
     render(<App />);
 
     await openCrmHome();
-    await user.click(screen.getByRole('button', { name: 'Advanced pipeline' }));
+    await user.click(screen.getByRole('button', { name: /Retail extensions/i }));
+    await user.click(screen.getByRole('button', { name: 'CRM' }));
     await screen.findByRole('heading', { name: 'CRM operating model' });
     await user.click(screen.getByRole('tab', { name: 'Signal' }));
 

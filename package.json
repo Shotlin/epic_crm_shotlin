@@ -1,7 +1,7 @@
 {
   "name": "epic-bos",
   "productName": "Epic BOS",
-  "version": "0.1.83",
+  "version": "0.1.84",
   "description": "The operating system for modern business.",
   "main": ".vite/build/main.js",
   "private": true,

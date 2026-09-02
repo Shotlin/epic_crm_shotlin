@@ -44,12 +44,12 @@ describe('BakalooRetailCommandCenter', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: 'Open POS' }));
-    await user.click(screen.getAllByRole('button', { name: 'Open orders' })[0]!);
-    await user.click(screen.getAllByRole('button', { name: 'Review stock' })[0]!);
+    await user.click(screen.getAllByRole('button', { name: /^Start sale/ })[0]!);
+    await user.click(screen.getByRole('button', { name: /^Pack orders/ }));
+    await user.click(screen.getByRole('button', { name: /^Check stock/ }));
     await user.click(screen.getAllByRole('button', { name: 'Open delivery' })[0]!);
     await user.click(screen.getByRole('button', { name: /^Close cash/ }));
-    await user.click(screen.getByRole('button', { name: 'Open customers' }));
+    await user.click(screen.getByRole('button', { name: 'Find customer' }));
     await user.click(screen.getByRole('button', { name: /^Set up store/ }));
 
     expect(onPos).toHaveBeenCalledTimes(1);
@@ -78,18 +78,10 @@ describe('BakalooRetailCommandCenter', () => {
 
     const commandCenter = screen.getByTestId('bakaloo-retail-command-center');
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
-    expect(screen.getByRole('heading', { level: 1, name: 'Dashboard' })).toBeTruthy();
-    expect(commandCenter.textContent).toContain('Overview of your store performance');
+    expect(screen.getByRole('heading', { level: 1, name: 'Good morning. Here is what needs attention.' })).toBeTruthy();
+    expect(commandCenter.textContent).toContain('Operate sales, orders, stock, cash and customers from one screen.');
     expect(screen.getByRole('region', { name: 'Store activity' }).textContent).toContain('0 riders with verified live evidence');
-    [
-      'Total revenue', 'Total orders', 'Products', 'Customers', 'Pending orders',
-      'Low stock items', 'Online riders', 'Today’s revenue', 'Average order value', 'COD collections',
-    ].forEach((label) => expect(screen.getByRole('heading', { level: 3, name: label })).toBeTruthy());
-    expect(commandCenter.textContent).toContain('No completed sales recorded today.');
-    expect(commandCenter.textContent).toContain('No online order needs review.');
     expect(commandCenter.textContent).toContain('No recorded exception needs a decision.');
-    expect(screen.getByText('Abandoned carts')).toBeTruthy();
-    expect(commandCenter.textContent).toContain('No governed cart-recovery feed is connected.');
     [
       'Revenue trend', 'Revenue by category', 'Revenue vs orders', 'Orders by hour',
       'Top products', 'Low stock alerts', 'Live rider map',

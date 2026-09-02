@@ -12,7 +12,6 @@ import {
   Store,
   Truck,
   Users,
-  type LucideIcon,
 } from 'lucide-react';
 import { useMemo, useState, type ReactNode } from 'react';
 import {
@@ -36,16 +35,6 @@ export interface BakalooRetailCommandCenterProps {
   onCash: () => void;
   onCustomers: () => void;
   onSetup: () => void;
-}
-
-interface MetricCardProps {
-  icon: LucideIcon;
-  label: string;
-  value: string;
-  detail: string;
-  actionLabel: string;
-  onOpen: () => void;
-  tone?: 'attention' | 'positive' | 'danger';
 }
 
 interface OrderFlowStage {
@@ -131,22 +120,6 @@ function RevenueOrdersComparison({ data }: { data: ReadonlyArray<{ label: string
   </div>;
 }
 
-function MetricCard({ icon: Icon, label, value, detail, actionLabel, onOpen, tone }: MetricCardProps): ReactNode {
-  return (
-    <article className="bakaloo-command__metric" data-emphasis={tone}>
-      <div className="bakaloo-command__metric-heading">
-        <span className="bakaloo-command__metric-icon"><Icon size={18} aria-hidden="true" /></span>
-        <h3>{label}</h3>
-      </div>
-      <strong className="bakaloo-command__metric-value">{value}</strong>
-      <p>{detail}</p>
-      <button type="button" className="bakaloo-command__card-action" onClick={onOpen}>
-        {actionLabel} <ArrowRight size={15} aria-hidden="true" />
-      </button>
-    </article>
-  );
-}
-
 function AttentionAction({ attention, onCash, onStock, onOrders }: {
   attention: RetailCommandAttention;
   onCash: () => void;
@@ -213,19 +186,9 @@ export function BakalooRetailCommandCenter({
 
   const completedSales = revenue.retailSales.filter((sale) => sale.status === 'completed');
   const periodSales = useMemo(() => completedSales.filter((sale) => saleFallsInPeriod(sale.saleAt, revenue.generatedAt, period)), [completedSales, period, revenue.generatedAt]);
-  const periodCommerceOrders = useMemo(() => revenue.retailCommerceOrders.filter((order) => saleFallsInPeriod(order.remoteCreatedAt, revenue.generatedAt, period)), [period, revenue.generatedAt, revenue.retailCommerceOrders]);
-  const stockoutCount = command.totalStockoutCount;
-  const stockAttentionCount = stockoutCount;
-  const totalRevenue = periodSales.reduce((sum, sale) => sum + sale.taxPreview.grandTotal, 0);
-  const customerCount = new Set(periodSales.map((sale) => sale.customerAccountId).filter(Boolean)).size;
-  const totalOrders = periodSales.length + periodCommerceOrders.length;
   const activeRiders = revenue.retailDeliveryMapSignals
     ? new Set(revenue.retailDeliveryMapSignals.filter((signal) => signal.status === 'live-evidence').map((signal) => signal.riderId)).size
     : undefined;
-  const collectedCod = revenue.codCollectionCases
-    .filter((caseFile) => ['carrier-collected', 'remitted', 'bank-matched'].includes(caseFile.status))
-    .reduce((sum, caseFile) => sum + caseFile.expectedAmount, 0);
-  const averageOrderValue = periodSales.length ? totalRevenue / periodSales.length : undefined;
 
   const salesTrend = useMemo(() => {
     const daily = new Map<string, number>();
@@ -315,9 +278,9 @@ export function BakalooRetailCommandCenter({
     <section className="bakaloo-command bakaloo-command--retail-front" aria-labelledby="bakaloo-command-title" data-testid="bakaloo-retail-command-center">
       <header className="bakaloo-command__header bakaloo-command__header--retail-front">
         <div className="bakaloo-command__header-copy">
-          <span className="bakaloo-command__eyebrow">Store performance</span>
-          <h1 id="bakaloo-command-title" className="retail-front-door__title">Dashboard</h1>
-          <p>Overview of your store performance</p>
+          <span className="bakaloo-command__eyebrow">Store command centre</span>
+          <h1 id="bakaloo-command-title" className="retail-front-door__title">Good morning. Here is what needs attention.</h1>
+          <p>Operate sales, orders, stock, cash and customers from one screen.</p>
         </div>
         <div className="bakaloo-command__periods" role="group" aria-label="Dashboard reporting period">
           {([['today', 'Today'], ['week', 'This week'], ['month', 'This month'], ['year', 'This year']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={period === value} onClick={() => setPeriod(value)}>{label}</button>)}
@@ -334,103 +297,6 @@ export function BakalooRetailCommandCenter({
         <span><PackageCheck size={14} aria-hidden="true" /> {numberFormatter.format(command.onlinePendingOrdersCount)} online order{command.onlinePendingOrdersCount === 1 ? '' : 's'} pending</span>
         <span><Truck size={14} aria-hidden="true" /> {activeRiders === undefined ? 'Rider location unavailable' : `${numberFormatter.format(activeRiders)} rider${activeRiders === 1 ? '' : 's'} with verified live evidence`}</span>
         <span><IndianRupee size={14} aria-hidden="true" /> {inrFormatter.format(todaySales.total)} today · {numberFormatter.format(todaySales.count)} completed receipt{todaySales.count === 1 ? '' : 's'}</span>
-      </section>
-
-      <section className="bakaloo-command__metrics bakaloo-command__metrics--ten" aria-label="Store performance metrics">
-        <MetricCard
-          icon={IndianRupee}
-          label="Total revenue"
-          value={inrFormatter.format(totalRevenue)}
-          detail={`${numberFormatter.format(periodSales.length)} completed counter receipt${periodSales.length === 1 ? '' : 's'} in the selected period.`}
-          actionLabel="Open sales"
-          onOpen={onPos}
-          tone={completedSales.length ? 'positive' : undefined}
-        />
-        <MetricCard
-          icon={ShoppingBag}
-          label="Total orders"
-          value={numberFormatter.format(totalOrders)}
-          detail={`${numberFormatter.format(periodSales.length)} counter receipts · ${numberFormatter.format(periodCommerceOrders.length)} imported channel order${periodCommerceOrders.length === 1 ? '' : 's'} in the selected period.`}
-          actionLabel="Open orders"
-          onOpen={onOrders}
-        />
-        <MetricCard
-          icon={Boxes}
-          label="Products"
-          value={numberFormatter.format(revenue.itemVariants.length)}
-          detail={`${numberFormatter.format(revenue.inventoryItems.length)} governed inventory item${revenue.inventoryItems.length === 1 ? '' : 's'} in the active scope.`}
-          actionLabel="Open products"
-          onOpen={onStock}
-        />
-        <MetricCard
-          icon={Users}
-          label="Customers"
-          value={numberFormatter.format(customerCount)}
-          detail={customerCount ? 'Unique customer accounts on selected completed local receipts.' : 'No customer is linked to a selected completed local receipt.'}
-          actionLabel="Open customers"
-          onOpen={onCustomers}
-        />
-        <MetricCard
-          icon={PackageCheck}
-          label="Pending orders"
-          value={numberFormatter.format(command.onlinePendingOrdersCount)}
-          detail={command.onlinePendingOrdersCount ? `${inrFormatter.format(command.onlinePendingOrderValue)} awaiting confirmation or fulfilment.` : 'No online order needs review.'}
-          actionLabel="Review orders"
-          onOpen={onOrders}
-          tone={command.onlinePendingOrdersCount ? 'attention' : undefined}
-        />
-        <MetricCard
-          icon={AlertTriangle}
-          label="Low stock items"
-          value={numberFormatter.format(stockAttentionCount)}
-          detail={stockAttentionCount ? `${stockoutCount} unavailable item${stockoutCount === 1 ? '' : 's'} across active retail bins.` : 'No unavailable item is recorded.'}
-          actionLabel="Review stock"
-          onOpen={onStock}
-          tone={stockAttentionCount ? 'attention' : undefined}
-        />
-        <MetricCard
-          icon={Truck}
-          label="Online riders"
-          value={activeRiders === undefined ? 'Unavailable' : numberFormatter.format(activeRiders)}
-          detail={activeRiders === undefined ? 'No authenticated rider-location projection is connected.' : 'Only fresh, verified rider device signals are counted.'}
-          actionLabel="Open delivery"
-          onOpen={onDelivery}
-          tone={activeRiders ? 'positive' : undefined}
-        />
-        <MetricCard
-          icon={IndianRupee}
-          label="Today’s revenue"
-          value={inrFormatter.format(todaySales.total)}
-          detail={todaySales.count ? `${numberFormatter.format(todaySales.count)} completed sale${todaySales.count === 1 ? '' : 's'} recorded today.` : 'No completed sales recorded today.'}
-          actionLabel="Open POS"
-          onOpen={onPos}
-          tone={todaySales.count ? 'positive' : undefined}
-        />
-        <MetricCard
-          icon={ShoppingBag}
-          label="Average order value"
-          value={averageOrderValue === undefined ? '—' : inrFormatter.format(averageOrderValue)}
-          detail={averageOrderValue === undefined ? 'Available after the first selected completed local receipt.' : 'Selected completed local receipt average; channel orders are not mixed in.'}
-          actionLabel="Open sales"
-          onOpen={onPos}
-        />
-        <MetricCard
-          icon={Banknote}
-          label="COD collections"
-          value={inrFormatter.format(collectedCod)}
-          detail={`${numberFormatter.format(revenue.codCollectionCases.filter((caseFile) => ['carrier-collected', 'remitted', 'bank-matched'].includes(caseFile.status)).length)} recorded collection case${revenue.codCollectionCases.length === 1 ? '' : 's'} across carrier, remittance or bank evidence.`}
-          actionLabel="Review cash"
-          onOpen={onCash}
-        />
-      </section>
-
-      <section className="bakaloo-command__abandoned-carts" aria-labelledby="bakaloo-abandoned-carts-title">
-        <div>
-          <span className="bakaloo-command__eyebrow">Customer recovery</span>
-          <h2 id="bakaloo-abandoned-carts-title">Abandoned carts</h2>
-          <p>No governed cart-recovery feed is connected. Connect a consent-aware website/app cart source before customers are contacted or recovery value is reported.</p>
-        </div>
-        <button type="button" className="bakaloo-command__text-action" onClick={onCustomers}>Open customer recovery <ArrowRight size={15} aria-hidden="true" /></button>
       </section>
 
       <div className="bakaloo-command__primary-grid">
@@ -541,12 +407,12 @@ export function BakalooRetailCommandCenter({
             </div>
           </header>
           <div className="bakaloo-command__quick-actions">
-            <button type="button" onClick={onPos}><ShoppingBag size={18} aria-hidden="true" /><span><strong>Start sale</strong><small>Open the POS counter</small></span><ArrowRight size={15} aria-hidden="true" /></button>
-            <button type="button" onClick={onOrders}><PackageCheck size={18} aria-hidden="true" /><span><strong>Pack orders</strong><small>Review online fulfilment</small></span><ArrowRight size={15} aria-hidden="true" /></button>
-            <button type="button" onClick={onStock}><Boxes size={18} aria-hidden="true" /><span><strong>Check stock</strong><small>Review stock exceptions</small></span><ArrowRight size={15} aria-hidden="true" /></button>
-            <button type="button" onClick={onCash}><Banknote size={18} aria-hidden="true" /><span><strong>Close cash</strong><small>Review shifts and variance</small></span><ArrowRight size={15} aria-hidden="true" /></button>
-            <button type="button" onClick={onCustomers}><Users size={18} aria-hidden="true" /><span><strong>Find customer</strong><small>Open customer 360</small></span><ArrowRight size={15} aria-hidden="true" /></button>
-            <button type="button" onClick={onSetup}><ClipboardList size={18} aria-hidden="true" /><span><strong>Set up store</strong><small>Finish safe operating basics</small></span><ArrowRight size={15} aria-hidden="true" /></button>
+            <button type="button" aria-label="Start sale" onClick={onPos}><ShoppingBag size={18} aria-hidden="true" /><span><strong>Start sale</strong><small>Open the POS counter</small></span><ArrowRight size={15} aria-hidden="true" /></button>
+            <button type="button" aria-label="Pack orders" onClick={onOrders}><PackageCheck size={18} aria-hidden="true" /><span><strong>Pack orders</strong><small>Review online fulfilment</small></span><ArrowRight size={15} aria-hidden="true" /></button>
+            <button type="button" aria-label="Check stock" onClick={onStock}><Boxes size={18} aria-hidden="true" /><span><strong>Check stock</strong><small>Review stock exceptions</small></span><ArrowRight size={15} aria-hidden="true" /></button>
+            <button type="button" aria-label="Close cash" onClick={onCash}><Banknote size={18} aria-hidden="true" /><span><strong>Close cash</strong><small>Review shifts and variance</small></span><ArrowRight size={15} aria-hidden="true" /></button>
+            <button type="button" aria-label="Find customer" onClick={onCustomers}><Users size={18} aria-hidden="true" /><span><strong>Find customer</strong><small>Open customer 360</small></span><ArrowRight size={15} aria-hidden="true" /></button>
+            <button type="button" aria-label="Set up store" onClick={onSetup}><ClipboardList size={18} aria-hidden="true" /><span><strong>Set up store</strong><small>Finish safe operating basics</small></span><ArrowRight size={15} aria-hidden="true" /></button>
           </div>
           <footer className="bakaloo-command__source-note">
             <PackageSearch size={14} aria-hidden="true" /> Local governed records · no demo sales, no fabricated map or sync state.
