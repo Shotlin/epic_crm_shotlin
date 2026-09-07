@@ -55,3 +55,17 @@ Reference viewports: 1366×768, 1440×900 and 1600×1000.
 - 150–300ms state motion and `prefers-reduced-motion` support.
 - No emoji-based structural iconography; no generated image used as a functional control, map, chart or table.
 - Heavy maps and large lists are lazy/virtualized so cashier input remains responsive.
+
+## Phase 2 source component inventory
+
+| Reference component | Evidence observed | Epic parity requirement |
+| --- | --- | --- |
+| `layout/Sidebar.tsx` | Role-filtered grouped menu, nested Settings expansion, badges and 260/72 collapse model | One role-aware navigation registry; no duplicate daily-retail and admin menus |
+| `layout/Header.tsx` | 64px sticky header, global search, authorized shop scope/switcher, socket health, theme and notifications | Retain Epic authorization/tenant scope and surface connection state without a fake “online” claim |
+| `dashboard/StatCard.tsx` | Compact label/icon/value/delta/sparkline; only primary card uses the green gradient | KPI contract must distinguish zero, unavailable, loading and denied from values |
+| `dashboard/RevenueChart.tsx` | 7/30/90 day tabs, Recharts area geometry, INR tooltip, skeleton and empty state | Use semantic metric definitions and India time/currency formatting |
+| `dashboard/CategoryDonut.tsx` | Donut centre total, legend, source palette, loading/empty state | Use category revenue only where catalog/order sources reconcile |
+| `dashboard/RevenueVsOrders.tsx` | Combined revenue/order comparison | Do not infer conversion or revenue from unrelated receipts |
+| `dashboard/OrdersByHourChart.tsx` | Hourly distribution, compact operational context | Bind to business-timezone order events and make channel filtering explicit |
+| `dashboard/LiveRiderMap.tsx` | Lazily loaded map with rider state | Keep Epic evidence-only map rules: no invented position, ETA or freshness |
+| shared tables/forms/drawers | Shadcn/Radix semantic primitives, toast feedback, form validation and route filters | Preserve accessible focus/escape paths and audit-aware mutation feedback |

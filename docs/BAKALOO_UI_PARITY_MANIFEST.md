@@ -1,56 +1,102 @@
-# Bakaloo UI Parity Manifest
+# Bakaloo V4 UI Parity Manifest
 
-Status legend: **Captured** = live read-only behaviour inspected; **Source** = pinned source route/components inspected; **Mapped** = Epic destination decided; **Implemented** = real Epic UI and domain wiring exist; **Verified** = tests plus visual/interaction certification. No route is marked verified merely because it has a button.
+Generated from the pinned Bakaloo source checkout by `scripts/generate-bakaloo-route-contracts.mjs`. It is an evidence register, not a claim that a route is already complete.
 
-| Bakaloo route | Captured | Source | Epic destination | Current state |
-| --- | ---: | ---: | --- | --- |
-| Dashboard | Yes | Yes | Home/dashboard | In progress — Bakaloo shell, reporting-period selector, ten governed KPIs, cart-recovery unconfigured state, ordered decision visuals, low-stock alerts and evidence-only rider map are implemented. Live cart import, full visual capture comparison and role/empty/error certification remain. |
-| Orders | Yes | Yes | Orders + unified order inbox | In progress — the Sell rail now opens a compact, read-only unified order queue using governed channel, handoff, reservation and exception projections. Lifecycle writes remain in the accountable commerce/fulfilment workbench; visual capture, role/error certification and real Hub import remain. |
-| Settings / Fees | Yes | Yes | Setup / commercial policy | Planned parity |
-| Settings / Tip Presets | Yes | Yes | Setup / checkout policy | Planned parity |
-| Settings / Payment Offers | Yes | Yes | Money / payment offers | Planned parity |
-| Settings / Payments | Yes | Yes | Money / payment configuration | Planned parity |
-| Settings / Wallet | Yes | Yes | Money / wallet policy | Planned parity |
-| Settings / Order Notifications | Yes | Yes | Setup / order communications | Planned parity |
-| Settings / Product Suggestions | Yes | Yes | Products / merchandising | Planned parity |
-| Settings / Delivery Timer | Yes | Yes | Deliver / SLA policy | Planned parity |
-| Settings / Pincode Mapping | Yes | Yes | Deliver / serviceability | Partial domain, planned parity |
-| Settings / Store Hours | Yes | Yes | Setup / store policy | Planned parity |
-| Settings / Delivery Calendar | Yes | Yes | Deliver / slots | Planned parity |
-| Settings / App Version | Yes | Yes | Setup / release | Partial domain, planned parity |
-| Settings / Legal Pages | Yes | Yes | Setup / legal content | Planned parity |
-| Products | Yes | Yes | Products / catalog | In progress — the Stock rail opens the compact, evidence-only stock workspace for product/variant availability, SKU, batch, expiry, replenishment and channel-demand review; its Stock control entry stays on that same simple surface, while Replenishment and Purchasing open their exact review tabs. The Sell rail now exposes a compact price/GST/offer readiness desk; commercial writes remain in accountable workbenches. Visual capture, role/error certification and live Hub import remain. |
-| Abandoned Carts | Yes | Yes | Customers / recovery | Planned integration |
-| Categories | Yes | Yes | Products / catalog taxonomy | Partial domain, planned parity |
-| Customers | Yes | Yes | Customers / Customer 360 | In progress — Customer 360, loyalty, consent, visits, compact campaign evidence and compact import/data-quality review are available from the retail rail. The simple surfaces are read-first; campaign send, imports and merge writes remain in their governed CRM controls. Visual capture, role/error certification and live source import remain. |
-| Riders | Yes | Yes | Deliver / dispatch | Partial domain, planned parity |
-| Area Segments | Yes | Yes | Deliver / service areas | Planned integration |
-| Shops | Yes | Yes | Shops / branches | Partial domain, planned parity |
-| Coverage Map | Yes | Yes | Deliver / coverage map | Partial domain, planned parity |
-| Shop Products | Yes | Yes | Products / branch assortment | Partial domain, planned parity |
-| Shop Financials | Yes | Yes | Money / branch finance | Partial domain, planned parity |
-| Shop Transactions | Yes | Yes | Money / transaction evidence | Partial domain, planned parity |
-| GSTR-1 | Yes | Yes | Money / GST workpapers | In progress — a compact GST/invoice evidence view shows local registration and review state without claiming portal submission or acknowledgement. |
-| Coupons | Yes | Yes | Customers / vouchers | Partial domain, planned parity |
-| Purchase Limits | Yes | Yes | Commerce / purchase controls | Planned integration |
-| Customer Segments | Yes | Yes | Customers / segmentation | Partial domain, planned parity |
-| First-Time Offers | Yes | Yes | Customers / offers | Planned integration |
-| Cart Milestones | Yes | Yes | Customers / promotion policy | Planned integration |
-| Wallet & Refunds | Yes | Yes | Money / wallet and returns | In progress — a compact return-exception queue now preserves the receipt → inspection → independent-decision sequence; settlement and refund writes remain governed. |
-| Notifications | Yes | Yes | Customers / communications | In progress — Campaign readiness exposes only consent-led local campaign and adapter evidence; delivery/provider truth remains governed and external until a certified connector is configured. |
-| Reviews | Yes | Yes | Customers / reviews | Planned integration |
-| Analytics | Yes | Yes | Insights / retail analytics | In progress — executive sales/margin and Stock & expiry have compact, source-backed drill-downs. Outlet comparison has an explicit unavailable state until isolated store data is connected and reconciled. |
-| Banners | Yes | Yes | Setup / storefront content | Planned integration |
-| Tutorials | Yes | Yes | Setup / operator guidance | Planned integration |
-| Activity Log | Yes | Yes | Setup / audit evidence | Partial domain, planned parity |
-| Customer Activity | Yes | Yes | Customers / timeline | Partial domain, planned parity |
-| Team & Roles | Yes | Yes | Setup / access control | Partial domain, planned parity |
-| Devices | Yes | Yes | Setup / device readiness | In progress — the Setup rail opens a compact evidence-only device readiness desk for printer, scanner, cash drawer and scale profiles; native USB/Bluetooth drivers and physical-device certification remain external gates. |
-| Integrations | Yes | Yes | Setup / Retail Hub and providers | In progress — the Setup rail exposes workspace mode, Hub status and provider-evidence readiness without accepting secrets or initiating external writes. |
-| Recovery & release | Yes | Yes | Setup / backup, restore and release evidence | In progress — the Setup rail exposes database, audit, migration, restore-drill and release evidence; mutation remains in the protected control room. |
-| Themes | Yes | Yes | Setup / storefront theme | Planned integration |
-| Theme Tabs | Yes | Yes | Setup / storefront navigation | Planned integration |
+## Audit status
 
-## Required verification per row
+- **Routes discovered from source:** 79
+- **Live video evidence:** only the four noted surfaces were observed in the user-supplied recording. All other routes are source-inspected only.
+- **Epic implementation status:** every route starts as **not certified** under V4 until its data, states, scope, visual comparison and focused interaction test are recorded.
+- **Per-route visual contracts:** `docs/bakaloo-visual-contracts/`
 
-Before changing a row to **Verified**, record: implemented route, governed data source, loading/empty/error state, HQ/store context, permission check, dark mode, keyboard path, 1366×768 + 1440×900 + 1600×1000 visual comparison, focused E2E result and no unmatched reconciliation impact.
+## Shared shell contract
+
+- 260 px expanded / 72 px collapsed left sidebar; 64 px sticky header; one vertical workspace scroll owner.
+- White app surfaces, calm neutral borders/shadows, Bakaloo-green selected navigation, Lucide iconography and accessible labelled actions.
+- Any unknown, unauthorized, unconfigured or failed value must be visible as that state—never fabricated and never silently rendered as zero.
+
+| Bakaloo route | Pinned source | Live recording | Epic destination | Scope | V4 certification status |
+| --- | --- | --- | --- | --- | --- |
+| `/abandoned-carts` | `src/app/(dashboard)/abandoned-carts/page.tsx` | Yes — abandoned carts (00:44) | Customers / cart recovery | Store | Not started — legacy/partial Epic surface is not V4 parity |
+| `/activity-log` | `src/app/(dashboard)/activity-log/page.tsx` | No | Mapped in Phase 3 capability audit | Role controlled | Not started — legacy/partial Epic surface is not V4 parity |
+| `/analytics` | `src/app/(dashboard)/analytics/page.tsx` | Yes — analytics (01:04) | Insights / retail analytics | HQ + store | Not started — legacy/partial Epic surface is not V4 parity |
+| `/area-segments` | `src/app/(dashboard)/area-segments/page.tsx` | No | Deliver / dispatch controls | HQ + store | Not started — legacy/partial Epic surface is not V4 parity |
+| `/banners` | `src/app/(dashboard)/banners/page.tsx` | No | Mapped in Phase 3 capability audit | Role controlled | Not started — legacy/partial Epic surface is not V4 parity |
+| `/cart-milestones` | `src/app/(dashboard)/cart-milestones/page.tsx` | No | Mapped in Phase 3 capability audit | Role controlled | Not started — legacy/partial Epic surface is not V4 parity |
+| `/categories` | `src/app/(dashboard)/categories/page.tsx` | No | Mapped in Phase 3 capability audit | Role controlled | Not started — legacy/partial Epic surface is not V4 parity |
+| `/coupons` | `src/app/(dashboard)/coupons/page.tsx` | No | Mapped in Phase 3 capability audit | Role controlled | Not started — legacy/partial Epic surface is not V4 parity |
+| `/customer-activity` | `src/app/(dashboard)/customer-activity/page.tsx` | No | Mapped in Phase 3 capability audit | Role controlled | Not started — legacy/partial Epic surface is not V4 parity |
+| `/customer-segments` | `src/app/(dashboard)/customer-segments/page.tsx` | No | Mapped in Phase 3 capability audit | Role controlled | Not started — legacy/partial Epic surface is not V4 parity |
+| `/customers` | `src/app/(dashboard)/customers/page.tsx` | No | Customers / customer 360 | HQ + store | Not started — legacy/partial Epic surface is not V4 parity |
+| `/dashboard` | `src/app/(dashboard)/dashboard/page.tsx` | Yes — dashboard (00:04) | Home / retail command centre | Store | Not started — legacy/partial Epic surface is not V4 parity |
+| `/first-time-offers` | `src/app/(dashboard)/first-time-offers/page.tsx` | No | Mapped in Phase 3 capability audit | Role controlled | Not started — legacy/partial Epic surface is not V4 parity |
+| `/hq/audit-logs` | `src/app/(dashboard)/hq/audit-logs/page.tsx` | No | HQ control plane | HQ | Not started — legacy/partial Epic surface is not V4 parity |
+| `/hq/coverage-map` | `src/app/(dashboard)/hq/coverage-map/page.tsx` | No | HQ control plane | HQ | Not started — legacy/partial Epic surface is not V4 parity |
+| `/hq/dashboard` | `src/app/(dashboard)/hq/dashboard/page.tsx` | No | HQ control plane | HQ | Not started — legacy/partial Epic surface is not V4 parity |
+| `/hq/finance` | `src/app/(dashboard)/hq/finance/page.tsx` | No | HQ control plane | HQ | Not started — legacy/partial Epic surface is not V4 parity |
+| `/hq/finance/gstr1` | `src/app/(dashboard)/hq/finance/gstr1/page.tsx` | No | HQ control plane | HQ | Not started — legacy/partial Epic surface is not V4 parity |
+| `/hq/orders` | `src/app/(dashboard)/hq/orders/page.tsx` | No | HQ control plane | HQ | Not started — legacy/partial Epic surface is not V4 parity |
+| `/hq/products` | `src/app/(dashboard)/hq/products/page.tsx` | No | HQ control plane | HQ | Not started — legacy/partial Epic surface is not V4 parity |
+| `/hq/reports` | `src/app/(dashboard)/hq/reports/page.tsx` | No | HQ control plane | HQ | Not started — legacy/partial Epic surface is not V4 parity |
+| `/hq/riders` | `src/app/(dashboard)/hq/riders/page.tsx` | No | HQ control plane | HQ | Not started — legacy/partial Epic surface is not V4 parity |
+| `/hq/shops` | `src/app/(dashboard)/hq/shops/page.tsx` | No | HQ control plane | HQ | Not started — legacy/partial Epic surface is not V4 parity |
+| `/me` | `src/app/(dashboard)/me/page.tsx` | No | Setup / personal profile | User | Not started — legacy/partial Epic surface is not V4 parity |
+| `/notifications` | `src/app/(dashboard)/notifications/page.tsx` | No | Mapped in Phase 3 capability audit | Role controlled | Not started — legacy/partial Epic surface is not V4 parity |
+| `/orders` | `src/app/(dashboard)/orders/page.tsx` | No | Sell / unified orders | HQ + store | Not started — legacy/partial Epic surface is not V4 parity |
+| `/orders/new` | `src/app/(dashboard)/orders/new/page.tsx` | No | Sell / unified orders | HQ + store | Not started — legacy/partial Epic surface is not V4 parity |
+| `/products` | `src/app/(dashboard)/products/page.tsx` | No | Stock / catalogue | HQ + store | Not started — legacy/partial Epic surface is not V4 parity |
+| `/products/:id/edit` | `src/app/(dashboard)/products/[id]/edit/page.tsx` | No | Stock / catalogue | HQ + store | Not started — legacy/partial Epic surface is not V4 parity |
+| `/products/families` | `src/app/(dashboard)/products/families/page.tsx` | No | Stock / catalogue | HQ + store | Not started — legacy/partial Epic surface is not V4 parity |
+| `/products/families/:id` | `src/app/(dashboard)/products/families/[id]/page.tsx` | No | Stock / catalogue | HQ + store | Not started — legacy/partial Epic surface is not V4 parity |
+| `/products/new` | `src/app/(dashboard)/products/new/page.tsx` | No | Stock / catalogue | HQ + store | Not started — legacy/partial Epic surface is not V4 parity |
+| `/purchase-limits` | `src/app/(dashboard)/purchase-limits/page.tsx` | No | Mapped in Phase 3 capability audit | Role controlled | Not started — legacy/partial Epic surface is not V4 parity |
+| `/refund-requests` | `src/app/(dashboard)/refund-requests/page.tsx` | No | Mapped in Phase 3 capability audit | Role controlled | Not started — legacy/partial Epic surface is not V4 parity |
+| `/reviews` | `src/app/(dashboard)/reviews/page.tsx` | No | Mapped in Phase 3 capability audit | Role controlled | Not started — legacy/partial Epic surface is not V4 parity |
+| `/riders` | `src/app/(dashboard)/riders/page.tsx` | No | Deliver / dispatch controls | HQ + store | Not started — legacy/partial Epic surface is not V4 parity |
+| `/settings` | `src/app/(dashboard)/settings/page.tsx` | No | Mapped in Phase 3 capability audit | Role controlled | Not started — legacy/partial Epic surface is not V4 parity |
+| `/settings/app-branding` | `src/app/(dashboard)/settings/app-branding/page.tsx` | No | Setup / controlled configuration | Role controlled | Not started — legacy/partial Epic surface is not V4 parity |
+| `/settings/app-version` | `src/app/(dashboard)/settings/app-version/page.tsx` | No | Setup / controlled configuration | Role controlled | Not started — legacy/partial Epic surface is not V4 parity |
+| `/settings/delivery-calendar` | `src/app/(dashboard)/settings/delivery-calendar/page.tsx` | No | Setup / controlled configuration | Role controlled | Not started — legacy/partial Epic surface is not V4 parity |
+| `/settings/delivery-timer` | `src/app/(dashboard)/settings/delivery-timer/page.tsx` | No | Setup / controlled configuration | Role controlled | Not started — legacy/partial Epic surface is not V4 parity |
+| `/settings/fees` | `src/app/(dashboard)/settings/fees/page.tsx` | No | Setup / controlled configuration | Role controlled | Not started — legacy/partial Epic surface is not V4 parity |
+| `/settings/legal-pages` | `src/app/(dashboard)/settings/legal-pages/page.tsx` | No | Setup / controlled configuration | Role controlled | Not started — legacy/partial Epic surface is not V4 parity |
+| `/settings/maps` | `src/app/(dashboard)/settings/maps/page.tsx` | No | Setup / controlled configuration | Role controlled | Not started — legacy/partial Epic surface is not V4 parity |
+| `/settings/order-notifications` | `src/app/(dashboard)/settings/order-notifications/page.tsx` | No | Setup / controlled configuration | Role controlled | Not started — legacy/partial Epic surface is not V4 parity |
+| `/settings/payment-offers` | `src/app/(dashboard)/settings/payment-offers/page.tsx` | No | Setup / controlled configuration | Role controlled | Not started — legacy/partial Epic surface is not V4 parity |
+| `/settings/payments` | `src/app/(dashboard)/settings/payments/page.tsx` | No | Setup / controlled configuration | Role controlled | Not started — legacy/partial Epic surface is not V4 parity |
+| `/settings/pincode-mapping` | `src/app/(dashboard)/settings/pincode-mapping/page.tsx` | No | Setup / controlled configuration | Role controlled | Not started — legacy/partial Epic surface is not V4 parity |
+| `/settings/product-suggestions` | `src/app/(dashboard)/settings/product-suggestions/page.tsx` | No | Setup / controlled configuration | Role controlled | Not started — legacy/partial Epic surface is not V4 parity |
+| `/settings/store-hours` | `src/app/(dashboard)/settings/store-hours/page.tsx` | No | Setup / controlled configuration | Role controlled | Not started — legacy/partial Epic surface is not V4 parity |
+| `/settings/tip-presets` | `src/app/(dashboard)/settings/tip-presets/page.tsx` | Yes — tip presets (00:24) | Setup / checkout policy | Store | Not started — legacy/partial Epic surface is not V4 parity |
+| `/settings/wallet` | `src/app/(dashboard)/settings/wallet/page.tsx` | No | Setup / controlled configuration | Role controlled | Not started — legacy/partial Epic surface is not V4 parity |
+| `/shop-financials` | `src/app/(dashboard)/shop-financials/page.tsx` | No | HQ / shop reporting | HQ | Not started — legacy/partial Epic surface is not V4 parity |
+| `/shop-products` | `src/app/(dashboard)/shop-products/page.tsx` | No | HQ / shop reporting | HQ | Not started — legacy/partial Epic surface is not V4 parity |
+| `/shop-transactions` | `src/app/(dashboard)/shop-transactions/page.tsx` | No | HQ / shop reporting | HQ | Not started — legacy/partial Epic surface is not V4 parity |
+| `/shops` | `src/app/(dashboard)/shops/page.tsx` | No | Setup / shops and branches | HQ | Not started — legacy/partial Epic surface is not V4 parity |
+| `/shops/:shopId` | `src/app/(dashboard)/shops/[shopId]/page.tsx` | No | Setup / shops and branches | HQ | Not started — legacy/partial Epic surface is not V4 parity |
+| `/shops/:shopId/edit` | `src/app/(dashboard)/shops/[shopId]/edit/page.tsx` | No | Setup / shops and branches | HQ | Not started — legacy/partial Epic surface is not V4 parity |
+| `/shops/:shopId/staff` | `src/app/(dashboard)/shops/[shopId]/staff/page.tsx` | No | Setup / shops and branches | HQ | Not started — legacy/partial Epic surface is not V4 parity |
+| `/shops/new` | `src/app/(dashboard)/shops/new/page.tsx` | No | Setup / shops and branches | HQ | Not started — legacy/partial Epic surface is not V4 parity |
+| `/store/audit-logs` | `src/app/(dashboard)/store/audit-logs/page.tsx` | No | Store operations | Store | Not started — legacy/partial Epic surface is not V4 parity |
+| `/store/coupons` | `src/app/(dashboard)/store/coupons/page.tsx` | No | Store operations | Store | Not started — legacy/partial Epic surface is not V4 parity |
+| `/store/dashboard` | `src/app/(dashboard)/store/dashboard/page.tsx` | No | Store operations | Store | Not started — legacy/partial Epic surface is not V4 parity |
+| `/store/financials` | `src/app/(dashboard)/store/financials/page.tsx` | No | Store operations | Store | Not started — legacy/partial Epic surface is not V4 parity |
+| `/store/inventory` | `src/app/(dashboard)/store/inventory/page.tsx` | No | Store operations | Store | Not started — legacy/partial Epic surface is not V4 parity |
+| `/store/inventory/movements` | `src/app/(dashboard)/store/inventory/movements/page.tsx` | No | Store operations | Store | Not started — legacy/partial Epic surface is not V4 parity |
+| `/store/orders` | `src/app/(dashboard)/store/orders/page.tsx` | No | Store operations | Store | Not started — legacy/partial Epic surface is not V4 parity |
+| `/store/products` | `src/app/(dashboard)/store/products/page.tsx` | No | Store operations | Store | Not started — legacy/partial Epic surface is not V4 parity |
+| `/store/reports` | `src/app/(dashboard)/store/reports/page.tsx` | No | Store operations | Store | Not started — legacy/partial Epic surface is not V4 parity |
+| `/store/staff` | `src/app/(dashboard)/store/staff/page.tsx` | No | Store operations | Store | Not started — legacy/partial Epic surface is not V4 parity |
+| `/store/transactions` | `src/app/(dashboard)/store/transactions/page.tsx` | No | Store operations | Store | Not started — legacy/partial Epic surface is not V4 parity |
+| `/team` | `src/app/(dashboard)/team/page.tsx` | No | Mapped in Phase 3 capability audit | Role controlled | Not started — legacy/partial Epic surface is not V4 parity |
+| `/theme-tabs` | `src/app/(dashboard)/theme-tabs/page.tsx` | No | Mapped in Phase 3 capability audit | Role controlled | Not started — legacy/partial Epic surface is not V4 parity |
+| `/themes` | `src/app/(dashboard)/themes/page.tsx` | No | Mapped in Phase 3 capability audit | Role controlled | Not started — legacy/partial Epic surface is not V4 parity |
+| `/themes/:id` | `src/app/(dashboard)/themes/[id]/page.tsx` | No | Mapped in Phase 3 capability audit | Role controlled | Not started — legacy/partial Epic surface is not V4 parity |
+| `/themes/builder` | `src/app/(dashboard)/themes/builder/page.tsx` | No | Mapped in Phase 3 capability audit | Role controlled | Not started — legacy/partial Epic surface is not V4 parity |
+| `/themes/new` | `src/app/(dashboard)/themes/new/page.tsx` | No | Mapped in Phase 3 capability audit | Role controlled | Not started — legacy/partial Epic surface is not V4 parity |
+| `/tutorials` | `src/app/(dashboard)/tutorials/page.tsx` | No | Mapped in Phase 3 capability audit | Role controlled | Not started — legacy/partial Epic surface is not V4 parity |
+| `/wallet` | `src/app/(dashboard)/wallet/page.tsx` | No | Mapped in Phase 3 capability audit | Role controlled | Not started — legacy/partial Epic surface is not V4 parity |
+
+## Required completion evidence
+
+A route may move to certified only after its exact visual hierarchy, governed data binding, loading/empty/error/permission states, HQ/store scope, keyboard/accessibility path, three target viewport comparison and focused interaction/E2E evidence are recorded.
