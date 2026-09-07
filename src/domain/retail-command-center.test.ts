@@ -167,9 +167,10 @@ describe('retail-command-center domain', () => {
 
     const cc = computeRetailCommandCenter(state);
 
-    expect(cc.aggregateNetProfit).toBe(0);
-    expect(cc.overallMarginPct).toBe(0);
+    expect(cc.aggregateNetProfit).toBeNull();
+    expect(cc.overallMarginPct).toBeNull();
     expect(cc.profitCostCoveragePct).toBe(0);
+    expect(cc.storePerformance[0]).toMatchObject({ grossProfitAmount: null, grossMarginPct: null });
   });
 
   it('prioritises cash, margin, stock and omnichannel risks in one deterministic queue', () => {

@@ -46,8 +46,9 @@ export interface StorePerformanceMetric {
   grossSalesAmount: number;
   netSalesAmount: number;
   costOfGoodsSold: number;
-  grossProfitAmount: number;
-  grossMarginPct: number;
+  /** Null means no completed sale for this store has immutable COGS evidence. */
+  grossProfitAmount: number | null;
+  grossMarginPct: number | null;
   totalOrdersCount: number;
   averageBasketValue: number;
   cashVarianceAmount: number;
@@ -86,9 +87,11 @@ export interface RetailCommandCenterSnapshot {
   period: string; // e.g. "Today" | "This Month"
   totalStoresCount: number;
   aggregateGrossSales: number;
-  aggregateNetProfit: number;
-  overallMarginPct: number;
-  profitCostCoveragePct: number;
+  /** A partial known-profit figure, never a defaulted zero. */
+  aggregateNetProfit: number | null;
+  overallMarginPct: number | null;
+  /** Null when no completed sales exist; zero is meaningful when none are costed. */
+  profitCostCoveragePct: number | null;
   onlinePendingOrdersCount: number;
   onlinePendingOrderValue: number;
   /** Pending omnichannel demand grouped by its governed connector channel. */
@@ -140,9 +143,13 @@ export function computeRetailCommandCenter(
   const costedSales = completedSales.filter((sale) => Number.isFinite(sale.costTotal));
   const aggregateCostedSales = round2(costedSales.reduce((sum, s) => sum + s.taxPreview.grandTotal, 0));
   const aggregateCogs = round2(costedSales.reduce((sum, s) => sum + (s.costTotal ?? 0), 0));
-  const aggregateNetProfit = round2(aggregateCostedSales - aggregateCogs);
-  const overallMarginPct = aggregateCostedSales > 0 ? round2((aggregateNetProfit / aggregateCostedSales) * 100) : 0;
-  const profitCostCoveragePct = completedSales.length > 0 ? round2((costedSales.length / completedSales.length) * 100) : 0;
+  const aggregateNetProfit = costedSales.length > 0 ? round2(aggregateCostedSales - aggregateCogs) : null;
+  const overallMarginPct = aggregateNetProfit !== null && aggregateCostedSales > 0
+    ? round2((aggregateNetProfit / aggregateCostedSales) * 100)
+    : null;
+  const profitCostCoveragePct = completedSales.length > 0
+    ? round2((costedSales.length / completedSales.length) * 100)
+    : null;
 
   // Active shifts and variance tracking
   // shift.variance is the optional numeric variance; shift.status is 'open' | 'close-requested' | 'closed'
@@ -179,8 +186,10 @@ export function computeRetailCommandCenter(
     const costedCounterSales = counterSales.filter((sale) => Number.isFinite(sale.costTotal));
     const costedStoreGross = round2(costedCounterSales.reduce((sum, s) => sum + s.taxPreview.grandTotal, 0));
     const storeCogs = round2(costedCounterSales.reduce((sum, s) => sum + (s.costTotal ?? 0), 0));
-    const storeProfit = round2(costedStoreGross - storeCogs);
-    const storeMarginPct = costedStoreGross > 0 ? round2((storeProfit / costedStoreGross) * 100) : 0;
+    const storeProfit = costedCounterSales.length > 0 ? round2(costedStoreGross - storeCogs) : null;
+    const storeMarginPct = storeProfit !== null && costedStoreGross > 0
+      ? round2((storeProfit / costedStoreGross) * 100)
+      : null;
 
     const counterShifts = shifts.filter((s) => s.counterId === counter.id);
     const storeVariance = round2(counterShifts.reduce((sum, s) => sum + Math.abs(s.variance ?? 0), 0));

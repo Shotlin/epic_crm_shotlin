@@ -5,6 +5,8 @@ import { computeRetailCommandCenter } from '../domain/retail-command-center';
 type Props = { revenue: RevenueOpsSnapshot; onOpenCommerce?: () => void };
 
 const inr = (amount: number) => `₹${amount.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+const inrOrUnavailable = (amount: number | null) => amount === null ? '—' : inr(amount);
+const percentOrUnavailable = (value: number | null) => value === null ? 'Unavailable' : `${value.toFixed(1)}%`;
 
 /** A truthful store-operations view: every number comes from the current governed revenue snapshot. */
 export function RetailCommandCenterPanel({ revenue, onOpenCommerce }: Props) {
@@ -21,7 +23,7 @@ export function RetailCommandCenterPanel({ revenue, onOpenCommerce }: Props) {
     </div>
     <div className="metric-grid" aria-label="Retail command metrics">
       <article className="metric-card"><span><IndianRupee size={14} /> Gross sales</span><strong>{inr(command.aggregateGrossSales)}</strong><small>{command.totalStoresCount} store{command.totalStoresCount === 1 ? '' : 's'}</small></article>
-      <article className="metric-card"><span><IndianRupee size={14} /> Known gross profit</span><strong>{inr(command.aggregateNetProfit)}</strong><small>{command.profitCostCoveragePct.toFixed(0)}% cost coverage · {command.overallMarginPct.toFixed(1)}% margin</small></article>
+      <article className="metric-card"><span><IndianRupee size={14} /> Known gross profit</span><strong>{inrOrUnavailable(command.aggregateNetProfit)}</strong><small>{command.profitCostCoveragePct === null ? 'No completed sales' : `${command.profitCostCoveragePct.toFixed(0)}% cost coverage`} · {percentOrUnavailable(command.overallMarginPct)} margin</small></article>
       <article className="metric-card"><span><ShoppingBag size={14} /> Online queue</span><strong>{command.onlinePendingOrdersCount}</strong><small>{inr(command.onlinePendingOrderValue)} awaiting action</small></article>
       <article className="metric-card"><span><PackageSearch size={14} /> Stock attention</span><strong>{command.totalStockoutCount + command.totalExpiryRiskItemsCount}</strong><small>{command.totalStockoutCount} stockout · {command.totalExpiryRiskItemsCount} expiry risk</small></article>
     </div>
@@ -33,7 +35,7 @@ export function RetailCommandCenterPanel({ revenue, onOpenCommerce }: Props) {
     <div className="insight-grid">
       <article className="panel panel--nested">
         <div className="panel__header"><div><span className="eyebrow">Store performance</span><h3>Revenue and accountability</h3></div><Users size={17} aria-hidden="true" /></div>
-        {command.storePerformance.length ? <div className="table-wrap"><table><thead><tr><th>Store</th><th>Sales</th><th>Profit</th><th>Margin</th><th>Variance</th></tr></thead><tbody>{command.storePerformance.map((store) => <tr key={store.storeId}><td><strong>{store.storeName}</strong><small>{store.totalOrdersCount} completed sale{store.totalOrdersCount === 1 ? '' : 's'}</small></td><td>{inr(store.grossSalesAmount)}</td><td>{inr(store.grossProfitAmount)}</td><td>{store.grossMarginPct.toFixed(1)}%</td><td>{inr(store.cashVarianceAmount)}</td></tr>)}</tbody></table></div> : <p className="people-empty">Create a counter and complete a sale to see store performance.</p>}
+        {command.storePerformance.length ? <div className="table-wrap"><table><thead><tr><th>Store</th><th>Sales</th><th>Profit</th><th>Margin</th><th>Variance</th></tr></thead><tbody>{command.storePerformance.map((store) => <tr key={store.storeId}><td><strong>{store.storeName}</strong><small>{store.totalOrdersCount} completed sale{store.totalOrdersCount === 1 ? '' : 's'}</small></td><td>{inr(store.grossSalesAmount)}</td><td>{inrOrUnavailable(store.grossProfitAmount)}</td><td>{percentOrUnavailable(store.grossMarginPct)}</td><td>{inr(store.cashVarianceAmount)}</td></tr>)}</tbody></table></div> : <p className="people-empty">Create a counter and complete a sale to see store performance.</p>}
       </article>
       <article className="panel panel--nested">
         <div className="panel__header"><div><span className="eyebrow">Next actions</span><h3>Attention items</h3></div><AlertTriangle size={17} aria-hidden="true" /></div>
